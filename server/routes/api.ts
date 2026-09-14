@@ -837,7 +837,10 @@ apiRouter.post("/tags/apply/:id", async (req: Request, res: Response) => {
       job?.outputFilePath && fs.existsSync(job.outputFilePath)
         ? {
             filePath: job.outputFilePath,
-            format: job.format,
+            format: path
+              .extname(job.outputFilePath)
+              .replace(".", "")
+              .toLowerCase(),
             title: job.title,
             author: job.author,
             thumbnail: job.thumbnail,

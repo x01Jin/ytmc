@@ -62,6 +62,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
   const [lastSearchedQuery, setLastSearchedQuery] = useState("");
   const [appliedSource, setAppliedSource] = useState<string | null>(null);
   const [hasUserEdited, setHasUserEdited] = useState(false);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   const debounceTimeoutRef = useRef<any>(null);
 
@@ -141,6 +142,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
       genre: candidate.genre || tags.genre,
       trackNumber: candidate.trackNumber || tags.trackNumber || "1",
       coverUrl: candidate.coverUrl || tags.coverUrl,
+      coverData: undefined,
     };
 
     setTags(updated);
@@ -151,9 +153,20 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     setTimeout(() => setAppliedSource(null), 4000);
   };
 
+  const handleApplyCandidateCover = (candidate: MusicTagCandidate) => {
+    if (!candidate.coverUrl) return;
+    handleFieldChange("coverUrl", candidate.coverUrl);
+    setAppliedSource(`${candidate.source.toUpperCase()} artwork selected`);
+    setTimeout(() => setAppliedSource(null), 4000);
+  };
+
   const handleFieldChange = (field: keyof MusicTags, value: any) => {
     setHasUserEdited(true);
-    const updated = { ...tags, [field]: value };
+    const updated = {
+      ...tags,
+      [field]: value,
+      ...(field === "coverUrl" ? { coverData: undefined } : {}),
+    };
     setTags(updated);
     onChange(updated);
   };
@@ -351,6 +364,19 @@ export const TagEditor: React.FC<TagEditorProps> = ({
                     {c.album || "Single"} {c.year ? `• ${c.year}` : ""}{" "}
                     {c.genre ? `• ${c.genre}` : ""}
                   </p>
+                  {c.coverUrl && (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleApplyCandidateCover(c);
+                      }}
+                      className="mt-1 inline-flex items-center gap-1 text-[10px] text-rose-400 hover:text-rose-300"
+                    >
+                      <ImageIcon className="h-3 w-3" />
+                      Use cover only
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -505,6 +531,38 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           )}
 
           <div className="flex-1 space-y-1">
+            <input
+              ref={coverInputRef}
+              type="file"
+              accept="image/*"
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (!file || file.size > 8 * 1024 * 1024) return;
+                const reader = new FileReader();
+                reader.onload = () => {
+                  if (typeof reader.result !== "string") return;
+                  setHasUserEdited(true);
+                  const updated = {
+                    ...tags,
+                    coverUrl: URL.createObjectURL(file),
+                    coverData: reader.result,
+                  };
+                  setTags(updated);
+                  onChange(updated);
+                };
+                reader.readAsDataURL(file);
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => coverInputRef.current?.click()}
+              className="inline-flex items-center gap-1.5 text-xs text-rose-400 hover:text-rose-300"
+            >
+              <ImageIcon className="h-3.5 w-3.5" />
+              Choose picture locally
+            </button>
             <input
               type="text"
               value={tags.coverUrl || ""}

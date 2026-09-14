@@ -28,6 +28,7 @@ export interface MusicTags {
   genre?: string;
   trackNumber?: string;
   coverUrl?: string;
+  coverData?: string;
   comment?: string;
   cleanDescription?: boolean;
 }

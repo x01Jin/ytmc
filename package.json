@@ -7,7 +7,7 @@
   "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "cross-env NODE_ENV=development tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=bundle --sourcemap --outfile=dist/server.cjs",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=bundle --external:esbuild --external:lightningcss --sourcemap --outfile=dist/server.cjs",
     "start": "cross-env NODE_ENV=production node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rimraf dist server.js",
