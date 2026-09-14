@@ -82,9 +82,6 @@
       "perMachine": false
     }
   },
-  "directories": {
-    "doc": "docs"
-  },
   "keywords": [],
   "author": "",
   "license": "ISC"
