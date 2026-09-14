@@ -138,6 +138,7 @@ export interface AppSettings {
 
 export interface LibraryRecord {
   jobId: string;
+  source?: "conversion" | "import";
   videoId: string;
   title: string;
   author: string;

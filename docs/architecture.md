@@ -58,23 +58,23 @@ The YouTube to Music Converter is a Windows desktop app: an Electron shell aroun
 
 The backend codebase adheres strictly to the single-purpose pattern:
 
-| File                                   | Purpose                                                                             |
-| -------------------------------------- | ----------------------------------------------------------------------------------- |
-| `server/config.ts`                     | Centralized constants, binary paths, output directories, and supported formats.     |
-| `server/services/urlService.ts`        | Pure URL and ID parsing, extraction, and canonicalization.                          |
-| `server/services/metadataService.ts`   | Video metadata retrieval combining YouTube oEmbed and yt-dlp inspection.            |
-| `server/services/tagFetcherService.ts` | Multi-source music autotagging querying iTunes, Deezer, and MusicBrainz.            |
-| `server/services/audioTagService.ts`   | ID3, Vorbis, MP4 atom, and RIFF metadata injection with cover artwork using FFmpeg. |
-| `server/services/conversionService.ts` | Audio extraction pipeline orchestrating `yt-dlp` and `ffmpeg`.                      |
-| `server/services/jobManager.ts`        | In-memory job state machine, progress tracking, and file lifecycle cleanup.         |
-| `server/services/cookieService.ts`     | Netscape/JSON cookie parsing, verification, and file persistence.                   |
-| `server/services/settingsService.ts`   | Library-folder settings in `data/settings.json` with Windows path validation.      |
-| `server/services/fileService.ts`       | Library dir resolution, on-disk scan, `.part` sweep.                                |
-| `server/services/libraryStore.ts`      | Persistent `data/library.json` index so history survives restarts.                  |
-| `server/utils/filename.ts`             | Windows-safe filename sanitizer, display names, dedupe.                             |
-| `server/utils/mime.ts`                 | Fast audio MIME-type resolution for streaming and downloads.                        |
-| `server/routes/api.ts`                 | Express router exposing the public REST API surface.                                |
-| `server.ts`                            | Application entry point exporting `startServer()`; loopback-only + token guard.     |
+| File                                   | Purpose                                                                                                              |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `server/config.ts`                     | Centralized constants, binary paths, output directories, and supported formats.                                      |
+| `server/services/urlService.ts`        | Pure URL and ID parsing, extraction, and canonicalization.                                                           |
+| `server/services/metadataService.ts`   | Video metadata retrieval combining YouTube oEmbed and yt-dlp inspection.                                             |
+| `server/services/tagFetcherService.ts` | Multi-source music autotagging querying iTunes, Deezer, and MusicBrainz.                                             |
+| `server/services/audioTagService.ts`   | ID3, Vorbis, MP4 atom, and RIFF metadata injection with cover artwork using FFmpeg.                                  |
+| `server/services/conversionService.ts` | Audio extraction pipeline orchestrating `yt-dlp` and `ffmpeg`.                                                       |
+| `server/services/jobManager.ts`        | In-memory job state machine, progress tracking, and file lifecycle cleanup.                                          |
+| `server/services/cookieService.ts`     | Netscape/JSON cookie parsing, verification, and file persistence.                                                    |
+| `server/services/settingsService.ts`   | Library-folder settings in `data/settings.json` with Windows path validation.                                        |
+| `server/services/fileService.ts`       | Library dir resolution, on-disk scan, `.part` sweep.                                                                 |
+| `server/services/libraryStore.ts`      | Persistent `data/library.json` index for converted and imported library files; conversion history survives restarts. |
+| `server/utils/filename.ts`             | Windows-safe filename sanitizer, display names, dedupe.                                                              |
+| `server/utils/mime.ts`                 | Fast audio MIME-type resolution for streaming and downloads.                                                         |
+| `server/routes/api.ts`                 | Express router exposing the public REST API surface.                                                                 |
+| `server.ts`                            | Application entry point exporting `startServer()`; loopback-only + token guard.                                      |
 
 ---
 
@@ -93,7 +93,7 @@ Pixel-art dark-only UI (`src/index.css` `@theme` tokens, `Press Start 2P` + `IBM
 - **`components/AppShell.tsx`**: TitleBar, SideNav, StatusBar + hash routing (`#/convert`, `#/library`, `#/history`, `#/queue`, `#/settings`).
 - **`store/appStore.tsx`**: `JobsProvider` (owns `useJobPolling` with `startTransition` + backoff), `ConvertDraftProvider` (inspect state, options, and one-shot re-convert URLs), `LibraryProvider`, `SettingsProvider`, `SessionProvider`.
 - **`routes/Convert.tsx`**: inspect → options → convert flow. When a job completes, the route refreshes recent jobs and the library, clears the active job and draft, and reports success through a floating bottom-right notification.
-- **`routes/Library.tsx`**: searchable on-disk library with a docked bottom preview player, reveal-in-Explorer, edit panels, and delete-behind-confirm. Refreshes automatically when a conversion finishes.
+- **`routes/Library.tsx`**: searchable on-disk library with a docked bottom preview player, drag-and-drop/file-picker import, reveal-in-Explorer, edit panels, and delete-behind-confirm. Refreshes automatically when a conversion finishes.
 - **`routes/History.tsx`**: completed conversions with cover art, original title, YouTube link copy, and one-click re-convert.
 - **`routes/Queue.tsx`**: live view of the in-progress conversion only; finished jobs clear out to Library + History.
 - **`routes/Settings.tsx`**: library folder (Browse/Reset), reveal-after-convert, session cookies.

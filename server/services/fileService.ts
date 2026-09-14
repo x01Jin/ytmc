@@ -1,9 +1,17 @@
-import fs from 'fs';
-import path from 'path';
-import { DOWNLOADS_DIR } from '../config.js';
-import { SettingsService } from './settingsService.js';
+import fs from "fs";
+import path from "path";
+import { DOWNLOADS_DIR } from "../config.js";
+import { SettingsService } from "./settingsService.js";
 
-export const AUDIO_EXTENSIONS = new Set(['.opus', '.m4a', '.mp3', '.flac', '.wav', '.ogg', '.aac']);
+export const AUDIO_EXTENSIONS = new Set([
+  ".opus",
+  ".m4a",
+  ".mp3",
+  ".flac",
+  ".wav",
+  ".ogg",
+  ".aac",
+]);
 
 export interface LibraryFile {
   id: string;
@@ -15,6 +23,7 @@ export interface LibraryFile {
 }
 
 export class FileService {
+  public static readonly AUDIO_EXTENSIONS = AUDIO_EXTENSIONS;
   public static getDownloadsDir(): string {
     const configured = SettingsService.getSettings().downloadsDir;
     return configured && configured.trim() ? configured : DOWNLOADS_DIR;
@@ -42,7 +51,12 @@ export class FileService {
     }
     const files: LibraryFile[] = [];
     for (const entry of entries) {
-      if (entry.endsWith('.part') || entry.endsWith('.ytdl') || entry === '.writetest') continue;
+      if (
+        entry.endsWith(".part") ||
+        entry.endsWith(".ytdl") ||
+        entry === ".writetest"
+      )
+        continue;
       const filePath = path.join(dir, entry);
       let stat: fs.Stats;
       try {
@@ -58,7 +72,7 @@ export class FileService {
         filePath,
         sizeBytes: stat.size,
         mtimeMs: stat.mtimeMs,
-        ext: path.extname(entry).replace('.', '').toLowerCase(),
+        ext: path.extname(entry).replace(".", "").toLowerCase(),
       });
     }
     return files.sort((a, b) => b.mtimeMs - a.mtimeMs);
@@ -74,7 +88,7 @@ export class FileService {
       return 0;
     }
     for (const entry of entries) {
-      if (!entry.endsWith('.part')) continue;
+      if (!entry.endsWith(".part")) continue;
       try {
         fs.unlinkSync(path.join(dir, entry));
         removed += 1;

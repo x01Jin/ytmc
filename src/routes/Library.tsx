@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { Upload } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
 import { AudioPlayer } from "../components/AudioPlayer";
 import { LibraryEditPanel } from "../components/library/LibraryEditPanel";
 import { useLibrary } from "../store/appStore";
@@ -44,6 +45,9 @@ export function LibraryRoute() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const records = useMemo(() => {
     const list = library?.records ?? [];
@@ -91,6 +95,24 @@ export function LibraryRoute() {
     }
   };
 
+  const importFiles = async (files: File[]) => {
+    if (files.length === 0) return;
+    setActionError(null);
+    setIsImporting(true);
+    try {
+      await Promise.all(files.map((file) => actions.importFile(file)));
+      await actions.refresh();
+    } catch (err) {
+      setActionError(
+        err instanceof Error
+          ? err.message
+          : "Could not copy audio into the library.",
+      );
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   if (isLoading && !library) {
     return (
       <section className="px-panel p-4" aria-label="Library">
@@ -124,9 +146,25 @@ export function LibraryRoute() {
     : null;
 
   return (
-    <div className="space-y-3">
+    <div
+      className="flex min-h-full flex-col gap-3"
+      onDragOver={(event) => {
+        event.preventDefault();
+        setIsDragging(true);
+      }}
+      onDragLeave={(event) => {
+        if (event.currentTarget === event.target) setIsDragging(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setIsDragging(false);
+        void importFiles(Array.from(event.dataTransfer.files));
+      }}
+    >
       <section
-        className="px-panel flex flex-col gap-2 p-3 sm:flex-row sm:items-center"
+        className={`px-panel flex flex-col gap-2 p-3 sm:flex-row sm:items-center ${
+          isDragging ? "border-px-acc" : ""
+        }`}
         aria-label="Library controls"
       >
         <div className="min-w-0 flex-1">
@@ -148,7 +186,7 @@ export function LibraryRoute() {
             className="px-input w-full text-sm"
           />
         </div>
-        <div>
+        <div className="flex items-end gap-2">
           <label
             htmlFor="library-sort"
             className="mb-1 block text-xs text-px-dim"
@@ -166,8 +204,35 @@ export function LibraryRoute() {
             <option value="name">Title A to Z</option>
             <option value="size">Largest first</option>
           </select>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".mp3,.m4a,.flac,.wav,.opus,.ogg,.aac,audio/*"
+            multiple
+            className="sr-only"
+            onChange={(event) => {
+              void importFiles(Array.from(event.target.files ?? []));
+              event.target.value = "";
+            }}
+          />
+          <button
+            type="button"
+            className="px-btn flex items-center gap-1.5 text-xs"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isImporting}
+            title="Copy audio into the library"
+          >
+            <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+            {isImporting ? "Copying…" : "Add audio"}
+          </button>
         </div>
       </section>
+
+      {isDragging && (
+        <div className="px-panel border-px-acc p-4 text-center text-sm text-px-acc">
+          Drop audio files to copy them into your library
+        </div>
+      )}
 
       {actionError && (
         <div role="alert" className="px-panel border-px-err p-3 text-sm">
@@ -286,7 +351,7 @@ export function LibraryRoute() {
 
       {playingRecord && (
         <section
-          className="px-panel sticky bottom-2 z-10 p-3"
+          className="px-panel sticky bottom-2 z-10 mt-auto p-3"
           aria-label="Preview player"
         >
           <AudioPlayer job={recordToJob(playingRecord)} />
@@ -322,16 +387,6 @@ export function LibraryRoute() {
             </button>
           </div>
         </div>
-      )}
-
-      {(library?.looseFiles.length ?? 0) > 0 && (
-        <section className="px-panel p-3" aria-label="Unindexed files">
-          <p className="text-xs text-px-dim">
-            {library?.looseFiles.length} audio file
-            {library && library.looseFiles.length > 1 ? "s" : ""} in the folder
-            are not linked to a conversion yet.
-          </p>
-        </section>
       )}
     </div>
   );

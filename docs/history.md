@@ -13,7 +13,7 @@ Each row represents one completed job and shows:
 
 ## Data source
 
-Rows come from the recent-jobs endpoint (`GET /api/jobs`), filtered to `completed` status. The canonical URL is reconstructed from each job's `videoId`; no separate URL field is stored.
+Rows come from the recent-jobs endpoint (`GET /api/jobs`), filtered to `completed` status. The endpoint combines live jobs with completed conversion records from the persistent library index, so history remains available after the application restarts. Imported local files are marked as library-only records and are excluded from conversion history. The canonical URL is reconstructed from each conversion's `videoId`; no separate URL field is stored.
 
 ## Re-convert handoff
 

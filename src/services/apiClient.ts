@@ -257,9 +257,23 @@ export class ApiClient {
     return json.data;
   }
 
-  public static async probeLibraryFile(
-    jobId: string,
-  ): Promise<{
+  public static async importLibraryFile(file: File): Promise<void> {
+    const res = await fetch("/api/library/import", {
+      method: "POST",
+      headers: {
+        ...(await mutatingHeaders()),
+        "Content-Type": "application/octet-stream",
+        "x-file-name": encodeURIComponent(file.name),
+      },
+      body: await file.arrayBuffer(),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || "Could not copy audio into the library");
+    }
+  }
+
+  public static async probeLibraryFile(jobId: string): Promise<{
     durationSeconds: number | null;
     format: string;
     sizeBytes: number;

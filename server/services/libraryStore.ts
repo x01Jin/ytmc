@@ -1,9 +1,10 @@
-import fs from 'fs';
-import path from 'path';
-import { DATA_DIR } from '../config.js';
+import fs from "fs";
+import path from "path";
+import { DATA_DIR } from "../config.js";
 
 export interface LibraryRecord {
   jobId: string;
+  source?: "conversion" | "import";
   videoId: string;
   title: string;
   author: string;
@@ -15,13 +16,15 @@ export interface LibraryRecord {
   completedAt: number;
 }
 
-const LIBRARY_FILE = path.join(DATA_DIR, 'library.json');
+const LIBRARY_FILE = path.join(DATA_DIR, "library.json");
 const MAX_RECORDS = 500;
 
 function readAll(): LibraryRecord[] {
   try {
     if (!fs.existsSync(LIBRARY_FILE)) return [];
-    const parsed = JSON.parse(fs.readFileSync(LIBRARY_FILE, 'utf8')) as LibraryRecord[];
+    const parsed = JSON.parse(
+      fs.readFileSync(LIBRARY_FILE, "utf8"),
+    ) as LibraryRecord[];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -31,7 +34,11 @@ function readAll(): LibraryRecord[] {
 function writeAll(records: LibraryRecord[]): void {
   fs.mkdirSync(path.dirname(LIBRARY_FILE), { recursive: true });
   const tmp = `${LIBRARY_FILE}.${process.pid}.part`;
-  fs.writeFileSync(tmp, JSON.stringify(records.slice(0, MAX_RECORDS), null, 2), 'utf8');
+  fs.writeFileSync(
+    tmp,
+    JSON.stringify(records.slice(0, MAX_RECORDS), null, 2),
+    "utf8",
+  );
   fs.renameSync(tmp, LIBRARY_FILE);
 }
 

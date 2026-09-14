@@ -128,6 +128,7 @@ interface LibraryContextValue {
   };
   actions: {
     refresh: () => Promise<void>;
+    importFile: (file: File) => Promise<void>;
     deleteFile: (jobId: string) => Promise<void>;
     revealFile: (jobId: string) => Promise<void>;
   };
@@ -166,6 +167,10 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     [refresh],
   );
 
+  const importFile = useCallback(async (file: File) => {
+    await ApiClient.importLibraryFile(file);
+  }, []);
+
   const revealFile = useCallback(async (jobId: string) => {
     await ApiClient.revealFile(jobId);
   }, []);
@@ -173,9 +178,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const value = useMemo<LibraryContextValue>(
     () => ({
       state: { library, isLoading, error },
-      actions: { refresh, deleteFile, revealFile },
+      actions: { refresh, importFile, deleteFile, revealFile },
     }),
-    [library, isLoading, error, refresh, deleteFile, revealFile],
+    [library, isLoading, error, refresh, importFile, deleteFile, revealFile],
   );
 
   return <LibraryContext value={value}>{children}</LibraryContext>;
