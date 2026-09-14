@@ -14,6 +14,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
   const [volume, setVolume] = useState(1);
   const [isMuted, setIsMuted] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -21,7 +22,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
     setIsPlaying(false);
     setCurrentTime(0);
     setDuration(0);
-  }, [job?.id]);
+    setLoadError(null);
+    audio?.load();
+  }, [job?.id, job?.streamUrl]);
 
   useEffect(() => {
     if (!isPlaying) return;
@@ -116,7 +119,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
     >
       <audio
         ref={audioRef}
-        src={job.streamUrl || `/api/stream/${job.id}`}
+        src={job.streamUrl || `/api/stream/${encodeURIComponent(job.id)}`}
         preload="metadata"
         onDurationChange={(event) => {
           const nextDuration = event.currentTarget.duration;
@@ -127,6 +130,12 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
         }
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
+        onError={() => {
+          setIsPlaying(false);
+          setLoadError(
+            "This track could not be played. The file may be missing, still processing, or in a format this player can't decode — try another format.",
+          );
+        }}
         onEnded={() => {
           setCurrentTime(0);
           if (!isLooping) setIsPlaying(false);
@@ -193,6 +202,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
           <span>{formatTime(currentTime)}</span>
           <span>{formatTime(duration)}</span>
         </div>
+        {loadError && (
+          <p role="alert" className="text-[11px] text-red-400">
+            {loadError}
+          </p>
+        )}
       </div>
 
       {/* Secondary controls stay in their own compact column. */}

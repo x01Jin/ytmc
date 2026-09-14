@@ -118,17 +118,15 @@ export class ConversionService {
     const { strategy } = await resolveStrategy();
     const useCookies = cookiesAllowed(strategy, !!cookiesPath);
 
-    // Setup audio filters (loudnorm, volume)
     const ffmpegFilters: string[] = [];
     if (options.normalizeAudio) {
-      ffmpegFilters.push("loudnorm");
+      ffmpegFilters.push("loudnorm,aresample=48000");
     } else if (options.volumeBoost && options.volumeBoost !== 100) {
       const factor = (options.volumeBoost / 100).toFixed(2);
       ffmpegFilters.push(`volume=${factor}`);
     }
     const hasFilters = ffmpegFilters.length > 0;
 
-    // Target highest quality audio stream from YouTube
     const args: string[] = [
       ...launch.prefixArgs,
       "--js-runtimes",
@@ -144,13 +142,10 @@ export class ConversionService {
       outputTemplate,
     ];
 
-    // Cookies only accompany the no-POT fallback path (anonymous PO tokens
-    // do not validate against cookie sessions server-side).
     if (useCookies && cookiesPath) {
       args.push("--cookies", cookiesPath);
     }
 
-    // Trimming / section download support
     if (options.trimStart || options.trimEnd) {
       const start = options.trimStart?.trim() || "00:00";
       const end = options.trimEnd?.trim() || "inf";
@@ -158,15 +153,11 @@ export class ConversionService {
       args.push("--force-keyframes-at-cuts");
     }
 
-    // Audio format & extraction configuration
     if (format === "best" || format === "opus" || format === "m4a") {
       if (!hasFilters) {
-        // DIRECT STREAM COPY: Highest native bitrate without lossy re-encoding
         args.push("--extract-audio");
         args.push("--audio-format", format === "best" ? "best" : format);
       } else {
-        // Filtering requires re-encoding; explicitly supply encoder codec to prevent
-        // FFmpeg error: "Filtering and streamcopy cannot be used together"
         const targetFormat = format === "m4a" ? "m4a" : "opus";
         const targetCodec = format === "m4a" ? "aac" : "libopus";
         const targetBitrate = format === "m4a" ? "128k" : "160k";
@@ -179,7 +170,6 @@ export class ConversionService {
         );
       }
     } else if (format === "mp3") {
-      // MP3 is always a transcode from native ~160k Opus / ~128k AAC
       const mp3Quality = bitrate === "native" || !bitrate ? "160k" : bitrate;
       args.push("--extract-audio");
       args.push("--audio-format", "mp3");
@@ -214,7 +204,6 @@ export class ConversionService {
       }
     }
 
-    // Embed thumbnail if requested and format supports direct thumbnail container
     if (
       options.embedThumbnail &&
       (format === "mp3" || format === "m4a" || format === "flac")
@@ -222,7 +211,6 @@ export class ConversionService {
       args.push("--embed-thumbnail");
     }
 
-    // Always target canonical URL
     args.push(canonicalUrl);
 
     JobManager.updateJob(jobId, {
@@ -239,14 +227,11 @@ export class ConversionService {
     });
 
     let stderrBuffer = "";
-    // A failed spawn fires 'error' AND then 'close'; the close handler must
-    // not overwrite the precise launch message with the generic fallback.
     let spawnFailed = false;
 
     child.stdout.on("data", (chunk: Buffer) => {
       const line = chunk.toString();
 
-      // Check for download percentage
       const downloadMatch = line.match(/\[download\]\s+([\d\.]+)%/);
       if (downloadMatch) {
         const percent = parseFloat(downloadMatch[1]);
@@ -258,7 +243,6 @@ export class ConversionService {
         });
       }
 
-      // Check for audio extraction
       if (line.includes("[ExtractAudio]") || line.includes("Destination:")) {
         JobManager.updateJob(jobId, {
           status: "converting",
@@ -267,7 +251,6 @@ export class ConversionService {
         });
       }
 
-      // Check for postprocessing
       if (
         line.includes("[Metadata]") ||
         line.includes("[ThumbnailsConvertor]")
@@ -313,8 +296,6 @@ export class ConversionService {
         return;
       }
 
-      // Locate output file, then rename it from the internal jobId name to
-      // the human-readable display name so the library folder stays clean.
       const downloadsDir = FileService.getDownloadsDir();
       const files = fs.readdirSync(downloadsDir);
       const matchedFile = files.find(
@@ -333,7 +314,6 @@ export class ConversionService {
       const stagedFile = path.join(downloadsDir, matchedFile);
       const actualExt = path.extname(stagedFile).replace(".", "").toLowerCase();
 
-      // Compute display file name with actual extension
       const resolvedDisplayFileName = displayFileName.replace(
         /\.[a-z0-9]+$/i,
         `.${actualExt}`,
@@ -350,9 +330,6 @@ export class ConversionService {
         return;
       }
 
-      // Stamp minimal YouTube-native identity (title/uploader + thumbnail
-      // art) so the file carries no autotagger metadata. The empty album is
-      // skipped by AudioTagService; album_artist mirrors the artist.
       if (options.embedThumbnail) {
         try {
           JobManager.updateJob(jobId, {

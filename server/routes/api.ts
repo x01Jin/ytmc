@@ -253,18 +253,48 @@ apiRouter.get("/stream/:id", (req: Request, res: Response) => {
   }
 
   const filePath = resolved.filePath;
-  const stat = fs.statSync(filePath);
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(filePath);
+  } catch {
+    res.status(404).json({
+      success: false,
+      error: "Audio file not found or still processing",
+    });
+    return;
+  }
   const fileSize = stat.size;
   const range = req.headers.range;
-  const ext = path.extname(filePath).replace(".", "");
+  const ext = path.extname(filePath).replace(".", "").toLowerCase();
   const contentType = getAudioMimeType(ext);
 
   if (range) {
-    const parts = range.replace(/bytes=/, "").split("-");
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+    let start = match && match[1] ? parseInt(match[1], 10) : NaN;
+    let end = match && match[2] ? parseInt(match[2], 10) : fileSize - 1;
+    // Suffix ranges ("bytes=-500") mean "last 500 bytes".
+    if (match && !match[1] && match[2]) {
+      start = Math.max(0, fileSize - parseInt(match[2], 10));
+      end = fileSize - 1;
+    }
+    if (!match || Number.isNaN(start) || start >= fileSize || start > end) {
+      res.writeHead(416, {
+        "Content-Range": `bytes */${fileSize}`,
+        "Accept-Ranges": "bytes",
+      });
+      res.end();
+      return;
+    }
+    end = Math.min(end, fileSize - 1);
     const chunksize = end - start + 1;
     const file = fs.createReadStream(filePath, { start, end });
+    file.on("error", () => {
+      if (!res.headersSent) {
+        res.status(404).json({ success: false, error: "Audio file unreadable" });
+      } else {
+        res.destroy();
+      }
+    });
 
     res.writeHead(206, {
       "Content-Range": `bytes ${start}-${end}/${fileSize}`,
@@ -279,7 +309,15 @@ apiRouter.get("/stream/:id", (req: Request, res: Response) => {
       "Content-Type": contentType,
       "Accept-Ranges": "bytes",
     });
-    fs.createReadStream(filePath).pipe(res);
+    const file = fs.createReadStream(filePath);
+    file.on("error", () => {
+      if (!res.headersSent) {
+        res.status(404).json({ success: false, error: "Audio file unreadable" });
+      } else {
+        res.destroy();
+      }
+    });
+    file.pipe(res);
   }
 });
 
