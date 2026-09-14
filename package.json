@@ -74,7 +74,7 @@
         "nsis",
         "portable"
       ],
-      "icon": "assets/icon.ico"
+      "icon": "assets/windows/icon.ico"
     },
     "nsis": {
       "oneClick": false,
