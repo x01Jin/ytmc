@@ -2,6 +2,7 @@ import { execFile } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { FFMPEG_PATH } from '../config.js';
 
 export interface MusicTags {
   title: string;
@@ -114,9 +115,10 @@ export class AudioTagService {
 
       args.push(tempOutputFile);
 
-      // 3. Execute FFmpeg
+      // 3. Execute FFmpeg (bundled binary first, PATH fallback)
+      const ffmpegCmd = fs.existsSync(FFMPEG_PATH) ? FFMPEG_PATH : 'ffmpeg';
       await new Promise<void>((resolve, reject) => {
-        execFile('ffmpeg', args, { timeout: 15000 }, (err, _stdout, stderr) => {
+        execFile(ffmpegCmd, args, { timeout: 60000 }, (err, _stdout, stderr) => {
           if (err) {
             reject(new Error(`FFmpeg tagging failed: ${stderr || err.message}`));
           } else {

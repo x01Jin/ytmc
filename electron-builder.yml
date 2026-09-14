@@ -1,0 +1,25 @@
+appId: com.ytmusic.converter
+productName: YT Music Converter
+directories:
+  output: release
+  buildResources: assets
+files:
+  - dist/**/*
+  - dist-electron/**/*
+  - package.json
+extraResources:
+  - from: bin/
+    to: bin
+    filter:
+      - "**/*"
+  - from: dist/server.cjs
+    to: server.cjs
+win:
+  target:
+    - nsis
+    - portable
+  icon: assets/icon.ico
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false

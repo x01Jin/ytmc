@@ -1,1 +1,141 @@
 @import "tailwindcss";
+
+@theme {
+  --color-px-bg: #0b0b12;
+  --color-px-panel: #14141d;
+  --color-px-panel-2: #1c1c28;
+  --color-px-line: #2e2e3e;
+  --color-px-text: #ededf2;
+  --color-px-dim: #9a9ab0;
+  --color-px-acc: #7c5cff;
+  --color-px-ok: #3ddc84;
+  --color-px-warn: #ffb020;
+  --color-px-err: #ff5470;
+
+  --font-display: "Press Start 2P", "IBM Plex Mono", ui-monospace, monospace;
+  --font-body: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: var(--color-px-bg);
+  color: var(--color-px-text);
+  font-family: var(--font-body);
+  /* App-frame: the tab scrollport owns scrolling; never chain to the page. */
+  overscroll-behavior: none;
+}
+
+/* Pixel surfaces: 2px hard borders, square corners, no blur or shadow. */
+.px-panel {
+  background-color: var(--color-px-panel);
+  border: 2px solid var(--color-px-line);
+  border-radius: 2px;
+}
+
+.px-panel-raised {
+  background-color: var(--color-px-panel-2);
+  border: 2px solid var(--color-px-line);
+  border-radius: 2px;
+}
+
+.px-btn {
+  border: 2px solid var(--color-px-line);
+  border-radius: 2px;
+  background-color: var(--color-px-panel-2);
+  color: var(--color-px-text);
+  font-weight: 700;
+  padding: 0.5rem 0.875rem;
+  transition:
+    background-color 120ms steps(2, end),
+    border-color 120ms steps(2, end),
+    transform 120ms steps(2, end);
+  touch-action: manipulation;
+}
+
+.px-btn:hover {
+  border-color: var(--color-px-acc);
+  background-color: #23232f;
+}
+
+.px-btn:active {
+  transform: translate(1px, 1px);
+}
+
+.px-btn-primary {
+  background-color: var(--color-px-acc);
+  border-color: var(--color-px-acc);
+  color: #0b0b12;
+}
+
+.px-btn-primary:hover {
+  background-color: #8f73ff;
+  border-color: #8f73ff;
+}
+
+.px-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.px-input,
+.px-select {
+  background-color: #0e0e16;
+  border: 2px solid var(--color-px-line);
+  border-radius: 2px;
+  color: var(--color-px-text);
+  padding: 0.5rem 0.625rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.px-input::placeholder {
+  color: var(--color-px-dim);
+}
+
+.px-input:focus,
+.px-select:focus,
+.px-btn:focus-visible,
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--color-px-acc);
+  outline-offset: 2px;
+}
+
+/* Blocky stepped progress bar. */
+.px-progress {
+  image-rendering: pixelated;
+}
+
+.px-progress-fill {
+  transition: width 200ms steps(6, end);
+}
+
+img.px-pixelated {
+  image-rendering: pixelated;
+}
+
+.px-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Long lists: skip offscreen row rendering without a virtualization dependency. */
+.px-row {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 76px;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .px-btn,
+  .px-progress-fill {
+    transition: none;
+  }
+}

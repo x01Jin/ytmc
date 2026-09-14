@@ -1,7 +1,9 @@
 import { execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { COOKIES_FILE, DATA_DIR, GUEST_COOKIES_FILE, PLUGINS_DIR, YTDLP_PATH } from '../config.js';
+import { COOKIES_FILE, DATA_DIR, GUEST_COOKIES_FILE } from '../config.js';
+import { cookiesAllowed, extractorArgsFor, resolveStrategy } from './potService.js';
+import { ytdlpEnv, ytdlpLaunch } from './ytdlpRunner.js';
 
 export interface CookieStatus {
   configured: boolean;
@@ -20,6 +22,10 @@ export interface SessionTestResult {
   title?: string;
   duration?: string;
   errorDetails?: string;
+  /** Which extraction path the probe exercised. */
+  strategy?: 'pot' | 'fallback';
+  potReachable?: boolean;
+  cookiesUsed?: boolean;
 }
 
 export class CookieService {
@@ -191,46 +197,56 @@ export class CookieService {
   public static async testSession(): Promise<SessionTestResult> {
     const cookiesPath = this.getCookiesPath();
     const status = this.getStatus();
+    const launch = ytdlpLaunch();
+    const { strategy, reachable } = await resolveStrategy();
+    const useCookies = cookiesAllowed(strategy, !!cookiesPath);
 
     const args = [
+      ...launch.prefixArgs,
       '--js-runtimes', `node:${process.execPath}`,
+      ...extractorArgsFor(strategy),
       '--simulate',
       '--dump-json',
       '--no-playlist',
       '--no-warnings'
     ];
 
-    if (cookiesPath) {
+    if (useCookies && cookiesPath) {
       args.push('--cookies', cookiesPath);
     }
 
     // Use a standard public video to test extraction
     args.push('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
 
+    const diagnostics = { strategy, potReachable: reachable, cookiesUsed: useCookies };
+
     return new Promise((resolve) => {
       execFile(
-        YTDLP_PATH,
+        launch.command,
         args,
         {
-          timeout: 15000,
-          env: {
-            ...process.env,
-            PYTHONPATH: PLUGINS_DIR
-          }
+          // Cold-starting the bundled zipapp on Windows regularly takes
+          // ~10s; anything shorter fails healthy machines (see P5 notes).
+          timeout: 60000,
+          env: ytdlpEnv()
         },
         (error, stdout, stderr) => {
           if (error) {
-            const isBot = stderr.includes("Sign in to confirm you're not a bot") ||
-                          stderr.includes('bot') ||
-                          stderr.includes('LOGIN_REQUIRED');
-            
+            const errStr = `${stderr} ${error.message}`;
+            const isBot = /sign in to confirm|not a bot|bot|login_required|cookies-from-browser|403/i.test(errStr);
+            const firstError = stderr.split('\n').filter(l => l.includes('ERROR:'))[0];
+            const launchFailure = /ENOENT|not recognized|spawn/i.test(error.message || '');
+
             resolve({
               success: false,
               isAccountSession: status.isAccountSession,
               message: isBot
                 ? 'YouTube session test failed: Bot protection active. Please export fresh user cookies or click Auto-Fetch Guest Session.'
-                : 'YouTube session test failed to reach video streams.',
-              errorDetails: stderr.split('\n').filter(l => l.includes('ERROR:'))[0] || stderr.slice(0, 300)
+                : launchFailure
+                  ? `YouTube session test failed: yt-dlp could not start (${error.message}). Check that Python is installed on Windows.`
+                  : 'YouTube session test failed to reach video streams.',
+              errorDetails: firstError || stderr.slice(0, 300) || error.message,
+              ...diagnostics
             });
             return;
           }
@@ -244,13 +260,15 @@ export class CookieService {
               duration: data.duration_string,
               message: status.isAccountSession
                 ? 'Verified! Your authenticated YouTube account session is working.'
-                : 'Verified! YouTube connection and JavaScript challenge solver are active.'
+                : 'Verified! YouTube connection and JavaScript challenge solver are active.',
+              ...diagnostics
             });
           } catch {
             resolve({
               success: true,
               isAccountSession: status.isAccountSession,
-              message: 'Verified! YouTube responded successfully.'
+              message: 'Verified! YouTube responded successfully.',
+              ...diagnostics
             });
           }
         }

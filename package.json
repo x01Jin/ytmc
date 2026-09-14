@@ -4,13 +4,16 @@
   "version": "1.0.0",
   "description": "Convert YouTube videos to studio-grade MP3, M4A, FLAC, WAV, or Opus audio with ID3 tagging.",
   "type": "module",
+  "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "cross-env NODE_ENV=development tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "cross-env NODE_ENV=production node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rimraf dist server.js",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "electron:dev": "concurrently -k -n \"server,electron\" \"npm run dev\" \"wait-on http-get://127.0.0.1:3000/api/health -t 60s -l && cross-env NODE_ENV=development ELECTRON_DEV_URL=http://127.0.0.1:3000 electron .\"",
+    "electron:build": "npm run build && tsc -p electron/tsconfig.json && electron-builder --win nsis portable"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
@@ -29,12 +32,60 @@
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "autoprefixer": "^10.4.21",
+    "concurrently": "^10.0.5",
     "cross-env": "^10.1.0",
+    "electron": "^44.3.0",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.25.0",
     "rimraf": "^6.1.3",
     "tailwindcss": "^4.1.14",
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
-    "vite": "^6.2.3"
-  }
+    "vite": "^6.2.3",
+    "wait-on": "^9.1.0"
+  },
+  "build": {
+    "appId": "com.ytmusic.converter",
+    "productName": "YT Music Converter",
+    "directories": {
+      "output": "release",
+      "buildResources": "assets"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "bin/",
+        "to": "bin",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "dist/server.cjs",
+        "to": "server.cjs"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "perMachine": false
+    }
+  },
+  "directories": {
+    "doc": "docs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
 }

@@ -1,7 +1,13 @@
-export type AudioFormat = 'best' | 'opus' | 'm4a' | 'mp3' | 'flac' | 'wav';
-export type AudioBitrate = 'native' | '160k' | '128k' | '192k' | '256k' | '320k';
+export type AudioFormat = "best" | "opus" | "m4a" | "mp3" | "flac" | "wav";
+export type AudioBitrate =
+  | "native"
+  | "160k"
+  | "128k"
+  | "192k"
+  | "256k"
+  | "320k";
 
-export type TagSource = 'all' | 'itunes' | 'deezer' | 'musicbrainz';
+export type TagSource = "all" | "itunes" | "deezer" | "musicbrainz";
 
 export interface NativeAudioStreamInfo {
   formatId: string;
@@ -28,7 +34,7 @@ export interface MusicTags {
 
 export interface MusicTagCandidate {
   id: string;
-  source: 'itunes' | 'deezer' | 'musicbrainz';
+  source: "itunes" | "deezer" | "musicbrainz";
   title: string;
   artist: string;
   album: string;
@@ -54,9 +60,10 @@ export interface VideoMetadata {
   botVerificationRequired: boolean;
   hasCookiesConfigured: boolean;
   description?: string;
-  defaultTags?: MusicTags;
   nativeStreams?: NativeAudioStreamInfo[];
   bestNativeStream?: NativeAudioStreamInfo;
+  /** Raw yt-dlp failure when the stream probe failed (inspect still works). */
+  probeError?: string;
 }
 
 export interface ConversionOptions {
@@ -67,10 +74,14 @@ export interface ConversionOptions {
   volumeBoost: number;
   normalizeAudio: boolean;
   embedThumbnail: boolean;
-  tags?: MusicTags;
 }
 
-export type JobStatus = 'queued' | 'downloading' | 'converting' | 'completed' | 'error';
+export type JobStatus =
+  | "queued"
+  | "downloading"
+  | "converting"
+  | "completed"
+  | "error";
 
 export interface ConversionJob {
   id: string;
@@ -84,7 +95,10 @@ export interface ConversionJob {
   progress: number;
   stageMessage: string;
   error?: string;
+  errorDetails?: string;
+  exitCode?: number | null;
   isBotBlocked?: boolean;
+  outputFilePath?: string;
   outputFileName?: string;
   fileSizeBytes?: number;
   downloadUrl?: string;
@@ -112,4 +126,41 @@ export interface DemoTrack {
   thumbnail: string;
   genre: string;
   tag: string;
+}
+
+export interface AppSettings {
+  downloadsDir: string;
+  filenameTemplate: string;
+  revealAfterConvert: boolean;
+  defaultDownloadsDir?: string;
+  isCustom?: boolean;
+}
+
+export interface LibraryRecord {
+  jobId: string;
+  videoId: string;
+  title: string;
+  author: string;
+  thumbnail: string;
+  format: string;
+  fileName: string;
+  filePath: string;
+  fileSizeBytes: number;
+  completedAt: number;
+}
+
+export interface LooseLibraryFile {
+  id: string;
+  fileName: string;
+  filePath: string;
+  sizeBytes: number;
+  mtimeMs: number;
+  ext: string;
+}
+
+export interface LibraryData {
+  downloadsDir: string;
+  records: LibraryRecord[];
+  looseFiles: LooseLibraryFile[];
+  totalSizeBytes: number;
 }

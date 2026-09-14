@@ -18,13 +18,15 @@ yarn-error.log*
 .env*
 !.env.example
 
-# Runtime data — YouTube session cookies, guest sessions, job state.
-# NEVER commit: contains personal account cookies.
+# Runtime data — YouTube session cookies, guest sessions, job state,
+# library index, and app settings. NEVER commit: contains personal
+# account cookies and local file paths.
 data/
 cookies.txt
+*cookie*.txt
 *.cookies
 
-# Local conversion output — never commit
+# Local conversion output — never commit (user's music files)
 downloads/
 *.mp3
 *.m4a
@@ -37,13 +39,27 @@ downloads/
 *.part
 *.ytdl
 
+# Local binaries — bin/ holds 100MB+ ffmpeg/ffprobe builds, and GitHub
+# rejects any file >= 100MB. Keep the dir ignored except the small
+# extensionless yt-dlp launcher that fresh clones need to run.
+bin/
+!bin/yt-dlp
+*.exe
+
+# Python (yt-dlp plugins under plugins/) — never commit bytecode or venvs
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
 # OS files
 .DS_Store
 Thumbs.db
 
-# Editors / IDEs
+# Editors / IDEs — share only the secret-free workspace settings
 .vscode/*
 !.vscode/extensions.json
+!.vscode/settings.json
 .idea/
 *.suo
 *.ntvs*
@@ -64,3 +80,8 @@ bun.lock
 AGENTS.md
 context/
 .ignore
+
+# Electron desktop outputs (icon source files are committed)
+dist-electron/
+release/
+assets/preview/

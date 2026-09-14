@@ -22,3 +22,6 @@ Explore the documentation guides below:
 
 5. **[Session Authentication & Cookie Management](session-authentication.md)**  
    How the application manages YouTube session cookies to bypass datacenter IP restrictions and ensure consistent audio downloads.
+
+6. **[Conversion History](history.md)**  
+   How finished conversions are recorded with cover art and source links, and how the one-click re-convert handoff to the Convert tab works.

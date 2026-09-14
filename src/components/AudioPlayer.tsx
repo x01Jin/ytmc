@@ -1,6 +1,6 @@
-import { Download, Pause, Play, Repeat, Volume2, VolumeX } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
-import { ConversionJob } from '../types';
+import { Pause, Play, Repeat, Volume2, VolumeX } from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { ConversionJob } from "../types";
 
 interface AudioPlayerProps {
   job: ConversionJob;
@@ -25,14 +25,14 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
       if (!isLooping) setIsPlaying(false);
     };
 
-    audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
-    audio.addEventListener('ended', handleEnded);
+    audio.addEventListener("timeupdate", handleTimeUpdate);
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata);
+    audio.addEventListener("ended", handleEnded);
 
     return () => {
-      audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
-      audio.removeEventListener('ended', handleEnded);
+      audio.removeEventListener("timeupdate", handleTimeUpdate);
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      audio.removeEventListener("ended", handleEnded);
     };
   }, [isLooping]);
 
@@ -44,7 +44,10 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
       audio.pause();
       setIsPlaying(false);
     } else {
-      audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      audio
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
     }
   };
 
@@ -86,14 +89,18 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
   };
 
   const formatTime = (seconds: number) => {
-    if (isNaN(seconds) || seconds < 0) return '0:00';
+    if (isNaN(seconds) || seconds < 0) return "0:00";
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
   };
 
   return (
-    <article id="audio-player-component" className="w-full bg-zinc-900 text-white rounded-xl p-4 shadow-lg border border-zinc-800 space-y-3">
+    <article
+      id="audio-player-component"
+      aria-label={`Audio preview: ${job.title}`}
+      className="px-panel w-full space-y-3 p-3"
+    >
       <audio
         ref={audioRef}
         src={job.streamUrl || `/api/stream/${job.id}`}
@@ -102,35 +109,34 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
 
       <div className="flex items-center gap-3">
         {/* Thumbnail art */}
-        <div className="w-12 h-12 rounded-lg overflow-hidden bg-zinc-800 shrink-0 border border-zinc-700/60">
+        <div className="h-12 w-12 shrink-0 overflow-hidden border-2 border-px-line bg-px-bg">
           <img
             src={job.thumbnail}
-            alt={job.title}
+            alt=""
+            width={48}
+            height={48}
+            loading="lazy"
             referrerPolicy="no-referrer"
-            className="w-full h-full object-cover"
+            className="px-pixelated h-full w-full object-cover"
           />
         </div>
 
         {/* Track Title and Artist */}
-        <div className="flex-1 min-w-0">
-          <h4 className="text-sm font-semibold text-zinc-100 truncate">{job.title}</h4>
-          <p className="text-xs text-zinc-400 truncate">{job.author} • {job.format.toUpperCase()} ({job.bitrate})</p>
+        <div className="min-w-0 flex-1">
+          <h4 className="truncate text-sm font-semibold text-px-text">
+            {job.title}
+          </h4>
+          <p className="px-tabular truncate text-xs text-px-dim" translate="no">
+            {job.author} • {job.format.toUpperCase()} ({job.bitrate})
+          </p>
         </div>
-
-        {/* Quick download button */}
-        <a
-          id="player-download-btn"
-          href={job.downloadUrl || `/api/download/${job.id}`}
-          download={job.outputFileName || `${job.title}.${job.format}`}
-          className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white transition-colors"
-          title="Download audio file"
-        >
-          <Download className="w-4 h-4" />
-        </a>
       </div>
 
       {/* Scrubber progress bar */}
       <div className="space-y-1">
+        <label htmlFor="audio-scrubber-slider" className="sr-only">
+          Seek in {job.title}
+        </label>
         <input
           id="audio-scrubber-slider"
           type="range"
@@ -139,27 +145,29 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
           step={0.1}
           value={currentTime}
           onChange={handleSeek}
-          className="w-full h-1.5 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-rose-500 focus:outline-none"
+          className="h-1.5 w-full cursor-pointer appearance-none bg-px-line accent-[#7c5cff]"
         />
-        <div className="flex justify-between text-[11px] text-zinc-400 font-mono">
+        <div className="px-tabular flex justify-between text-[11px] text-px-dim">
           <span>{formatTime(currentTime)}</span>
           <span>{formatTime(duration)}</span>
         </div>
       </div>
 
       {/* Controls row */}
-      <div className="flex items-center justify-between pt-1">
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
         <div className="flex items-center gap-2">
           <button
             id="player-loop-toggle"
             type="button"
             onClick={toggleLoop}
-            className={`p-1.5 rounded-md transition-colors ${
-              isLooping ? 'text-rose-400 bg-rose-500/10' : 'text-zinc-400 hover:text-zinc-200'
+            aria-pressed={isLooping}
+            className={`px-btn !border-0 !p-1.5 ${
+              isLooping ? "!text-px-acc" : "!text-px-dim"
             }`}
-            title={isLooping ? 'Repeat on' : 'Repeat off'}
+            title={isLooping ? "Repeat on" : "Repeat off"}
+            aria-label={isLooping ? "Repeat on" : "Repeat off"}
           >
-            <Repeat className="w-4 h-4" />
+            <Repeat className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
 
@@ -168,27 +176,37 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
           id="player-play-pause-btn"
           type="button"
           onClick={togglePlay}
-          className="w-10 h-10 rounded-full bg-rose-600 hover:bg-rose-500 text-white flex items-center justify-center transition-transform active:scale-95 shadow-md shadow-rose-600/30"
-          title={isPlaying ? 'Pause' : 'Play'}
+          className="px-btn px-btn-primary flex h-10 w-10 items-center justify-center !p-0"
+          title={isPlaying ? "Pause" : "Play"}
+          aria-label={isPlaying ? `Pause ${job.title}` : `Play ${job.title}`}
         >
-          {isPlaying ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5 ml-0.5" />}
+          {isPlaying ? (
+            <Pause className="h-5 w-5" aria-hidden="true" />
+          ) : (
+            <Play className="ml-0.5 h-5 w-5" aria-hidden="true" />
+          )}
         </button>
 
         {/* Volume controls */}
-        <div className="flex items-center gap-1.5 w-28">
+        <div className="flex w-28 items-center gap-1.5">
           <button
             id="player-mute-btn"
             type="button"
             onClick={toggleMute}
-            className="text-zinc-400 hover:text-zinc-200 p-1"
-            title={isMuted ? 'Unmute' : 'Mute'}
+            className="px-btn !border-0 !p-1 !text-px-dim"
+            title={isMuted ? "Unmute" : "Mute"}
+            aria-label={isMuted ? "Unmute" : "Mute"}
+            aria-pressed={isMuted}
           >
             {isMuted || volume === 0 ? (
-              <VolumeX className="w-4 h-4" />
+              <VolumeX className="h-4 w-4" aria-hidden="true" />
             ) : (
-              <Volume2 className="w-4 h-4" />
+              <Volume2 className="h-4 w-4" aria-hidden="true" />
             )}
           </button>
+          <label htmlFor="player-volume-slider" className="sr-only">
+            Volume
+          </label>
           <input
             id="player-volume-slider"
             type="range"
@@ -197,7 +215,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
             step={0.05}
             value={isMuted ? 0 : volume}
             onChange={handleVolumeChange}
-            className="w-16 h-1 bg-zinc-700 rounded-lg appearance-none cursor-pointer accent-zinc-300"
+            className="h-1 w-16 cursor-pointer appearance-none bg-px-line accent-[#7c5cff]"
           />
         </div>
       </div>

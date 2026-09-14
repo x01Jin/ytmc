@@ -33,8 +33,20 @@ Users do not need to install browser extensions or extract cookies for standard 
 
 The system provides an integrated connectivity testing tool to verify that the active session and JavaScript solver can access YouTube audio streams:
 - **Trigger**: Click **Test Live Connection** in the Session Settings modal or call `POST /api/cookies/test`.
-- **Validation**: Executes `yt-dlp` in simulation mode with the Node.js runtime and PO Token sidecar against a reference YouTube stream.
-- **Feedback**: Returns stream availability, track title, duration, and session verification status.
+- **Validation**: Executes `yt-dlp` in simulation mode with the Node.js runtime against a reference YouTube stream, using the exact same extraction path as real conversions: PO Token sidecar args when the sidecar is installed and reachable, otherwise the no-POT player-client fallback (`default,web_embedded,android_vr`) with cookies when present.
+- **Feedback**: Returns stream availability, track title, duration, session verification status, the strategy exercised (`pot` or `fallback`), whether the sidecar answered its `/ping`, whether cookies were sent, and raw `errorDetails` on failure (also rendered in the modal under Technical details).
+
+---
+
+## 4. PO Token sidecar (optional, for strictly-checked uploads)
+
+YouTube's web clients increasingly require a Proof-of-Origin token for format URLs. The app is sidecar-optional by design (`server/services/potService.ts` is the single choke point):
+
+- **Installed + reachable** (`bin/bgutil-pot` present, `/ping` on `127.0.0.1:4416` answers): extraction runs in `pot` mode — bgutil-http args, **no cookies** (anonymous PO tokens do not validate against cookie sessions server-side).
+- **Otherwise**: extraction runs in `fallback` mode — no POT args, cookies sent when present, player clients pinned to `default,web_embedded,android_vr`. This covers embeddable / non-kid-targeted content with zero setup.
+- Boot logs which mode is active and warns loudly when the binary is missing. `POST /api/cookies/test` reports the live strategy.
+
+To install the sidecar (pinned, security-checked): use `bgutil-ytdlp-pot-provider` **2.0.0+** (binds to localhost by default; the server already passes `--host 127.0.0.1`), place the server binary at `bin/bgutil-pot`, and restart the app. It ships inside the installer automatically via the existing `bin/` extraResources. Note the upstream release only publishes a plugin zip plus a Docker image — there is no official standalone Windows server exe, so building/obtaining the server binary is currently a manual packaging step (tracked in `web-app-plan.md` §12).
 
 ---
 

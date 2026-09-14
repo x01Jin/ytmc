@@ -1,14 +1,29 @@
 # Architecture Overview
 
-The YouTube to Music Converter is structured as a full-stack web application combining a Node.js Express server with a React 18 + Vite frontend.
+The YouTube to Music Converter is a Windows desktop app: an Electron shell around the proven Node.js Express + React 19 + Vite core. The same `npm run dev` web build runs in the browser during development; `npm run electron:build` ships it as an NSIS/portable `.exe`.
 
 ## Tech Stack
 
-- **Frontend**: React 18, TypeScript, Vite, Tailwind CSS, Lucide Icons
-- **Backend**: Node.js, Express, `yt-dlp`, FFmpeg
-- **Persistence**: In-memory job state machine, local file streaming
+- **Desktop shell**: Electron 44 (Windows-only NSIS + portable), secure `contextBridge` preload, Express sidecar child process
+- **Frontend**: React 19, TypeScript, Vite 6, Tailwind CSS 4 (dark-only pixel theme), Lucide Icons
+- **Backend**: Node.js, Express 4, `yt-dlp`, FFmpeg
+- **Persistence**: In-memory job state machine, `data/settings.json`, `data/library.json`, on-disk audio library
 
 ```
+┌────────────────────────────────────────────────────────┐
+│              Electron Main (`electron/main.cts`)        │
+│  single-instance lock · sidecar spawn · taskkill tree   │
+│  default library: %USERPROFILE%\\Downloads\\YT Music        │
+└──────────────────────────┬─────────────────────────────┘
+                           │ spawn + waitForServer (/api/health)
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│              React 19 Frontend (AppShell)              │
+│  Convert / Library / History / Queue / Settings (hash routes)    │
+│  Jobs + Library + Settings + Session providers         │
+└──────────────────────────┬─────────────────────────────┘
+                           │ HTTP / JSON / Range Streams
+                           ▼
 ┌────────────────────────────────────────────────────────┐
 │                   React 18 Frontend                    │
 │   (Vite + Tailwind CSS + Lucide Icons + HTML5 Audio)   │
@@ -53,24 +68,43 @@ The backend codebase adheres strictly to the single-purpose pattern:
 | `server/services/conversionService.ts` | Audio extraction pipeline orchestrating `yt-dlp` and `ffmpeg`.                      |
 | `server/services/jobManager.ts`        | In-memory job state machine, progress tracking, and file lifecycle cleanup.         |
 | `server/services/cookieService.ts`     | Netscape/JSON cookie parsing, verification, and file persistence.                   |
-| `server/utils/titleCleaner.ts`         | Heuristic cleaner stripping boilerplate tags and extracting artist/track names.     |
+| `server/services/settingsService.ts`   | Library-folder settings in `data/settings.json` with Windows path validation.      |
+| `server/services/fileService.ts`       | Library dir resolution, on-disk scan, `.part` sweep.                                |
+| `server/services/libraryStore.ts`      | Persistent `data/library.json` index so history survives restarts.                  |
+| `server/utils/filename.ts`             | Windows-safe filename sanitizer, display names, dedupe.                             |
 | `server/utils/mime.ts`                 | Fast audio MIME-type resolution for streaming and downloads.                        |
 | `server/routes/api.ts`                 | Express router exposing the public REST API surface.                                |
-| `server.ts`                            | Application entry point mounting Vite middleware and listening on `0.0.0.0:3000`.   |
+| `server.ts`                            | Application entry point exporting `startServer()`; loopback-only + token guard.     |
 
 ---
 
+## Desktop Security Model
+
+- The backend binds `127.0.0.1` only and rejects non-loopback `Host` headers (DNS-rebinding defense).
+- Mutating `/api` calls must echo the per-process `x-loopback-token` published by `/api/health`.
+- Renderer has no Node access (`contextIsolation`, `sandbox`); `preload.cjs` exposes only `window.desktop` (`pickFolder`, `revealInExplorer`, `openFile`, `getBackendPort`).
+- Strict Content-Security-Policy set as a response header via `session.defaultSession.webRequest.onHeadersReceived` (`electron/main.cts`), scoped to loopback origins: `script-src 'self'` everywhere (no inline or remote scripts); `style-src` keeps `'unsafe-inline'` because React sets style attributes (progress-bar width); images/media open to `https:`/`data:`/`blob:` for thumbnails, autotagger covers, and same-origin streams.
+- Quit kills the whole backend tree via `taskkill /T /F` so no `yt-dlp`/FFmpeg orphans linger.
+
 ## Frontend Architecture
+
+Pixel-art dark-only UI (`src/index.css` `@theme` tokens, `Press Start 2P` + `IBM Plex Mono`):
+
+- **`components/AppShell.tsx`**: TitleBar, SideNav, StatusBar + hash routing (`#/convert`, `#/library`, `#/history`, `#/queue`, `#/settings`).
+- **`store/appStore.tsx`**: `JobsProvider` (owns `useJobPolling` with `startTransition` + backoff), `ConvertDraftProvider` (inspect state, options, and one-shot re-convert URLs), `LibraryProvider`, `SettingsProvider`, `SessionProvider`.
+- **`routes/Convert.tsx`**: inspect → options → convert flow. When a job completes, the route refreshes recent jobs and the library, clears the active job and draft, and reports success through a floating bottom-right notification.
+- **`routes/Library.tsx`**: searchable on-disk library with a docked bottom preview player, reveal-in-Explorer, edit panels, and delete-behind-confirm. Refreshes automatically when a conversion finishes.
+- **`routes/History.tsx`**: completed conversions with cover art, original title, YouTube link copy, and one-click re-convert.
+- **`routes/Queue.tsx`**: live view of the in-progress conversion only; finished jobs clear out to Library + History.
+- **`routes/Settings.tsx`**: library folder (Browse/Reset), reveal-after-convert, session cookies.
 
 The frontend is constructed with focused React components:
 
-- **`Header.tsx`**: Displays application branding, theme switcher (dark/light), conversion engine indicators, and session cookie status.
+- **`Header.tsx`**: Removed in the desktop rewrite; replaced by `AppShell` TitleBar + SideNav.
 - **`UrlInput.tsx`**: Input field for YouTube video URLs, clipboard paste action, and quick demo track buttons.
 - **`VideoCard.tsx`**: Preview card displaying video thumbnail, creator information, view counts, and stream readiness.
-- **`ConversionOptionsPanel.tsx`**: Tabbed configuration panel toggling between audio format settings (MP3, M4A, FLAC, WAV, Opus) and metadata tag editor.
+- **`ConversionOptionsPanel.tsx`**: Single-section conversion panel: format grid, audio enhancement controls (loudness normalization, volume gain), album-cover/ID3 embed toggle, and the convert action.
 - **`TagEditor.tsx`**: Music metadata editor and autotagger interface. Automatically searches online sources as the track name is typed, allowing one-click tag application and cover art selection.
 - **`ConversionProgress.tsx`**: Real-time progress bar reflecting conversion steps (stream download, audio extraction, metadata embedding).
 - **`AudioPlayer.tsx`**: Custom HTML5 audio player supporting play/pause, time scrubbing, volume adjustments, and loop repeat.
-- **`DownloadSection.tsx`**: Direct download interface providing file metadata, file size, direct download links, and post-conversion tag editing.
-- **`HistoryList.tsx`**: Session conversion library allowing instant re-playback and downloads.
 - **`CookieModal.tsx`**: Configuration modal for YouTube session cookies to bypass bot detection.

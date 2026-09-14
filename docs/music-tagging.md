@@ -30,12 +30,6 @@ The application supports standard metadata fields defined in `src/types.ts`:
 
 ## 3. Autotagging & Multi-Source Search
 
-### Heuristic Title Cleaning (`server/utils/titleCleaner.ts`)
-When a video is first loaded, the title cleaner normalizes the title by:
-1. Stripping brackets, braces, and parenthetical boilerplate (e.g., `[Official Video]`, `(Lyrics Video)`, `(4K 60fps)`, `[HQ]`, `(Visualizer)`).
-2. Splitting artist and track name using standard delimiters (`-`, `–`, `—`, `|`, `~`, `:`).
-3. Normalizing whitespace, trimming trailing punctuation, and extracting clean search terms.
-
 ### External Music Metadata Sources (`server/services/tagFetcherService.ts`)
 The autotagger can search individual sources or aggregate results simultaneously across:
 
@@ -52,14 +46,12 @@ The autotagger can search individual sources or aggregate results simultaneously
 
 ## 4. Tag Injection Workflow
 
-Tagging can be applied in two workflows:
-
-1. **Pre-Conversion Tagging**:
-   - In the "Metadata & Tag Editor" tab of the conversion options panel, users define tags before clicking "Convert".
-   - The conversion engine applies the metadata in the primary FFmpeg pass, creating the tagged output file.
+1. **Conversion-Time Stamping**:
+   - Conversion writes only YouTube-native identity: title, uploader as artist, and the video thumbnail as cover art (when the embed toggle is on). No autotagger lookup runs during conversion.
+   - Job, library, and history names always match the YouTube title and channel.
 
 2. **Post-Conversion Tagging**:
-   - On the download card for already converted tracks, clicking "Edit Tags & Metadata" opens the tag editor.
+   - In the Library tab, expanding a track's Edit panel opens the tag editor, including the multi-source autotagger.
    - When saved, the server runs in-place metadata rewriting via `POST /api/tags/apply/:id`, updating the audio container, artwork, and filename without re-downloading from YouTube.
 
 ---

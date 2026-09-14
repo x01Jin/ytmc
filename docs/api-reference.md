@@ -7,14 +7,17 @@ This document provides the full REST API specification for the YouTube to Music 
 ## 1. Video Inspection
 
 ### `GET /api/info`
+
 Fetches video metadata and inspects available YouTube native audio streams for a given URL or video ID.
 
 #### Query Parameters
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `url` | `string` | Yes | YouTube video URL, short URL (`youtu.be`), or 11-character video ID. |
+
+| Parameter | Type     | Required | Description                                                          |
+| --------- | -------- | -------- | -------------------------------------------------------------------- |
+| `url`     | `string` | Yes      | YouTube video URL, short URL (`youtu.be`), or 11-character video ID. |
 
 #### Response (`200 OK`)
+
 ```json
 {
   "success": true,
@@ -48,9 +51,11 @@ Fetches video metadata and inspects available YouTube native audio streams for a
 ## 2. Audio Conversion & Direct Stream Extraction
 
 ### `POST /api/convert`
+
 Initiates an asynchronous audio extraction or conversion job. When `format` is `"best"`, `"opus"`, or `"m4a"` (without audio filters), direct streamcopy is used to pull the highest fidelity native YouTube stream with 0% transcoding loss.
 
 #### Request Body
+
 ```json
 {
   "url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
@@ -64,18 +69,19 @@ Initiates an asynchronous audio extraction or conversion job. When `format` is `
 }
 ```
 
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `url` | `string` | Required | YouTube video URL or ID. |
-| `format` | `string` | `"best"` | One of: `"best"`, `"opus"`, `"m4a"`, `"mp3"`, `"flac"`, `"wav"`. |
-| `bitrate` | `string` | `"native"` | One of: `"native"` (~160k source match), `"128k"`, `"192k"`, `"256k"`, `"320k"`. |
-| `trimStart` | `string` | Optional | Start timestamp (`"MM:SS"` or seconds integer). |
-| `trimEnd` | `string` | Optional | End timestamp (`"MM:SS"` or seconds integer). |
-| `volumeBoost` | `number` | `100` | Volume percentage (`100`, `125`, `150`). |
-| `normalizeAudio` | `boolean` | `false` | Apply EBU R128 loudness normalization (`loudnorm`). |
-| `embedThumbnail` | `boolean` | `true` | Embed album artwork cover and ID3 tags. |
+| Field            | Type      | Default    | Description                                                                      |
+| ---------------- | --------- | ---------- | -------------------------------------------------------------------------------- |
+| `url`            | `string`  | Required   | YouTube video URL or ID.                                                         |
+| `format`         | `string`  | `"best"`   | One of: `"best"`, `"opus"`, `"m4a"`, `"mp3"`, `"flac"`, `"wav"`.                 |
+| `bitrate`        | `string`  | `"native"` | One of: `"native"` (~160k source match), `"128k"`, `"192k"`, `"256k"`, `"320k"`. |
+| `trimStart`      | `string`  | Optional   | Start timestamp (`"MM:SS"` or seconds integer).                                  |
+| `trimEnd`        | `string`  | Optional   | End timestamp (`"MM:SS"` or seconds integer).                                    |
+| `volumeBoost`    | `number`  | `100`      | Volume percentage (`100`, `125`, `150`).                                         |
+| `normalizeAudio` | `boolean` | `false`    | Apply EBU R128 loudness normalization (`loudnorm`).                              |
+| `embedThumbnail` | `boolean` | `true`     | Embed the YouTube thumbnail as cover art with title/artist tags.                 |
 
 #### Response (`200 OK`)
+
 ```json
 {
   "success": true,
@@ -89,7 +95,7 @@ Initiates an asynchronous audio extraction or conversion job. When `format` is `
     "bitrate": "native",
     "status": "downloading",
     "progress": 5,
-    "stageMessage": "Fetching highest native audio stream directly from YouTube (~160k Opus / ~128k AAC)...",
+    "stageMessage": "Fetching highest native audio stream directly from YouTube...",
     "createdAt": 1789325347990
   }
 }
@@ -100,14 +106,17 @@ Initiates an asynchronous audio extraction or conversion job. When `format` is `
 ## 3. Job Status Polling
 
 ### `GET /api/status/:id`
+
 Retrieves current progress and status for a specific conversion job.
 
 #### Path Parameters
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `id` | `string` | Unique UUID of the conversion job. |
+
+| Parameter | Type     | Description                        |
+| --------- | -------- | ---------------------------------- |
+| `id`      | `string` | Unique UUID of the conversion job. |
 
 #### Response (`200 OK`)
+
 ```json
 {
   "success": true,
@@ -131,9 +140,11 @@ Retrieves current progress and status for a specific conversion job.
 ## 4. Audio Streaming & Downloading
 
 ### `GET /api/stream/:id`
+
 Streams the extracted audio file for in-browser playback. Supports HTTP Range requests (`HTTP 206 Partial Content`) for instant audio scrubbing and buffering.
 
 ### `GET /api/download/:id`
+
 Downloads the audio file directly to the client's file system with clean `Content-Disposition: attachment` headers and sanitized file names.
 
 ---
@@ -141,9 +152,11 @@ Downloads the audio file directly to the client's file system with clean `Conten
 ## 5. Session Authentication & Verification
 
 ### `GET /api/cookies`
+
 Checks current session status and loaded cookie metadata.
 
 #### Response (`200 OK`)
+
 ```json
 {
   "success": true,
@@ -160,15 +173,19 @@ Checks current session status and loaded cookie metadata.
 ```
 
 ### `POST /api/cookies/auto-fetch`
+
 Automatically provisions fresh guest visitor session cookies directly from YouTube's edge API.
 
 ### `POST /api/cookies/test`
+
 Runs live end-to-end verification of active session cookies, Node.js JavaScript challenge solver, and PO Token provider against YouTube.
 
 ### `POST /api/cookies`
+
 Stores YouTube session cookies in Netscape format or JSON format.
 
 ### `DELETE /api/cookies`
+
 Purges existing session and guest cookies from the server.
 
 ---
@@ -176,16 +193,19 @@ Purges existing session and guest cookies from the server.
 ## 6. Music Tagging & Autotagger
 
 ### `GET /api/tags/search`
+
 Searches online music databases for track metadata and high-resolution album artwork matching the provided track name and optional artist.
 
 #### Query Parameters
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `q` | `string` | Yes | Track title or search query. |
-| `artist` | `string` | No | Optional artist name to refine results. |
-| `source` | `string` | No | Metadata provider: `"all"` (default), `"itunes"`, `"deezer"`, or `"musicbrainz"`. |
+
+| Parameter | Type     | Required | Description                                                                       |
+| --------- | -------- | -------- | --------------------------------------------------------------------------------- |
+| `q`       | `string` | Yes      | Track title or search query.                                                      |
+| `artist`  | `string` | No       | Optional artist name to refine results.                                           |
+| `source`  | `string` | No       | Metadata provider: `"all"` (default), `"itunes"`, `"deezer"`, or `"musicbrainz"`. |
 
 #### Response (`200 OK`)
+
 ```json
 {
   "success": true,
@@ -208,4 +228,35 @@ Searches online music databases for track metadata and high-resolution album art
 ---
 
 ### `POST /api/tags/apply/:id`
-Applies custom or fetched music metadata and album cover art in-place to an already converted audio file.
+
+Applies custom or fetched music metadata and album cover art in-place to an already converted audio file. The file on disk is renamed to match the new tags.
+
+---
+
+## 7. Library Settings & On-Disk Library
+
+All mutating calls below must send the per-process `x-loopback-token` header published by `GET /api/health`. The backend also rejects any request whose `Host` header is not loopback.
+
+### `GET /api/settings`
+
+Returns the library folder settings plus the default folder and whether a custom folder is set.
+
+### `PATCH /api/settings`
+
+Validates and saves `{ downloadsDir, filenameTemplate, revealAfterConvert }`. The folder is created if missing, probed for writability, and rejected with a specific message when it contains Windows-forbidden characters, reserved names, trailing dots/spaces, or exceeds path limits.
+
+### `POST /api/settings/reset`
+
+Restores the default library folder and settings.
+
+### `GET /api/library`
+
+Lists persistent conversion records (`data/library.json`) plus unindexed audio files found in the folder, with total size in bytes.
+
+### `DELETE /api/library/:id`
+
+Deletes the file from the library folder (behind a confirm step in the UI) and drops its index entry.
+
+### `POST /api/files/reveal`
+
+Opens Explorer with the finished file selected. The path must resolve inside the library folder.

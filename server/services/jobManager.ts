@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { DOWNLOADS_DIR } from '../config.js';
 import { MusicTags } from './audioTagService.js';
+import { FileService } from './fileService.js';
 
 export type JobStatus = 'queued' | 'downloading' | 'converting' | 'completed' | 'error';
 
@@ -17,6 +17,10 @@ export interface ConversionJob {
   progress: number;
   stageMessage: string;
   error?: string;
+  /** Raw yt-dlp stderr tail for diagnosis (shown in UI details). */
+  errorDetails?: string;
+  /** Process exit code; null when the process never started. */
+  exitCode?: number | null;
   isBotBlocked?: boolean;
   outputFilePath?: string;
   outputFileName?: string;
@@ -93,11 +97,12 @@ export class JobManager {
     }
 
     // Also scan downloads directory for orphaned files older than 2 hours
-    if (fs.existsSync(DOWNLOADS_DIR)) {
+    const downloadsDir = FileService.getDownloadsDir();
+    if (fs.existsSync(downloadsDir)) {
       try {
-        const files = fs.readdirSync(DOWNLOADS_DIR);
+        const files = fs.readdirSync(downloadsDir);
         for (const file of files) {
-          const filePath = path.join(DOWNLOADS_DIR, file);
+          const filePath = path.join(downloadsDir, file);
           const stat = fs.statSync(filePath);
           if (stat.mtimeMs < twoHoursAgo) {
             fs.unlinkSync(filePath);

@@ -1,7 +1,20 @@
-import { Check, Disc3, ExternalLink, Image as ImageIcon, Loader2, Music, RefreshCw, Search, Sparkles, Tag, Trash2, Undo2 } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
-import { ApiClient } from '../services/apiClient';
-import { MusicTagCandidate, MusicTags, TagSource } from '../types';
+import {
+  Check,
+  Disc3,
+  ExternalLink,
+  Image as ImageIcon,
+  Loader2,
+  Music,
+  RefreshCw,
+  Search,
+  Sparkles,
+  Tag,
+  Trash2,
+  Undo2,
+} from "lucide-react";
+import React, { useEffect, useRef, useState } from "react";
+import { ApiClient } from "../services/apiClient";
+import { MusicTagCandidate, MusicTags, TagSource } from "../types";
 
 interface TagEditorProps {
   initialTags?: MusicTags;
@@ -11,40 +24,42 @@ interface TagEditorProps {
   onChange: (tags: MusicTags) => void;
   onSaveToFile?: (tags: MusicTags) => Promise<void>;
   isSavingToFile?: boolean;
-  mode?: 'pre-convert' | 'post-convert';
+  mode?: "pre-convert" | "post-convert";
 }
 
 export const TagEditor: React.FC<TagEditorProps> = ({
   initialTags,
-  defaultVideoTitle = '',
-  defaultArtist = '',
-  defaultThumbnail = '',
+  defaultVideoTitle = "",
+  defaultArtist = "",
+  defaultThumbnail = "",
   onChange,
   onSaveToFile,
   isSavingToFile = false,
-  mode = 'pre-convert'
+  mode = "pre-convert",
 }) => {
   // Current active tags
   const [tags, setTags] = useState<MusicTags>(() => {
-    return initialTags || {
-      title: defaultVideoTitle,
-      artist: defaultArtist,
-      album: defaultVideoTitle,
-      albumArtist: defaultArtist,
-      year: '',
-      genre: 'Music',
-      trackNumber: '1',
-      coverUrl: defaultThumbnail,
-      cleanDescription: true,
-      comment: 'YouTube to Music Converter'
-    };
+    return (
+      initialTags || {
+        title: defaultVideoTitle,
+        artist: defaultArtist,
+        album: defaultVideoTitle,
+        albumArtist: defaultArtist,
+        year: "",
+        genre: "Music",
+        trackNumber: "1",
+        coverUrl: defaultThumbnail,
+        cleanDescription: true,
+        comment: "YouTube to Music Converter",
+      }
+    );
   });
 
   // Autotag search and detection state
-  const [selectedSource, setSelectedSource] = useState<TagSource>('all');
+  const [selectedSource, setSelectedSource] = useState<TagSource>("all");
   const [candidates, setCandidates] = useState<MusicTagCandidate[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [lastSearchedQuery, setLastSearchedQuery] = useState('');
+  const [lastSearchedQuery, setLastSearchedQuery] = useState("");
   const [appliedSource, setAppliedSource] = useState<string | null>(null);
   const [hasUserEdited, setHasUserEdited] = useState(false);
 
@@ -124,13 +139,15 @@ export const TagEditor: React.FC<TagEditorProps> = ({
       albumArtist: candidate.albumArtist || candidate.artist,
       year: candidate.year || tags.year,
       genre: candidate.genre || tags.genre,
-      trackNumber: candidate.trackNumber || tags.trackNumber || '1',
-      coverUrl: candidate.coverUrl || tags.coverUrl
+      trackNumber: candidate.trackNumber || tags.trackNumber || "1",
+      coverUrl: candidate.coverUrl || tags.coverUrl,
     };
 
     setTags(updated);
     onChange(updated);
-    setAppliedSource(`${candidate.source.toUpperCase()} (${candidate.artist} - ${candidate.title})`);
+    setAppliedSource(
+      `${candidate.source.toUpperCase()} (${candidate.artist} - ${candidate.title})`,
+    );
     setTimeout(() => setAppliedSource(null), 4000);
   };
 
@@ -147,12 +164,12 @@ export const TagEditor: React.FC<TagEditorProps> = ({
       artist: defaultArtist,
       album: defaultVideoTitle,
       albumArtist: defaultArtist,
-      year: '',
-      genre: 'Music',
-      trackNumber: '1',
+      year: "",
+      genre: "Music",
+      trackNumber: "1",
       coverUrl: defaultThumbnail,
       cleanDescription: true,
-      comment: 'YouTube to Music Converter'
+      comment: "YouTube to Music Converter",
     };
     setTags(reset);
     onChange(reset);
@@ -161,11 +178,11 @@ export const TagEditor: React.FC<TagEditorProps> = ({
   };
 
   return (
-    <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/90 p-4 sm:p-5 text-zinc-100 shadow-sm">
+    <div className="min-w-0 space-y-4 rounded-[2px] border border-zinc-800 bg-zinc-900/90 p-4 sm:p-5 text-zinc-100 shadow-sm">
       {/* Section Header */}
       <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-zinc-800">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20">
+          <div className="p-1.5 rounded-[2px] bg-rose-500/10 text-rose-400 border border-rose-500/20">
             <Tag className="w-4 h-4" />
           </div>
           <div>
@@ -176,7 +193,8 @@ export const TagEditor: React.FC<TagEditorProps> = ({
               </span>
             </h3>
             <p className="text-xs text-zinc-400">
-              Edit track info or autotag matching metadata from iTunes, Deezer & MusicBrainz
+              Edit track info or autotag matching metadata from iTunes, Deezer &
+              MusicBrainz
             </p>
           </div>
         </div>
@@ -195,7 +213,10 @@ export const TagEditor: React.FC<TagEditorProps> = ({
       {/* PRIMARY INPUT: Track Name / Music Name (Autotag Detector) */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
-          <label htmlFor="tag-track-name" className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+          <label
+            htmlFor="tag-track-name"
+            className="text-xs font-semibold text-zinc-200 flex items-center gap-1.5"
+          >
             <span>Music Name / Track Title</span>
             <span className="text-[10px] font-normal px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
               Autotag Detector Query
@@ -213,7 +234,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
             value={tags.title}
             onChange={(e) => handleNameInputChange(e.target.value)}
             placeholder="Type song title (e.g. Never Gonna Give You Up)..."
-            className="w-full rounded-lg bg-zinc-950 border border-zinc-700/80 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 focus:outline-none pr-24"
+            className="w-full rounded-[2px] bg-zinc-950 border border-zinc-700/80 px-3.5 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-rose-500 focus:ring-1 focus:ring-rose-500 focus:outline-none pr-24"
           />
           <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
             {isSearching ? (
@@ -237,7 +258,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
       </div>
 
       {/* AUTOTAGGER MATCHES / SOURCE SELECTOR */}
-      <div className="space-y-2 rounded-lg bg-zinc-950/60 border border-zinc-800/80 p-3">
+      <div className="space-y-2 rounded-[2px] bg-zinc-950/60 border border-zinc-800/80 p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-xs text-zinc-300 font-medium">
             <Sparkles className="w-3.5 h-3.5 text-amber-400" />
@@ -250,22 +271,24 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           </div>
 
           {/* Sources Filter */}
-          <div className="flex items-center gap-1 text-[11px]">
+          <div className="flex flex-wrap items-center gap-1 text-[11px]">
             <span className="text-zinc-500 mr-1">Source:</span>
-            {(['all', 'itunes', 'deezer', 'musicbrainz'] as TagSource[]).map((src) => (
-              <button
-                key={src}
-                type="button"
-                onClick={() => handleSourceChange(src)}
-                className={`px-2 py-0.5 rounded capitalize transition-colors ${
-                  selectedSource === src
-                    ? 'bg-rose-600 text-white font-medium'
-                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
-                }`}
-              >
-                {src === 'musicbrainz' ? 'MusicBrainz' : src}
-              </button>
-            ))}
+            {(["all", "itunes", "deezer", "musicbrainz"] as TagSource[]).map(
+              (src) => (
+                <button
+                  key={src}
+                  type="button"
+                  onClick={() => handleSourceChange(src)}
+                  className={`px-2 py-0.5 rounded capitalize transition-colors ${
+                    selectedSource === src
+                      ? "bg-rose-600 text-white font-medium"
+                      : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+                  }`}
+                >
+                  {src === "musicbrainz" ? "MusicBrainz" : src}
+                </button>
+              ),
+            )}
           </div>
         </div>
 
@@ -289,7 +312,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
               <div
                 key={c.id}
                 onClick={() => handleApplyCandidate(c)}
-                className="group p-2.5 rounded-lg border border-zinc-800 bg-zinc-900 hover:bg-zinc-850 hover:border-zinc-700 cursor-pointer transition-all flex items-start gap-2.5"
+                className="group p-2.5 rounded-[2px] border border-zinc-800 bg-zinc-900 hover:bg-zinc-850 hover:border-zinc-700 cursor-pointer transition-colors flex items-start gap-2.5"
                 title="Click to apply these tags"
               >
                 {c.coverUrl ? (
@@ -311,19 +334,22 @@ export const TagEditor: React.FC<TagEditorProps> = ({
                     </p>
                     <span
                       className={`text-[9px] uppercase tracking-wider font-bold px-1 rounded ${
-                        c.source === 'itunes'
-                          ? 'bg-pink-900/40 text-pink-400 border border-pink-700/50'
-                          : c.source === 'deezer'
-                          ? 'bg-purple-900/40 text-purple-400 border border-purple-700/50'
-                          : 'bg-amber-900/40 text-amber-400 border border-amber-700/50'
+                        c.source === "itunes"
+                          ? "bg-pink-900/40 text-pink-400 border border-pink-700/50"
+                          : c.source === "deezer"
+                            ? "bg-purple-900/40 text-purple-400 border border-purple-700/50"
+                            : "bg-amber-900/40 text-amber-400 border border-amber-700/50"
                       }`}
                     >
                       {c.source}
                     </span>
                   </div>
-                  <p className="text-[11px] text-zinc-400 truncate">{c.artist}</p>
+                  <p className="text-[11px] text-zinc-400 truncate">
+                    {c.artist}
+                  </p>
                   <p className="text-[10px] text-zinc-500 truncate">
-                    {c.album || 'Single'} {c.year ? `• ${c.year}` : ''} {c.genre ? `• ${c.genre}` : ''}
+                    {c.album || "Single"} {c.year ? `• ${c.year}` : ""}{" "}
+                    {c.genre ? `• ${c.genre}` : ""}
                   </p>
                 </div>
               </div>
@@ -333,7 +359,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           <div className="py-2.5 text-center text-xs text-zinc-500">
             {tags.title.trim()
               ? `No exact matches found for "${tags.title}". You can refine the title above or fill out the tags manually below.`
-              : 'Enter a track title above to detect tags from iTunes, Deezer, and MusicBrainz.'}
+              : "Enter a track title above to detect tags from iTunes, Deezer, and MusicBrainz."}
           </div>
         )}
       </div>
@@ -342,14 +368,17 @@ export const TagEditor: React.FC<TagEditorProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
         {/* Artist Field */}
         <div className="space-y-1">
-          <label htmlFor="tag-artist" className="text-xs font-medium text-zinc-300">
+          <label
+            htmlFor="tag-artist"
+            className="text-xs font-medium text-zinc-300"
+          >
             Artist / Performer
           </label>
           <input
             id="tag-artist"
             type="text"
             value={tags.artist}
-            onChange={(e) => handleFieldChange('artist', e.target.value)}
+            onChange={(e) => handleFieldChange("artist", e.target.value)}
             placeholder="Artist name..."
             className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-rose-500 focus:outline-none"
           />
@@ -357,14 +386,17 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
         {/* Album Field */}
         <div className="space-y-1">
-          <label htmlFor="tag-album" className="text-xs font-medium text-zinc-300">
+          <label
+            htmlFor="tag-album"
+            className="text-xs font-medium text-zinc-300"
+          >
             Album
           </label>
           <input
             id="tag-album"
             type="text"
             value={tags.album}
-            onChange={(e) => handleFieldChange('album', e.target.value)}
+            onChange={(e) => handleFieldChange("album", e.target.value)}
             placeholder="Album title..."
             className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-rose-500 focus:outline-none"
           />
@@ -372,14 +404,17 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
         {/* Year / Release Date */}
         <div className="space-y-1">
-          <label htmlFor="tag-year" className="text-xs font-medium text-zinc-300">
+          <label
+            htmlFor="tag-year"
+            className="text-xs font-medium text-zinc-300"
+          >
             Release Year
           </label>
           <input
             id="tag-year"
             type="text"
-            value={tags.year || ''}
-            onChange={(e) => handleFieldChange('year', e.target.value)}
+            value={tags.year || ""}
+            onChange={(e) => handleFieldChange("year", e.target.value)}
             placeholder="e.g. 1987, 2024"
             className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-rose-500 focus:outline-none"
           />
@@ -387,14 +422,17 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
         {/* Genre */}
         <div className="space-y-1">
-          <label htmlFor="tag-genre" className="text-xs font-medium text-zinc-300">
+          <label
+            htmlFor="tag-genre"
+            className="text-xs font-medium text-zinc-300"
+          >
             Genre
           </label>
           <input
             id="tag-genre"
             type="text"
-            value={tags.genre || ''}
-            onChange={(e) => handleFieldChange('genre', e.target.value)}
+            value={tags.genre || ""}
+            onChange={(e) => handleFieldChange("genre", e.target.value)}
             placeholder="e.g. Pop, Synthwave, Rock"
             className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-rose-500 focus:outline-none"
           />
@@ -402,14 +440,17 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
         {/* Track Number */}
         <div className="space-y-1">
-          <label htmlFor="tag-track-number" className="text-xs font-medium text-zinc-300">
+          <label
+            htmlFor="tag-track-number"
+            className="text-xs font-medium text-zinc-300"
+          >
             Track #
           </label>
           <input
             id="tag-track-number"
             type="text"
-            value={tags.trackNumber || ''}
-            onChange={(e) => handleFieldChange('trackNumber', e.target.value)}
+            value={tags.trackNumber || ""}
+            onChange={(e) => handleFieldChange("trackNumber", e.target.value)}
             placeholder="e.g. 1 or 1/12"
             className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-rose-500 focus:outline-none"
           />
@@ -417,14 +458,17 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
         {/* Album Artist */}
         <div className="space-y-1">
-          <label htmlFor="tag-album-artist" className="text-xs font-medium text-zinc-300">
+          <label
+            htmlFor="tag-album-artist"
+            className="text-xs font-medium text-zinc-300"
+          >
             Album Artist (Optional)
           </label>
           <input
             id="tag-album-artist"
             type="text"
-            value={tags.albumArtist || ''}
-            onChange={(e) => handleFieldChange('albumArtist', e.target.value)}
+            value={tags.albumArtist || ""}
+            onChange={(e) => handleFieldChange("albumArtist", e.target.value)}
             placeholder="Defaults to Artist..."
             className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-rose-500 focus:outline-none"
           />
@@ -438,7 +482,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           {tags.coverUrl && (
             <button
               type="button"
-              onClick={() => handleFieldChange('coverUrl', '')}
+              onClick={() => handleFieldChange("coverUrl", "")}
               className="text-[11px] text-rose-400 hover:text-rose-300 flex items-center gap-1"
             >
               <Trash2 className="w-3 h-3" /> Remove Cover
@@ -452,10 +496,10 @@ export const TagEditor: React.FC<TagEditorProps> = ({
               src={tags.coverUrl}
               alt="Album Artwork"
               referrerPolicy="no-referrer"
-              className="w-14 h-14 rounded-lg object-cover bg-zinc-950 border border-zinc-700 shrink-0 shadow"
+              className="w-14 h-14 rounded-[2px] object-cover bg-zinc-950 border border-zinc-700 shrink-0 shadow"
             />
           ) : (
-            <div className="w-14 h-14 rounded-lg bg-zinc-950 border border-dashed border-zinc-800 flex items-center justify-center shrink-0 text-zinc-600">
+            <div className="w-14 h-14 rounded-[2px] bg-zinc-950 border border-dashed border-zinc-800 flex items-center justify-center shrink-0 text-zinc-600">
               <ImageIcon className="w-6 h-6" />
             </div>
           )}
@@ -463,15 +507,15 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           <div className="flex-1 space-y-1">
             <input
               type="text"
-              value={tags.coverUrl || ''}
-              onChange={(e) => handleFieldChange('coverUrl', e.target.value)}
+              value={tags.coverUrl || ""}
+              onChange={(e) => handleFieldChange("coverUrl", e.target.value)}
               placeholder="Cover Art URL (paste image link or use autotagger above)..."
               className="w-full rounded-md bg-zinc-950 border border-zinc-800 px-3 py-1.5 text-xs text-zinc-100 placeholder:text-zinc-600 focus:border-rose-500 focus:outline-none"
             />
             {defaultThumbnail && tags.coverUrl !== defaultThumbnail && (
               <button
                 type="button"
-                onClick={() => handleFieldChange('coverUrl', defaultThumbnail)}
+                onClick={() => handleFieldChange("coverUrl", defaultThumbnail)}
                 className="text-[11px] text-zinc-400 hover:text-zinc-200 underline"
               >
                 Use original YouTube thumbnail
@@ -487,19 +531,21 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           <input
             type="checkbox"
             checked={tags.cleanDescription !== false}
-            onChange={(e) => handleFieldChange('cleanDescription', e.target.checked)}
+            onChange={(e) =>
+              handleFieldChange("cleanDescription", e.target.checked)
+            }
             className="rounded border-zinc-700 bg-zinc-950 text-rose-600 focus:ring-rose-500 w-3.5 h-3.5"
           />
           <span>Strip lengthy YouTube video descriptions from audio tags</span>
         </label>
 
         {/* If in post-convert mode, offer explicit "Apply Tags to Audio File" action */}
-        {mode === 'post-convert' && onSaveToFile && (
+        {mode === "post-convert" && onSaveToFile && (
           <button
             type="button"
             disabled={isSavingToFile}
             onClick={() => onSaveToFile(tags)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-colors disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[2px] bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold transition-colors disabled:opacity-50"
           >
             {isSavingToFile ? (
               <>

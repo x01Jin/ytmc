@@ -1,9 +1,8 @@
 import { execFile } from 'child_process';
-import { PLUGINS_DIR, YTDLP_PATH } from '../config.js';
-import { cleanYouTubeTitle } from '../utils/titleCleaner.js';
-import { MusicTags } from './audioTagService.js';
 import { CookieService } from './cookieService.js';
+import { cookiesAllowed, extractorArgsFor, resolveStrategy } from './potService.js';
 import { extractYouTubeId, parseYouTubeInput } from './urlService.js';
+import { ytdlpEnv, ytdlpLaunch } from './ytdlpRunner.js';
 
 export interface NativeAudioStreamInfo {
   formatId: string;
@@ -28,8 +27,9 @@ export interface VideoMetadata {
   isAvailable: boolean;
   botVerificationRequired: boolean;
   hasCookiesConfigured: boolean;
+  /** Raw yt-dlp failure (first ERROR line) when the stream probe failed. */
+  probeError?: string;
   description?: string;
-  defaultTags?: MusicTags;
   nativeStreams?: NativeAudioStreamInfo[];
   bestNativeStream?: NativeAudioStreamInfo;
 }
@@ -95,34 +95,22 @@ export class MetadataService {
       hasCookiesConfigured: hasCookies
     };
 
-    const populateDefaultTags = () => {
-      const parsedMusic = cleanYouTubeTitle(metadata.title, metadata.author);
-      const year = metadata.uploadDate ? metadata.uploadDate.substring(0, 4) : undefined;
-      metadata.defaultTags = {
-        title: parsedMusic.cleanTitle,
-        artist: parsedMusic.cleanArtist,
-        album: parsedMusic.cleanTitle,
-        albumArtist: parsedMusic.cleanArtist,
-        year: year,
-        genre: 'Music',
-        trackNumber: '1',
-        coverUrl: metadata.thumbnail,
-        cleanDescription: true
-      };
-    };
-
     // 2. Query yt-dlp for detailed metadata (duration, format readiness)
+    const { strategy } = await resolveStrategy();
+    const launch = ytdlpLaunch();
+    const useCookies = cookiesAllowed(strategy, hasCookies);
     return new Promise((resolve) => {
       const args = [
+        ...launch.prefixArgs,
         '--js-runtimes', `node:${process.execPath}`,
-        '--extractor-args', 'youtubepot-bgutilhttp:base_url=http://127.0.0.1:4416',
+        ...extractorArgsFor(strategy),
         '--dump-json',
         '--no-playlist',
         '--no-warnings',
         '--skip-download'
       ];
 
-      if (cookiesPath) {
+      if (useCookies && cookiesPath) {
         args.push('--cookies', cookiesPath);
       }
 
@@ -130,14 +118,11 @@ export class MetadataService {
       args.push(canonicalUrl);
 
       execFile(
-        YTDLP_PATH,
+        launch.command,
         args,
         {
-          timeout: 10000,
-          env: {
-            ...process.env,
-            PYTHONPATH: PLUGINS_DIR
-          }
+          timeout: 45000,
+          env: ytdlpEnv()
         },
         (error, stdout, stderr) => {
           if (error) {
@@ -145,8 +130,13 @@ export class MetadataService {
             if (/sign in to confirm|not a bot|bot|login_required|cookies-from-browser|403/i.test(errStr)) {
               metadata.botVerificationRequired = true;
             }
+            // Surface the probe failure instead of silently implying
+            // "Direct streamcopy ready" from oEmbed data alone.
+            metadata.probeError =
+              stderr.split('\n').filter(l => l.includes('ERROR:'))[0] ||
+              error.message ||
+              'Stream probe failed';
             // Even if yt-dlp errored, we resolve with the oembed data
-            populateDefaultTags();
             resolve(metadata);
             return;
           }
@@ -225,7 +215,6 @@ export class MetadataService {
             // Keep oembed metadata
           }
 
-          populateDefaultTags();
           resolve(metadata);
         }
       );
