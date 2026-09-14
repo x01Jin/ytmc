@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+
+# Build output (Vite -> dist/, esbuild -> dist/server.cjs)
+dist/
+build/
+dist-ssr/
+*.tsbuildinfo
+.vite/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Env files — never commit real secrets; keep the example only
+.env*
+!.env.example
+
+# Runtime data — YouTube session cookies, guest sessions, job state.
+# NEVER commit: contains personal account cookies.
+data/
+cookies.txt
+*.cookies
+
+# Local conversion output — never commit
+downloads/
+*.mp3
+*.m4a
+*.flac
+*.wav
+*.opus
+*.mp4
+*.webm
+*.mkv
+*.part
+*.ytdl
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editors / IDEs
+.vscode/*
+!.vscode/extensions.json
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Temp, cache, test output
+*.tmp
+*.temp
+.cache/
+coverage/
+
+# Single lockfile
+bun.lock
+
+# Private agent/dev context
+AGENTS.md
+context/
+.ignore

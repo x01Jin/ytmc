@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>YouTube to Music Converter</title>
+    <meta name="description" content="Convert YouTube videos to studio-grade MP3, M4A, FLAC, WAV, or Opus audio with dark theme, ID3 tag editor, and multi-source autotagging." />
+    <meta property="og:title" content="YouTube to Music Converter" />
+    <meta property="og:description" content="Convert YouTube videos to studio-grade MP3, M4A, FLAC, WAV, or Opus audio with dark theme, ID3 tag editor, and multi-source autotagging." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function() {
+        function suppressBenignErrors(e) {
+          var str = '';
+          if (e && e.reason) {
+            str = (e.reason.message || e.reason.stack || String(e.reason)).toLowerCase();
+          } else if (e && e.message) {
+            str = String(e.message).toLowerCase();
+          }
+          if (str.indexOf('websocket') !== -1 || str.indexOf('vite') !== -1 || str.indexOf('ws') !== -1) {
+            if (e.preventDefault) e.preventDefault();
+            if (e.stopPropagation) e.stopPropagation();
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            return true;
+          }
+        }
+        window.addEventListener('unhandledrejection', suppressBenignErrors, true);
+        window.addEventListener('error', suppressBenignErrors, true);
+      })();
+    </script>
+  </head>
+  <body class="bg-zinc-950 text-zinc-100 antialiased selection:bg-rose-500 selection:text-white">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
