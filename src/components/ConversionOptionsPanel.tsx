@@ -22,11 +22,11 @@ const FORMATS = ["best", "opus", "m4a", "mp3", "flac", "wav"] as AudioFormat[];
 
 const CONVERT_LABELS: Record<AudioFormat, string> = {
   best: "Extract Best Native Stream ",
-  opus: "Extract Native Opus (~160 kbps Direct)",
-  m4a: "Extract Native AAC (~128 kbps Direct)",
-  mp3: "Transcode to MP3 (~160k Native)",
-  flac: "Convert to FLAC (Lossless Master)",
-  wav: "Convert to WAV (Lossless Master)",
+  opus: "Extract Native Opus",
+  m4a: "Extract Native AAC",
+  mp3: "Transcode to MP3",
+  flac: "Convert to FLAC",
+  wav: "Convert to WAV",
 };
 
 export const ConversionOptionsPanel: React.FC<ConversionOptionsPanelProps> = ({

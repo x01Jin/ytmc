@@ -47,16 +47,16 @@ export function TagPane() {
       )}
       <TagEditor
         initialTags={{
-          title: record.title,
-          artist: record.author,
-          album: record.title,
-          albumArtist: record.author,
-          year: "",
-          genre: "Music",
-          trackNumber: "1",
-          coverUrl: record.thumbnail,
-          cleanDescription: true,
-          comment: "YouTube to Music Converter",
+          title: record.tags?.title || record.title,
+          artist: record.tags?.artist || record.author,
+          album: record.tags?.album || record.title,
+          albumArtist: record.tags?.albumArtist || record.author,
+          year: record.tags?.year || "",
+          genre: record.tags?.genre || "Music",
+          trackNumber: record.tags?.trackNumber || "1",
+          coverUrl: record.tags?.coverUrl || record.thumbnail,
+          cleanDescription: record.tags?.cleanDescription ?? true,
+          comment: record.tags?.comment || "YouTube to Music Converter",
         }}
         defaultVideoTitle={record.title}
         defaultArtist={record.author}

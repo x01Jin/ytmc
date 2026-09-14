@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { DATA_DIR } from "../config.js";
+import type { MusicTags } from "./audioTagService.js";
 
 export interface LibraryRecord {
   jobId: string;
@@ -14,6 +15,7 @@ export interface LibraryRecord {
   filePath: string;
   fileSizeBytes: number;
   completedAt: number;
+  tags?: MusicTags;
 }
 
 const LIBRARY_FILE = path.join(DATA_DIR, "library.json");

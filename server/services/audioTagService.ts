@@ -1,8 +1,8 @@
-import { execFile } from "child_process";
+import { execFile, spawn } from "child_process";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
-import { FFMPEG_PATH } from "../config.js";
+import { FFPROBE_PATH, FFMPEG_PATH } from "../config.js";
 
 export interface MusicTags {
   title: string;
@@ -19,6 +19,103 @@ export interface MusicTags {
 }
 
 export class AudioTagService {
+  /** Read common embedded tags. */
+  public static async readTags(filePath: string): Promise<MusicTags> {
+    if (!fs.existsSync(filePath)) {
+      throw new Error(`Target audio file does not exist: ${filePath}`);
+    }
+
+    const ffprobeCmd = fs.existsSync(FFPROBE_PATH) ? FFPROBE_PATH : "ffprobe";
+
+    return new Promise((resolve) => {
+      execFile(
+        ffprobeCmd,
+        ["-v", "quiet", "-print_format", "json", "-show_format", filePath],
+        { timeout: 15000 },
+        (_error, stdout) => {
+          try {
+            const tags =
+              (
+                JSON.parse(String(stdout)) as {
+                  format?: { tags?: Record<string, string> };
+                }
+              ).format?.tags ?? {};
+            const value = (...keys: string[]) =>
+              keys
+                .map((key) => tags[key] ?? tags[key.toUpperCase()])
+                .find(Boolean) ?? "";
+            resolve({
+              title: value("title"),
+              artist: value("artist", "album_artist"),
+              album: value("album"),
+              albumArtist: value("album_artist", "albumartist"),
+              year: value("date", "year", "creation_time"),
+              genre: value("genre"),
+              trackNumber: value("track", "tracknumber"),
+              comment: value("comment"),
+              cleanDescription: false,
+            });
+          } catch {
+            resolve({ title: "", artist: "" });
+          }
+        },
+      );
+    });
+  }
+
+  /** Extract embedded artwork for local library previews. */
+  public static async extractCoverArt(filePath: string): Promise<{
+    data: Buffer;
+    mimeType: "image/jpeg";
+  } | null> {
+    if (!fs.existsSync(filePath)) return null;
+
+    const ffmpegCmd = fs.existsSync(FFMPEG_PATH) ? FFMPEG_PATH : "ffmpeg";
+    const outputPath = path.join(
+      path.dirname(filePath),
+      `.cover_${crypto.randomUUID()}.jpg`,
+    );
+    return new Promise((resolve) => {
+      const child = spawn(ffmpegCmd, [
+        "-v",
+        "error",
+        "-i",
+        filePath,
+        "-map",
+        "0:v:0",
+        "-frames:v",
+        "1",
+        "-f",
+        "image2pipe",
+        "-vcodec",
+        "mjpeg",
+        outputPath,
+      ]);
+      const timeout = setTimeout(() => child.kill(), 15000);
+
+      child.on("error", () => {
+        clearTimeout(timeout);
+        fs.rmSync(outputPath, { force: true });
+        resolve(null);
+      });
+      child.on("close", (code) => {
+        clearTimeout(timeout);
+        if (code !== 0 || !fs.existsSync(outputPath)) {
+          fs.rmSync(outputPath, { force: true });
+          resolve(null);
+          return;
+        }
+        const data = fs.readFileSync(outputPath);
+        fs.rmSync(outputPath, { force: true });
+        resolve(
+          data.length > 8 * 1024 * 1024
+            ? null
+            : { data, mimeType: "image/jpeg" },
+        );
+      });
+    });
+  }
+
   /**
    * Embeds or updates metadata tags and cover artwork in an audio file on disk.
    */

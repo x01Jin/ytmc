@@ -282,19 +282,11 @@ export function LibraryRoute() {
                     <button
                       type="button"
                       className="px-btn !px-2 !py-1 text-xs"
-                      onClick={() =>
-                        setPlayingId((cur) =>
-                          cur === record.jobId ? null : record.jobId,
-                        )
-                      }
-                      aria-label={
-                        playingId === record.jobId
-                          ? `Stop preview of ${record.title}`
-                          : `Preview ${record.title}`
-                      }
-                      aria-pressed={playingId === record.jobId}
+                      onClick={() => setPlayingId(record.jobId)}
+                      aria-label={`Load ${record.title} in the player`}
+                      title="Load in player"
                     >
-                      {playingId === record.jobId ? "■" : "▶"}
+                      ▶
                     </button>
                     <button
                       type="button"
@@ -349,14 +341,14 @@ export function LibraryRoute() {
         </section>
       )}
 
-      {playingRecord && (
-        <section
-          className="px-panel sticky bottom-2 z-10 mt-auto p-3"
-          aria-label="Preview player"
-        >
-          <AudioPlayer job={recordToJob(playingRecord)} />
-        </section>
-      )}
+      <section
+        className="sticky bottom-0 z-10 mt-auto"
+        aria-label="Preview player"
+      >
+        <AudioPlayer
+          job={playingRecord ? recordToJob(playingRecord) : undefined}
+        />
+      </section>
 
       {confirmDeleteId && (
         <div

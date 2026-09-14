@@ -59,9 +59,13 @@ The autotagger can search individual sources or aggregate results simultaneously
    - When saved, the server runs in-place metadata rewriting via `POST /api/tags/apply/:id`, updating the audio container, artwork, and filename without re-downloading from YouTube.
    - Artwork can come from a fetched candidate URL or a local image data URL (limited to 8 MB); supported artwork containers are MP3, M4A, and FLAC.
 
+## 5. Local Library Imports
+
+Audio files added from the Library tab are copied without transcoding. The library accepts MP3, M4A, FLAC, WAV, and Opus files, then reads their embedded metadata with `ffprobe` before creating the library record. Existing title, artist, album, album artist, year, genre, track number, and comment values are shown in the tag editor. Saving the editor is the explicit write operation; browsing, importing, trimming, or changing unrelated library settings does not replace the stored tag values.
+
 ---
 
-## 5. FFmpeg Container Metadata Encoding
+## 6. FFmpeg Container Metadata Encoding
 
 The audio tag service (`server/services/audioTagService.ts`) handles format-specific metadata mapping:
 
@@ -73,7 +77,7 @@ The audio tag service (`server/services/audioTagService.ts`) handles format-spec
 
 ---
 
-## 6. Dark Theme
+## 7. Dark Theme
 
 The application includes full native dark mode:
 

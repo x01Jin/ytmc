@@ -149,6 +149,7 @@ export interface LibraryRecord {
   filePath: string;
   fileSizeBytes: number;
   completedAt: number;
+  tags?: MusicTags;
 }
 
 export interface LooseLibraryFile {

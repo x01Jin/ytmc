@@ -3,7 +3,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { ConversionJob } from "../types";
 
 interface AudioPlayerProps {
-  job: ConversionJob;
+  job?: ConversionJob;
 }
 
 export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
@@ -17,24 +17,25 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
+    audio?.pause();
+    setIsPlaying(false);
+    setCurrentTime(0);
+    setDuration(0);
+  }, [job?.id]);
 
-    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
-    const handleLoadedMetadata = () => setDuration(audio.duration || 0);
-    const handleEnded = () => {
-      if (!isLooping) setIsPlaying(false);
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    let frame = 0;
+    const syncPlaybackPosition = () => {
+      const audio = audioRef.current;
+      if (audio) setCurrentTime(audio.currentTime);
+      frame = requestAnimationFrame(syncPlaybackPosition);
     };
+    frame = requestAnimationFrame(syncPlaybackPosition);
 
-    audio.addEventListener("timeupdate", handleTimeUpdate);
-    audio.addEventListener("loadedmetadata", handleLoadedMetadata);
-    audio.addEventListener("ended", handleEnded);
-
-    return () => {
-      audio.removeEventListener("timeupdate", handleTimeUpdate);
-      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
-      audio.removeEventListener("ended", handleEnded);
-    };
-  }, [isLooping]);
+    return () => cancelAnimationFrame(frame);
+  }, [isPlaying]);
 
   const togglePlay = () => {
     const audio = audioRef.current;
@@ -95,26 +96,51 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
     return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
   };
 
+  if (!job) {
+    return (
+      <article
+        id="audio-player-component"
+        aria-label="Audio preview player"
+        className="px-panel flex min-h-12 items-center px-3 py-2 text-xs text-px-dim"
+      >
+        Select a track to load it into the player.
+      </article>
+    );
+  }
+
   return (
     <article
       id="audio-player-component"
       aria-label={`Audio preview: ${job.title}`}
-      className="px-panel w-full space-y-3 p-3"
+      className="px-panel grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,2fr)_auto] items-center gap-2 p-2"
     >
       <audio
         ref={audioRef}
         src={job.streamUrl || `/api/stream/${job.id}`}
         preload="metadata"
+        onDurationChange={(event) => {
+          const nextDuration = event.currentTarget.duration;
+          if (Number.isFinite(nextDuration)) setDuration(nextDuration);
+        }}
+        onTimeUpdate={(event) =>
+          setCurrentTime(event.currentTarget.currentTime)
+        }
+        onPlay={() => setIsPlaying(true)}
+        onPause={() => setIsPlaying(false)}
+        onEnded={() => {
+          setCurrentTime(0);
+          if (!isLooping) setIsPlaying(false);
+        }}
       />
 
-      <div className="flex items-center gap-3">
+      <div className="flex min-w-0 items-center gap-2">
         {/* Thumbnail art */}
-        <div className="h-12 w-12 shrink-0 overflow-hidden border-2 border-px-line bg-px-bg">
+        <div className="h-9 w-9 shrink-0 overflow-hidden border-2 border-px-line bg-px-bg">
           <img
             src={job.thumbnail}
             alt=""
-            width={48}
-            height={48}
+            width={36}
+            height={36}
             loading="lazy"
             referrerPolicy="no-referrer"
             className="px-pixelated h-full w-full object-cover"
@@ -132,8 +158,24 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
         </div>
       </div>
 
+      {/* Main play control stays immediately left of the responsive scrubber. */}
+      <button
+        id="player-play-pause-btn"
+        type="button"
+        onClick={togglePlay}
+        className="px-btn px-btn-primary flex h-10 w-10 shrink-0 items-center justify-center !p-0"
+        title={isPlaying ? "Pause" : "Play"}
+        aria-label={isPlaying ? `Pause ${job.title}` : `Play ${job.title}`}
+      >
+        {isPlaying ? (
+          <Pause className="h-5 w-5" aria-hidden="true" />
+        ) : (
+          <Play className="ml-0.5 h-5 w-5" aria-hidden="true" />
+        )}
+      </button>
+
       {/* Scrubber progress bar */}
-      <div className="space-y-1">
+      <div className="min-w-0 space-y-1">
         <label htmlFor="audio-scrubber-slider" className="sr-only">
           Seek in {job.title}
         </label>
@@ -153,42 +195,23 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
         </div>
       </div>
 
-      {/* Controls row */}
-      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-        <div className="flex items-center gap-2">
-          <button
-            id="player-loop-toggle"
-            type="button"
-            onClick={toggleLoop}
-            aria-pressed={isLooping}
-            className={`px-btn !border-0 !p-1.5 ${
-              isLooping ? "!text-px-acc" : "!text-px-dim"
-            }`}
-            title={isLooping ? "Repeat on" : "Repeat off"}
-            aria-label={isLooping ? "Repeat on" : "Repeat off"}
-          >
-            <Repeat className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
-
-        {/* Main Play/Pause */}
+      {/* Secondary controls stay in their own compact column. */}
+      <div className="flex items-center gap-1">
         <button
-          id="player-play-pause-btn"
+          id="player-loop-toggle"
           type="button"
-          onClick={togglePlay}
-          className="px-btn px-btn-primary flex h-10 w-10 items-center justify-center !p-0"
-          title={isPlaying ? "Pause" : "Play"}
-          aria-label={isPlaying ? `Pause ${job.title}` : `Play ${job.title}`}
+          onClick={toggleLoop}
+          aria-pressed={isLooping}
+          className={`px-btn !border-0 !p-1.5 ${
+            isLooping ? "!text-px-acc" : "!text-px-dim"
+          }`}
+          title={isLooping ? "Repeat on" : "Repeat off"}
+          aria-label={isLooping ? "Repeat on" : "Repeat off"}
         >
-          {isPlaying ? (
-            <Pause className="h-5 w-5" aria-hidden="true" />
-          ) : (
-            <Play className="ml-0.5 h-5 w-5" aria-hidden="true" />
-          )}
+          <Repeat className="h-4 w-4" aria-hidden="true" />
         </button>
-
         {/* Volume controls */}
-        <div className="flex w-28 items-center gap-1.5">
+        <div className="flex w-20 items-center gap-1">
           <button
             id="player-mute-btn"
             type="button"
@@ -215,7 +238,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
             step={0.05}
             value={isMuted ? 0 : volume}
             onChange={handleVolumeChange}
-            className="h-1 w-16 cursor-pointer appearance-none bg-px-line accent-[#7c5cff]"
+            className="h-1 w-12 cursor-pointer appearance-none bg-px-line accent-[#7c5cff]"
           />
         </div>
       </div>

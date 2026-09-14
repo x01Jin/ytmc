@@ -401,6 +401,7 @@ export class ConversionService {
           filePath: updated.outputFilePath,
           fileSizeBytes: fileStat.size,
           completedAt: updated.completedAt ?? Date.now(),
+          tags: updated.tags,
         });
       }
     });

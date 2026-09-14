@@ -38,6 +38,16 @@ function resolveAudioFile(
   return null;
 }
 
+function buildArtworkUrl(jobId: string, filePath: string): string {
+  let version = "0";
+  try {
+    version = String(Math.floor(fs.statSync(filePath).mtimeMs));
+  } catch {
+    // The file may disappear between the library scan and response creation.
+  }
+  return `/api/library/${encodeURIComponent(jobId)}/artwork?v=${encodeURIComponent(version)}`;
+}
+
 /**
  * Resolve a library track for in-place editing. Works for recent jobs and
  * for older library entries whose in-memory job has expired.
@@ -84,6 +94,7 @@ function syncLibraryIndexes(
     thumbnail: string;
     videoId: string;
     completedAt: number;
+    tags?: MusicTags;
   },
 ): void {
   const job = JobManager.getJob(id);
@@ -111,6 +122,7 @@ function syncLibraryIndexes(
     filePath: update.filePath,
     fileSizeBytes: update.fileSizeBytes,
     completedAt: update.completedAt,
+    tags: update.tags ?? existing?.tags,
   });
 }
 
@@ -416,25 +428,40 @@ apiRouter.post("/settings/reset", (req: Request, res: Response) => {
 /**
  * On-disk library: persistent records plus any unindexed audio files.
  */
-apiRouter.get("/library", (req: Request, res: Response) => {
+apiRouter.get("/library", async (req: Request, res: Response) => {
   let records = LibraryStore.list();
+  for (const record of records) {
+    const tags =
+      record.tags ?? (await AudioTagService.readTags(record.filePath));
+    const thumbnail =
+      record.source === "import"
+        ? buildArtworkUrl(record.jobId, record.filePath)
+        : record.thumbnail;
+    if (!record.tags || thumbnail !== record.thumbnail) {
+      LibraryStore.upsert({ ...record, thumbnail, tags });
+    }
+  }
+  records = LibraryStore.list();
   const indexedPaths = new Set(records.map((r) => path.normalize(r.filePath)));
   const loose = FileService.scanLibrary().filter(
     (f) => !indexedPaths.has(path.normalize(f.filePath)),
   );
   for (const file of loose) {
+    const tags = await AudioTagService.readTags(file.filePath);
     LibraryStore.upsert({
       jobId: `file:${file.fileName}`,
       source: "import",
       videoId: "",
-      title: path.basename(file.fileName, path.extname(file.fileName)),
-      author: "Local file",
-      thumbnail: "",
+      title:
+        tags.title || path.basename(file.fileName, path.extname(file.fileName)),
+      author: tags.artist || "Local file",
+      thumbnail: buildArtworkUrl(`file:${file.fileName}`, file.filePath),
       format: file.ext,
       fileName: file.fileName,
       filePath: file.filePath,
       fileSizeBytes: file.sizeBytes,
       completedAt: file.mtimeMs,
+      tags,
     });
   }
   records = LibraryStore.list();
@@ -461,7 +488,7 @@ apiRouter.get("/library", (req: Request, res: Response) => {
 apiRouter.post(
   "/library/import",
   express.raw({ type: "application/octet-stream", limit: "200mb" }),
-  (req: Request, res: Response) => {
+  async (req: Request, res: Response) => {
     try {
       const fileName =
         typeof req.headers["x-file-name"] === "string"
@@ -471,7 +498,16 @@ apiRouter.post(
             : "";
       const encoded = typeof req.body?.data === "string" ? req.body.data : "";
       const ext = path.extname(fileName).toLowerCase();
-      if (!fileName || !FileService.AUDIO_EXTENSIONS.has(ext) || !encoded) {
+      const data = Buffer.isBuffer(req.body)
+        ? req.body
+        : encoded
+          ? Buffer.from(encoded, "base64")
+          : null;
+      if (
+        !fileName ||
+        !FileService.AUDIO_EXTENSIONS.has(ext) ||
+        !data?.length
+      ) {
         res.status(400).json({
           success: false,
           error: "Drop an audio file supported by the library.",
@@ -482,23 +518,26 @@ apiRouter.post(
       const targetDir = FileService.ensureDownloadsDir();
       const targetName = dedupeFileName(targetDir, safeName);
       const targetPath = path.join(targetDir, targetName);
-      const data = Buffer.isBuffer(req.body)
-        ? req.body
-        : Buffer.from(encoded, "base64");
       fs.writeFileSync(targetPath, data, { flag: "wx" });
       const stat = fs.statSync(targetPath);
+      const tags = await AudioTagService.readTags(targetPath);
       LibraryStore.upsert({
         jobId: `file:${path.basename(targetPath)}`,
         source: "import",
         videoId: "",
-        title: path.basename(targetPath, path.extname(targetPath)),
-        author: "Local file",
-        thumbnail: "",
+        title:
+          tags.title || path.basename(targetPath, path.extname(targetPath)),
+        author: tags.artist || "Local file",
+        thumbnail: buildArtworkUrl(
+          `file:${path.basename(targetPath)}`,
+          targetPath,
+        ),
         format: ext.slice(1),
         fileName: path.basename(targetPath),
         filePath: targetPath,
         fileSizeBytes: stat.size,
         completedAt: stat.mtimeMs,
+        tags,
       });
       res.json({ success: true });
     } catch (error: any) {
@@ -509,6 +548,26 @@ apiRouter.post(
     }
   },
 );
+
+apiRouter.get("/library/:id/artwork", async (req: Request, res: Response) => {
+  const record = LibraryStore.list().find(
+    (item) => item.jobId === req.params.id,
+  );
+  if (!record) {
+    res.status(404).end();
+    return;
+  }
+
+  const artwork = await AudioTagService.extractCoverArt(record.filePath);
+  if (!artwork) {
+    res.status(404).end();
+    return;
+  }
+  res
+    .type(artwork.mimeType)
+    .set("Cache-Control", "no-cache")
+    .send(artwork.data);
+});
 
 apiRouter.delete("/library/:id", (req: Request, res: Response) => {
   const id = req.params.id;
@@ -920,6 +979,7 @@ apiRouter.post("/tags/apply/:id", async (req: Request, res: Response) => {
       filePath: finalPath,
       fileSizeBytes: result.fileSizeBytes,
       completedAt: target.completedAt,
+      tags,
     });
 
     res.json({
