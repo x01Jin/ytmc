@@ -7,13 +7,14 @@
   "main": "dist-electron/main.cjs",
   "scripts": {
     "dev": "cross-env NODE_ENV=development tsx server.ts",
-    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=bundle --sourcemap --outfile=dist/server.cjs",
     "start": "cross-env NODE_ENV=production node dist/server.cjs",
     "preview": "vite preview",
     "clean": "rimraf dist server.js",
     "lint": "tsc --noEmit",
     "electron:dev": "concurrently -k -n \"server,electron\" \"npm run dev\" \"wait-on http-get://127.0.0.1:3000/api/health -t 60s -l && cross-env NODE_ENV=development ELECTRON_DEV_URL=http://127.0.0.1:3000 electron .\"",
-    "electron:build": "npm run build && tsc -p electron/tsconfig.json && electron-builder --win nsis portable"
+    "verify:server-bundle": "node -e \"const fs=require('fs'); if (!fs.existsSync('dist/server.cjs')) { console.error('Missing dist/server.cjs. Build the backend before packaging.'); process.exit(1); }\"",
+    "electron:build": "npm run build && npm run verify:server-bundle && tsc -p electron/tsconfig.json && electron-builder --win nsis portable"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
