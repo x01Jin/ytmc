@@ -65,7 +65,7 @@ function ShellChrome() {
 
   return (
     <AppShell>
-      <TitleBar onOpenSettings={() => navigate("settings")} />
+      <TitleBar />
       <ShellMain>
         <SideNav route={route} onNavigate={navigate} queueCount={activeCount} />
         <ShellContent>

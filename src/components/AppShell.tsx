@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { Github } from "lucide-react";
 
 export type AppRoute = "convert" | "library" | "history" | "queue" | "settings";
 
@@ -52,15 +53,16 @@ export function useHashRoute(): {
   return { route, navigate };
 }
 
-export function TitleBar({ onOpenSettings }: { onOpenSettings: () => void }) {
+export function TitleBar() {
   return (
     <header className="px-panel flex shrink-0 items-center gap-3 px-3 py-2">
-      <span
-        aria-hidden="true"
-        className="font-display text-[10px] leading-none text-px-acc"
-      >
-        ▓
-      </span>
+      <img
+        src="/icon.png"
+        alt=""
+        width={24}
+        height={24}
+        className="px-pixelated h-6 w-6 shrink-0"
+      />
       <h1
         className="font-display text-[11px] leading-none tracking-wide"
         translate="no"
@@ -69,14 +71,16 @@ export function TitleBar({ onOpenSettings }: { onOpenSettings: () => void }) {
       </h1>
       <span className="text-[11px] text-px-dim">Converter</span>
       <span className="flex-1" />
-      <button
-        type="button"
+      <a
+        href="https://github.com/x01Jin/ytmc"
+        target="_blank"
+        rel="noopener noreferrer"
         className="px-btn !py-1 !px-2 text-xs"
-        onClick={onOpenSettings}
-        aria-label="Open settings"
+        aria-label="Open YT Music Converter on GitHub"
+        title="Open YT Music Converter on GitHub"
       >
-        ⚙
-      </button>
+        <Github className="h-4 w-4" aria-hidden="true" />
+      </a>
     </header>
   );
 }
