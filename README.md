@@ -1,6 +1,12 @@
-# YouTube to Music Converter
+<h1 align="center">YouTube to Music Converter</h1>
 
-A Windows desktop app to convert YouTube videos to music files (MP3, M4A, FLAC, WAV, and Opus) with embedded album cover art and ID3 metadata. Finished tracks save straight to your library folder, defaulting to `Downloads\YT Music`.
+<p align="center">
+  <img src="public/icon.png" alt="YouTube to Music Converter app icon" width="140" />
+</p>
+
+<p align="center">
+  A Windows desktop app to convert YouTube videos to music files (MP3, M4A, FLAC, WAV, and Opus) with embedded album cover art and ID3 metadata. Finished tracks save straight to your library folder, defaulting to <code>Downloads\YT Music</code>.
+</p>
 
 ## Features
 
