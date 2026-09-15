@@ -10,10 +10,13 @@ Each row represents one completed job and shows:
 - **Original title and artist** — the YouTube title and channel name as converted.
 - **Copy link** — copies the canonical watch URL (`https://www.youtube.com/watch?v=<videoId>`) to the clipboard, with a brief checkmark confirmation.
 - **Convert again** — sends the URL to the Convert tab, which pastes and inspects it automatically so conversion is one click away.
+- **Remove** — deletes that entry from History only; the library file is untouched.
+
+A **Clear** button in the header removes all entries behind a two-step confirm.
 
 ## Data source
 
-Rows come from the recent-jobs endpoint (`GET /api/jobs`), filtered to `completed` status. The endpoint combines live jobs with completed conversion records from the persistent library index, so history remains available after the application restarts. Imported local files are marked as library-only records and are excluded from conversion history. The canonical URL is reconstructed from each conversion's `videoId`; no separate URL field is stored.
+Rows come from the history endpoint (`GET /api/history`), backed by the persistent log at `data/history.json`. One entry is appended when a Convert-tab conversion finishes, capturing the original YouTube title, channel, thumbnail, and canonical URL. The entry is frozen at that point: retagging, trimming, or reformatting the library file never alters it, and imported local files are never recorded. Deleting a library file keeps its History entry, so the source can still be re-converted.
 
 ## Re-convert handoff
 

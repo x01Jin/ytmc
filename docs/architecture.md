@@ -7,7 +7,7 @@ The YouTube to Music Converter is a Windows desktop app: an Electron shell aroun
 - **Desktop shell**: Electron 44 (Windows-only NSIS + portable), secure `contextBridge` preload, Express sidecar child process
 - **Frontend**: React 19, TypeScript, Vite 6, Tailwind CSS 4 (dark-only pixel theme), Lucide Icons
 - **Backend**: Node.js, Express 4, `yt-dlp`, FFmpeg
-- **Persistence**: In-memory job state machine, `data/settings.json`, `data/library.json`, on-disk audio library
+- **Persistence**: In-memory job state machine, `data/settings.json`, `data/library.json`, `data/history.json`, on-disk audio library
 
 ```
 ┌────────────────────────────────────────────────────────┐
@@ -40,6 +40,7 @@ The YouTube to Music Converter is a Windows desktop app: an Electron shell aroun
 │  /api/stream/:id  - Partial Content (HTTP 206) audio   │
 │  /api/download/:id- Attachment file streaming          │
 │  /api/cookies     - Netscape session cookie storage    │
+│  /api/history     - Persistent conversion log + delete │
 └──────────────────────────┬─────────────────────────────┘
                            │ Child Process Execution
                            ▼
@@ -71,7 +72,8 @@ The backend codebase adheres strictly to the single-purpose pattern:
 | `server/services/settingsService.ts`   | Library-folder settings in `data/settings.json` with Windows path validation.                                        |
 | `server/services/fileService.ts`       | Library dir resolution, on-disk scan, `.part` sweep.                                                                 |
 | `server/services/previewService.ts`    | Cached 320 kbps MP3 previews for Opus/M4A playback; on-demand transcode, mtime validation, invalidation.           |
-| `server/services/libraryStore.ts`      | Persistent `data/library.json` index for converted and imported library files; conversion history survives restarts. |
+| `server/services/libraryStore.ts`      | Persistent `data/library.json` index for converted and imported library files; one row per file on disk, boot-time reconcile. |
+| `server/services/historyStore.ts`      | Append-only `data/history.json` log of finished conversions with frozen original title, channel, thumbnail, and canonical URL. |
 | `server/utils/filename.ts`             | Windows-safe filename sanitizer, display names, dedupe.                                                              |
 | `server/utils/mime.ts`                 | Fast audio MIME-type resolution for streaming and downloads.                                                         |
 | `server/routes/api.ts`                 | Express router exposing the public REST API surface.                                                                 |
@@ -92,10 +94,10 @@ The backend codebase adheres strictly to the single-purpose pattern:
 Pixel-art dark-only UI (`src/index.css` `@theme` tokens, `Press Start 2P` + `IBM Plex Mono`):
 
 - **`components/AppShell.tsx`**: TitleBar, SideNav, StatusBar + hash routing (`#/convert`, `#/library`, `#/history`, `#/queue`, `#/settings`).
-- **`store/appStore.tsx`**: `JobsProvider` (owns `useJobPolling` with `startTransition` + backoff), `ConvertDraftProvider` (inspect state, options, and one-shot re-convert URLs), `LibraryProvider`, `SettingsProvider`, `SessionProvider`.
-- **`routes/Convert.tsx`**: inspect → options → convert flow. When a job completes, the route refreshes recent jobs and the library, clears the active job and draft, and reports success through a floating bottom-right notification.
-- **`routes/Library.tsx`**: searchable on-disk library with a docked bottom preview player, drag-and-drop/file-picker import, reveal-in-Explorer, edit panels, and delete-behind-confirm. Refreshes automatically when a conversion finishes.
-- **`routes/History.tsx`**: completed conversions with cover art, original title, YouTube link copy, and one-click re-convert.
+- **`store/appStore.tsx`**: `JobsProvider` (owns `useJobPolling` with `startTransition` + backoff), `ConvertDraftProvider` (inspect state, options, and one-shot re-convert URLs), `LibraryProvider` (sequence-guarded refresh), `HistoryProvider` (persistent log with optimistic delete/clear), `SettingsProvider`, `SessionProvider`.
+- **`routes/Convert.tsx`**: inspect → options → convert flow. When a job completes, the route refreshes history and the library, clears the active job and draft, and reports success through a floating bottom-right notification.
+- **`routes/Library.tsx`**: searchable on-disk library with a docked bottom preview player, drag-and-drop/file-picker import, reveal-in-Explorer, edit panels, and delete-behind-confirm. Refreshes automatically when a conversion finishes. Per-track media versions cache-bust the player and trim preview after an edit.
+- **`routes/History.tsx`**: finished conversions with frozen original cover art and title, YouTube link copy, one-click re-convert, per-row remove, and clear-all behind confirm.
 - **`routes/Queue.tsx`**: live view of the in-progress conversion only; finished jobs clear out to Library + History.
 - **`routes/Settings.tsx`**: library folder (Browse/Reset), reveal-after-convert, session cookies.
 

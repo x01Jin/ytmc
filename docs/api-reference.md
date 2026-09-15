@@ -237,7 +237,25 @@ Searches online music databases for track metadata and high-resolution album art
 
 ### `POST /api/tags/apply/:id`
 
-Applies custom or fetched music metadata and album cover art in-place to an already converted audio file. The file on disk is renamed to match the new tags.
+Applies custom or fetched music metadata and album cover art in-place to an already converted audio file. The file on disk is renamed to match the new tags. The record origin (`conversion` vs `import`) is preserved, so retagging an imported file never turns it into a conversion.
+
+---
+
+## 8. Conversion History
+
+History is an append-only log (`data/history.json`) of finished Convert-tab conversions. Entries freeze the original YouTube title, channel, thumbnail, and canonical URL; library edits never modify them, and deleting a library file keeps its entry.
+
+### `GET /api/history`
+
+Lists history entries, newest first.
+
+### `DELETE /api/history/:id`
+
+Removes one history entry by its job id (`404` when unknown). The library file is untouched.
+
+### `DELETE /api/history`
+
+Clears all history entries. The library is untouched.
 
 ---
 
@@ -259,7 +277,7 @@ Restores the default library folder and settings.
 
 ### `GET /api/library`
 
-Lists persistent conversion records (`data/library.json`) plus unindexed audio files found in the folder, with total size in bytes.
+Lists persistent conversion records (`data/library.json`) plus unindexed audio files found in the folder, with total size in bytes. Each file on disk has at most one record: folder-scan auto-indexing reuses the existing row when the path is already indexed (matched case-insensitively on Windows), and a boot-time reconcile collapses any duplicate rows and drops rows whose file no longer exists.
 
 ### `DELETE /api/library/:id`
 

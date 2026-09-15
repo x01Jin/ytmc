@@ -52,7 +52,8 @@ The autotagger can search individual sources or aggregate results simultaneously
 
 1. **Conversion-Time Stamping**:
    - Conversion writes only YouTube-native identity: title, uploader as artist, and the video thumbnail as cover art (when the embed toggle is on). No autotagger lookup runs during conversion.
-   - Job, library, and history names always match the YouTube title and channel.
+   - Job and library names match the YouTube title and channel at conversion time. The History entry keeps those original values permanently — retagging the library file later does not change it.
+   - The record origin (`conversion` vs `import`) is set at creation and preserved by later tag writes, so retagging an imported file never turns it into a conversion.
 
 2. **Post-Conversion Tagging**:
    - In the Library tab, expanding a track's Edit panel opens the tag editor, including the multi-source autotagger.
