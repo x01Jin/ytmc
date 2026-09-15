@@ -18,6 +18,11 @@ import { SettingsService } from "../services/settingsService.js";
 import { TagFetcherService } from "../services/tagFetcherService.js";
 import { buildDisplayFileName, dedupeFileName } from "../utils/filename.js";
 import { getAudioMimeType } from "../utils/mime.js";
+import { PreviewService } from "../services/previewService.js";
+import {
+  isValidNormalizeMode,
+  resolveNormalizeMode,
+} from "../services/audioFilterService.js";
 
 export const apiRouter: Router = express.Router();
 
@@ -60,6 +65,7 @@ function resolveLibraryTarget(id: string): {
   thumbnail: string;
   format: string;
   completedAt: number;
+  tags?: MusicTags;
 } | null {
   const job = JobManager.getJob(id);
   const record = LibraryStore.list().find((r) => r.jobId === id);
@@ -78,6 +84,7 @@ function resolveLibraryTarget(id: string): {
     thumbnail: job?.thumbnail ?? record?.thumbnail ?? "",
     format: path.extname(filePath).replace(".", "").toLowerCase(),
     completedAt: record?.completedAt ?? job?.completedAt ?? Date.now(),
+    tags: job?.tags ?? record?.tags,
   };
 }
 
@@ -162,10 +169,21 @@ apiRouter.post("/convert", async (req: Request, res: Response) => {
       trimEnd,
       volumeBoost,
       normalizeAudio,
+      normalizeMode,
       embedThumbnail,
     } = req.body;
     if (!url) {
       res.status(400).json({ success: false, error: "Target URL is required" });
+      return;
+    }
+    if (
+      normalizeMode !== undefined &&
+      !isValidNormalizeMode(String(normalizeMode).toLowerCase())
+    ) {
+      res.status(400).json({
+        success: false,
+        error: "Invalid normalizeMode. Choose one of: off, loudness, peak.",
+      });
       return;
     }
 
@@ -177,6 +195,10 @@ apiRouter.post("/convert", async (req: Request, res: Response) => {
       trimEnd,
       volumeBoost: volumeBoost ? parseInt(volumeBoost, 10) : undefined,
       normalizeAudio: Boolean(normalizeAudio),
+      normalizeMode:
+        normalizeMode !== undefined
+          ? String(normalizeMode).toLowerCase()
+          : undefined,
       embedThumbnail: embedThumbnail !== false,
     });
 
@@ -227,7 +249,9 @@ apiRouter.get("/jobs", (req: Request, res: Response) => {
       outputFilePath: record.filePath,
       fileSizeBytes: record.fileSizeBytes,
       downloadUrl: `/api/download/${record.jobId}`,
-      streamUrl: `/api/stream/${record.jobId}`,
+      streamUrl: PreviewService.isEligible(record.format)
+        ? `/api/stream/${record.jobId}?preview=mp3`
+        : `/api/stream/${record.jobId}`,
       createdAt: record.completedAt,
       completedAt: record.completedAt,
     }));
@@ -237,10 +261,7 @@ apiRouter.get("/jobs", (req: Request, res: Response) => {
   res.json({ success: true, jobs });
 });
 
-/**
- * Stream audio file with HTTP Range support for HTML5 Audio player
- */
-apiRouter.get("/stream/:id", (req: Request, res: Response) => {
+apiRouter.get("/stream/:id", async (req: Request, res: Response) => {
   const jobId = req.params.id;
   const resolved = resolveAudioFile(jobId);
 
@@ -252,7 +273,24 @@ apiRouter.get("/stream/:id", (req: Request, res: Response) => {
     return;
   }
 
-  const filePath = resolved.filePath;
+  let filePath = resolved.filePath;
+  const sourceExt = path.extname(filePath).replace(".", "").toLowerCase();
+  if (String(req.query.preview || "").toLowerCase() === "mp3") {
+    if (sourceExt === "mp3") {
+      // Already MP3: no preview needed.
+    } else if (PreviewService.isEligible(sourceExt)) {
+      try {
+        filePath = await PreviewService.getOrCreate(jobId, filePath);
+      } catch (error: any) {
+        res.status(500).json({
+          success: false,
+          error: error?.message || "Could not prepare the audio preview",
+        });
+        return;
+      }
+    }
+    // Non-eligible formats fall through to the native file.
+  }
   let stat: fs.Stats;
   try {
     stat = fs.statSync(filePath);
@@ -290,7 +328,9 @@ apiRouter.get("/stream/:id", (req: Request, res: Response) => {
     const file = fs.createReadStream(filePath, { start, end });
     file.on("error", () => {
       if (!res.headersSent) {
-        res.status(404).json({ success: false, error: "Audio file unreadable" });
+        res
+          .status(404)
+          .json({ success: false, error: "Audio file unreadable" });
       } else {
         res.destroy();
       }
@@ -312,7 +352,9 @@ apiRouter.get("/stream/:id", (req: Request, res: Response) => {
     const file = fs.createReadStream(filePath);
     file.on("error", () => {
       if (!res.headersSent) {
-        res.status(404).json({ success: false, error: "Audio file unreadable" });
+        res
+          .status(404)
+          .json({ success: false, error: "Audio file unreadable" });
       } else {
         res.destroy();
       }
@@ -614,6 +656,7 @@ apiRouter.delete("/library/:id", (req: Request, res: Response) => {
   const filePath = record?.filePath ?? job?.outputFilePath;
   if (!filePath || !fs.existsSync(filePath)) {
     LibraryStore.remove(id);
+    PreviewService.invalidate(id);
     res.json({ success: true, message: "Library entry removed." });
     return;
   }
@@ -633,6 +676,7 @@ apiRouter.delete("/library/:id", (req: Request, res: Response) => {
     return;
   }
   LibraryStore.remove(id);
+  PreviewService.invalidate(id);
   res.json({ success: true, message: "File deleted from your library." });
 });
 
@@ -735,6 +779,7 @@ apiRouter.post("/library/:id/trim", async (req: Request, res: Response) => {
       videoId: target.videoId,
       completedAt: target.completedAt,
     });
+    PreviewService.invalidate(req.params.id);
     res.json({ success: true, message: "Trim applied.", data: result });
   } catch (error: any) {
     res.status(500).json({
@@ -744,11 +789,6 @@ apiRouter.post("/library/:id/trim", async (req: Request, res: Response) => {
   }
 });
 
-/**
- * Advanced edit for a library track: container/codec change, loudness
- * handling, and/or title-artist rename. Rename-only patches skip re-encoding.
- * Body: { format?, bitrate?, normalizeAudio?, volumeBoost?, title?, artist? }
- */
 apiRouter.post("/library/:id/edit", async (req: Request, res: Response) => {
   const target = resolveLibraryTarget(req.params.id);
   if (!target) {
@@ -761,15 +801,33 @@ apiRouter.post("/library/:id/edit", async (req: Request, res: Response) => {
       .json({ success: false, error: "File is outside the library folder." });
     return;
   }
-  const { format, bitrate, normalizeAudio, volumeBoost, title, artist } =
-    (req.body ?? {}) as {
-      format?: string;
-      bitrate?: string;
-      normalizeAudio?: boolean;
-      volumeBoost?: number;
-      title?: string;
-      artist?: string;
-    };
+  const {
+    format,
+    bitrate,
+    normalizeAudio,
+    normalizeMode,
+    volumeBoost,
+    title,
+    artist,
+  } = (req.body ?? {}) as {
+    format?: string;
+    bitrate?: string;
+    normalizeAudio?: boolean;
+    normalizeMode?: string;
+    volumeBoost?: number;
+    title?: string;
+    artist?: string;
+  };
+  if (
+    normalizeMode !== undefined &&
+    !isValidNormalizeMode(String(normalizeMode).toLowerCase())
+  ) {
+    res.status(400).json({
+      success: false,
+      error: "Invalid normalizeMode. Choose one of: off, loudness, peak.",
+    });
+    return;
+  }
   const nextFormat =
     format !== undefined ? String(format).toLowerCase() : target.format;
   if (!(EDITABLE_FORMATS as readonly string[]).includes(nextFormat)) {
@@ -810,12 +868,37 @@ apiRouter.post("/library/:id/edit", async (req: Request, res: Response) => {
         format: nextFormat,
         bitrate,
         normalizeAudio: Boolean(normalizeAudio),
+        normalizeMode:
+          normalizeMode !== undefined
+            ? String(normalizeMode).toLowerCase()
+            : undefined,
         volumeBoost: gain,
         title: title !== undefined ? nextTitle : undefined,
         artist: artist !== undefined ? nextAuthor : undefined,
       },
       { filePath: finalPath, format: nextFormat },
     );
+    // Re-read tags from the rewritten file so the index reflects what is
+    // actually embedded (instead of masking file-level loss with stale tags).
+    let embeddedTags = target.tags;
+    try {
+      const probed = await AudioTagService.readTags(result.filePath);
+      if (probed.title || probed.artist) {
+        embeddedTags = {
+          ...(target.tags ?? {}),
+          title: probed.title || nextTitle,
+          artist: probed.artist || nextAuthor,
+          album: probed.album || target.tags?.album,
+          albumArtist: probed.albumArtist || target.tags?.albumArtist,
+          year: probed.year || target.tags?.year,
+          genre: probed.genre || target.tags?.genre,
+          trackNumber: probed.trackNumber || target.tags?.trackNumber,
+          comment: probed.comment ?? target.tags?.comment,
+          coverUrl: target.tags?.coverUrl ?? target.thumbnail,
+          cleanDescription: target.tags?.cleanDescription,
+        };
+      }
+    } catch {}
     syncLibraryIndexes(req.params.id, {
       filePath: result.filePath,
       fileName: result.fileName,
@@ -826,8 +909,20 @@ apiRouter.post("/library/:id/edit", async (req: Request, res: Response) => {
       thumbnail: target.thumbnail,
       videoId: target.videoId,
       completedAt: target.completedAt,
+      tags: embeddedTags,
     });
-    res.json({ success: true, message: "Changes applied.", data: result });
+    PreviewService.invalidate(req.params.id);
+    const loudnessNote =
+      result.loudness && Number.isFinite(result.loudness.outputI)
+        ? ` Loudness balanced to ${result.loudness.outputI.toFixed(1)} LUFS with a uniform ${result.loudness.gainDb >= 0 ? "+" : ""}${result.loudness.gainDb.toFixed(1)} dB gain (dynamics preserved).`
+        : "";
+    res.json({
+      success: true,
+      message: result.coverDropped
+        ? `Changes applied.${loudnessNote} Note: cover art could not be carried to the new container, audio is intact.`
+        : `Changes applied.${loudnessNote}`,
+      data: result,
+    });
   } catch (error: any) {
     res.status(500).json({
       success: false,
@@ -836,10 +931,6 @@ apiRouter.post("/library/:id/edit", async (req: Request, res: Response) => {
   }
 });
 
-/**
- * Reveal a finished file in the OS file manager. Constrained to the
- * library folder so callers cannot open arbitrary paths.
- */
 apiRouter.post("/files/reveal", async (req: Request, res: Response) => {
   try {
     const { jobId } = req.body ?? {};
@@ -928,8 +1019,6 @@ apiRouter.post("/tags/apply/:id", async (req: Request, res: Response) => {
     }
 
     const job = JobManager.getJob(jobId);
-    // Fall back to the on-disk library index so tracks converted before the
-    // last restart (no in-memory job) can still be retagged from the Library.
     const target =
       job?.outputFilePath && fs.existsSync(job.outputFilePath)
         ? {
@@ -1019,6 +1108,7 @@ apiRouter.post("/tags/apply/:id", async (req: Request, res: Response) => {
       completedAt: target.completedAt,
       tags,
     });
+    PreviewService.invalidate(jobId);
 
     res.json({
       success: true,

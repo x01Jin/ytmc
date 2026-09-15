@@ -73,9 +73,14 @@ export interface ConversionOptions {
   trimStart: string;
   trimEnd: string;
   volumeBoost: number;
-  normalizeAudio: boolean;
+  /** Dual-mode selector: "off" | "loudness" (-14 LUFS) | "peak" (-1 dBTP, never lifts silence). */
+  normalizeMode: NormalizeMode;
+  /** Legacy flag from older builds — true migrates to "loudness". Kept optional for compat. */
+  normalizeAudio?: boolean;
   embedThumbnail: boolean;
 }
+
+export type NormalizeMode = "off" | "loudness" | "peak";
 
 export type JobStatus =
   | "queued"

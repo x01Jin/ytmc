@@ -1,6 +1,7 @@
 import { Check, Music } from "lucide-react";
 import React from "react";
 import { AudioFormat, ConversionOptions } from "../types";
+import { NORMALIZE_MODES } from "../utils/normalizeModes";
 
 interface ConversionOptionsPanelProps {
   options: ConversionOptions;
@@ -83,22 +84,44 @@ export const ConversionOptionsPanel: React.FC<ConversionOptionsPanelProps> = ({
       </p>
 
       <div className="space-y-2 border-t border-px-line pt-3">
-        <label
-          className="flex cursor-pointer items-center gap-2 text-xs"
-          htmlFor="normalize-audio-checkbox"
-        >
-          <input
-            id="normalize-audio-checkbox"
-            type="checkbox"
-            checked={options.normalizeAudio}
-            onChange={(e) => update({ normalizeAudio: e.target.checked })}
-            className="h-4 w-4 shrink-0 accent-[#7c5cff]"
-          />
-          <span className="font-semibold text-px-text">
-            Auto loudness normalization{" "}
-            <span className="font-normal text-px-dim">(EBU R128)</span>
-          </span>
-        </label>
+        <fieldset>
+          <legend className="text-xs font-semibold text-px-text">
+            Loudness handling{" "}
+            <span className="font-normal text-px-dim">
+              — peak-safe never boosts silence
+            </span>
+          </legend>
+          <div
+            className="mt-1.5 grid grid-cols-1 gap-1.5 sm:grid-cols-3"
+            role="radiogroup"
+            aria-label="Loudness handling"
+          >
+            {NORMALIZE_MODES.map((m) => {
+              const selected = options.normalizeMode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  id={`normalize-${m.id}`}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  title={m.hint}
+                  onClick={() => update({ normalizeMode: m.id })}
+                  className={`border-2 px-2 py-1.5 text-left transition-colors ${
+                    selected
+                      ? "border-px-acc bg-px-panel-2 text-px-acc"
+                      : "border-px-line bg-px-bg hover:border-px-dim"
+                  }`}
+                >
+                  <span className="block text-xs font-bold">{m.label}</span>
+                  <span className="block text-[10px] text-px-dim">
+                    {m.hint}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
 
         <div className="flex items-center justify-between gap-2 text-xs">
           <label
@@ -116,7 +139,7 @@ export const ConversionOptionsPanel: React.FC<ConversionOptionsPanelProps> = ({
             onChange={(e) =>
               update({ volumeBoost: parseInt(e.target.value, 10) })
             }
-            disabled={options.normalizeAudio}
+            disabled={options.normalizeMode === "loudness"}
             className="px-select py-1 text-xs disabled:opacity-50"
           >
             <option value={100}>100%</option>

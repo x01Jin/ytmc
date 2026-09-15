@@ -13,6 +13,7 @@ import { LibraryStore } from "./libraryStore.js";
 import { AudioTagService, MusicTags } from "./audioTagService.js";
 import { CookieService } from "./cookieService.js";
 import { ConversionJob, JobManager } from "./jobManager.js";
+import { PreviewService } from "./previewService.js";
 import { MetadataService } from "./metadataService.js";
 import {
   cookiesAllowed,
@@ -21,6 +22,12 @@ import {
 } from "./potService.js";
 import { parseYouTubeInput } from "./urlService.js";
 import { ytdlpEnv, ytdlpLaunch } from "./ytdlpRunner.js";
+import {
+  buildAudioFilters,
+  resolveNormalizeMode,
+  transcodeWithLinearLoudness,
+  type NormalizeMode,
+} from "./audioFilterService.js";
 
 export interface ConvertRequestOptions {
   url: string;
@@ -30,6 +37,8 @@ export interface ConvertRequestOptions {
   trimEnd?: string;
   volumeBoost?: number;
   normalizeAudio?: boolean;
+  /** New dual-mode selector. Legacy `normalizeAudio: true` maps to "loudness". */
+  normalizeMode?: NormalizeMode | string;
   embedThumbnail?: boolean;
 }
 
@@ -118,13 +127,22 @@ export class ConversionService {
     const { strategy } = await resolveStrategy();
     const useCookies = cookiesAllowed(strategy, !!cookiesPath);
 
-    const ffmpegFilters: string[] = [];
-    if (options.normalizeAudio) {
-      ffmpegFilters.push("loudnorm,aresample=48000");
-    } else if (options.volumeBoost && options.volumeBoost !== 100) {
-      const factor = (options.volumeBoost / 100).toFixed(2);
-      ffmpegFilters.push(`volume=${factor}`);
-    }
+    // Loudness mode runs as a LOCAL two-pass post-pass after a native
+    // download: true-linear scaling needs a measurement pass first, which
+    // can't run inside yt-dlp's one-shot transcode. Peak/off+boost stay in
+    // yt-dlp args (single-pass, pumping-free by construction).
+    const loudnessPostPass =
+      resolveNormalizeMode({
+        normalizeMode: options.normalizeMode,
+        normalizeAudio: options.normalizeAudio,
+      }) === "loudness";
+    const ffmpegFilters: string[] = loudnessPostPass
+      ? []
+      : buildAudioFilters({
+          normalizeMode: options.normalizeMode,
+          normalizeAudio: options.normalizeAudio,
+          volumeBoost: options.volumeBoost,
+        });
     const hasFilters = ffmpegFilters.length > 0;
 
     const args: string[] = [
@@ -153,7 +171,13 @@ export class ConversionService {
       args.push("--force-keyframes-at-cuts");
     }
 
-    if (format === "best" || format === "opus" || format === "m4a") {
+    if (loudnessPostPass) {
+      // Native streamcopy download; the two-pass linear post-pass below
+      // transcodes to the requested target afterwards. (Single transcode
+      // total — same cost class as the old in-yt-dlp filter.)
+      args.push("--extract-audio");
+      args.push("--audio-format", "best");
+    } else if (format === "best" || format === "opus" || format === "m4a") {
       if (!hasFilters) {
         args.push("--extract-audio");
         args.push("--audio-format", format === "best" ? "best" : format);
@@ -204,8 +228,15 @@ export class ConversionService {
       }
     }
 
+    // NOTE: opus excluded — ffmpeg cannot mux attached_pic into Ogg/Opus
+    // (cover would fail the whole conversion). Opus cover is embedded later
+    // via METADATA_BLOCK_PICTURE in the minimalTags step below.
+    // Loudness post-pass also skips yt-dlp embedding: the native download
+    // may be opus (un-embeddable) and the local transcode + minimalTags step
+    // attach the artwork afterwards.
     if (
       options.embedThumbnail &&
+      !loudnessPostPass &&
       (format === "mp3" || format === "m4a" || format === "flac")
     ) {
       args.push("--embed-thumbnail");
@@ -216,8 +247,9 @@ export class ConversionService {
     JobManager.updateJob(jobId, {
       status: "downloading",
       progress: 5,
-      stageMessage:
-        format === "best" || format === "opus" || format === "m4a"
+      stageMessage: loudnessPostPass
+        ? "Fetching native audio stream (loudness balanced afterwards, dynamics preserved)..."
+        : format === "best" || format === "opus" || format === "m4a"
           ? "Fetching highest native audio stream directly from YouTube..."
           : `Connecting to YouTube audio stream for ${format.toUpperCase()} conversion...`,
     });
@@ -311,8 +343,54 @@ export class ConversionService {
         return;
       }
 
-      const stagedFile = path.join(downloadsDir, matchedFile);
-      const actualExt = path.extname(stagedFile).replace(".", "").toLowerCase();
+      let stagedFile = path.join(downloadsDir, matchedFile);
+      let actualExt = path.extname(stagedFile).replace(".", "").toLowerCase();
+
+      let loudnessInfo: { gainDb: number; outputI: number } | null = null;
+      if (loudnessPostPass) {
+        // Two-pass linear loudnorm to the REQUESTED target ("best" keeps the
+        // native container). Uniform gain — dynamics preserved, silence
+        // untouched. Runs after the native download, before naming/tagging.
+        const SUPPORTED_TARGETS = ["opus", "m4a", "mp3", "flac", "wav"];
+        const finalTarget =
+          format === "best"
+            ? SUPPORTED_TARGETS.includes(actualExt)
+              ? actualExt
+              : "opus"
+            : format;
+        const postPath = path.join(
+          downloadsDir,
+          `${jobId}.loudness.${finalTarget}`,
+        );
+        try {
+          const res = await transcodeWithLinearLoudness(stagedFile, postPath, {
+            format: finalTarget,
+            bitrate,
+            onPass: (pass) =>
+              JobManager.updateJob(jobId, {
+                status: "converting",
+                progress: pass === 1 ? 86 : 92,
+                stageMessage:
+                  pass === 1
+                    ? "Measuring loudness (pass 1/2) — audio untouched..."
+                    : "Applying uniform loudness gain (pass 2/2)...",
+              }),
+          });
+          loudnessInfo = { gainDb: res.gainDb, outputI: res.outputI };
+        } catch (postErr: any) {
+          JobManager.updateJob(jobId, {
+            status: "error",
+            exitCode: code,
+            error: `Loudness pass failed: ${postErr?.message || postErr}`,
+          });
+          return;
+        }
+        try {
+          fs.unlinkSync(stagedFile);
+        } catch {}
+        stagedFile = postPath;
+        actualExt = finalTarget;
+      }
 
       const resolvedDisplayFileName = displayFileName.replace(
         /\.[a-z0-9]+$/i,
@@ -354,8 +432,11 @@ export class ConversionService {
       const updated = JobManager.updateJob(jobId, {
         status: "completed",
         progress: 100,
-        stageMessage:
-          format === "best" || format === "opus" || format === "m4a"
+        stageMessage: loudnessPostPass
+          ? loudnessInfo && Number.isFinite(loudnessInfo.outputI)
+            ? `Loudness balanced to ${loudnessInfo.outputI.toFixed(1)} LUFS with a uniform ${loudnessInfo.gainDb >= 0 ? "+" : ""}${loudnessInfo.gainDb.toFixed(1)} dB gain — dynamics fully preserved!`
+            : "Loudness balanced with a uniform gain — dynamics fully preserved!"
+          : format === "best" || format === "opus" || format === "m4a"
             ? `Highest native audio stream extracted bit-for-bit (~${actualExt === "opus" ? "160k Opus" : "128k AAC"})!`
             : "Audio converted successfully!",
         format: actualExt,
@@ -363,7 +444,9 @@ export class ConversionService {
         outputFileName: finalName,
         fileSizeBytes: fileStat.size,
         downloadUrl: `/api/download/${jobId}`,
-        streamUrl: `/api/stream/${jobId}`,
+        streamUrl: PreviewService.isEligible(actualExt)
+          ? `/api/stream/${jobId}?preview=mp3`
+          : `/api/stream/${jobId}`,
         completedAt: Date.now(),
       });
       if (updated?.outputFilePath) {

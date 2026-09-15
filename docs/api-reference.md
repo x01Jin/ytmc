@@ -143,6 +143,14 @@ Retrieves current progress and status for a specific conversion job.
 
 Streams the extracted audio file for in-browser playback. Supports HTTP Range requests (`HTTP 206 Partial Content`) for instant audio scrubbing and buffering.
 
+#### Query parameters
+
+| Parameter | Values | Behavior                                                                                                                                                                                                                                                                                                                                                          |
+| --------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `preview` | `mp3`  | Serves the cached MP3 preview (raw `libmp3lame -q:a 0` transcode, no filters) instead of the stored file. Applies to Opus and M4A tracks only. Those formats stay native on disk and get previewed as MP3 because browsers cannot decode their containers. MP3 sources serve directly with no transcoding; all other formats ignore the flag and stream natively. |
+
+Opus and M4A `streamUrl` values are issued with `?preview=mp3` already appended. Downloads (`GET /api/download/:id`) always serve the original stored file.
+
 ### `GET /api/download/:id`
 
 Downloads the audio file directly to the client's file system with clean `Content-Disposition: attachment` headers and sanitized file names.

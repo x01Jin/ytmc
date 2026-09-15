@@ -3,6 +3,19 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { FFPROBE_PATH, FFMPEG_PATH } from "../config.js";
+import {
+  buildAudioFilters,
+  codecForTarget,
+  linearGainFilter,
+  measureLoudness,
+  resolveNormalizeMode,
+  type NormalizeMode,
+} from "./audioFilterService.js";
+import {
+  AudioTagService,
+  embedOpusPicture,
+  extractOpusPicture,
+} from "./audioTagService.js";
 
 export const EDITABLE_FORMATS = ["mp3", "m4a", "opus", "flac", "wav"] as const;
 export type EditableFormat = (typeof EDITABLE_FORMATS)[number];
@@ -11,6 +24,8 @@ export interface LibraryEditPatch {
   format?: string;
   bitrate?: string;
   normalizeAudio?: boolean;
+  /** New dual-mode selector. Legacy `normalizeAudio: true` maps to "loudness". */
+  normalizeMode?: NormalizeMode | string;
   volumeBoost?: number;
   title?: string;
   artist?: string;
@@ -21,6 +36,10 @@ export interface EditResult {
   fileName: string;
   fileSizeBytes: number;
   format: string;
+  /** True when source had cover art but target could not carry it. */
+  coverDropped?: boolean;
+  /** Uniform loudness gain applied (two-pass linear), if any. */
+  loudness?: { gainDb: number; outputI: number };
 }
 
 export function parseTimeInput(raw: string): number | null {
@@ -53,7 +72,7 @@ function ffprobeCmd(): string {
   return fs.existsSync(FFPROBE_PATH) ? FFPROBE_PATH : "ffprobe";
 }
 
-const COVER_CAPABLE_FORMATS = new Set(["mp3", "m4a", "flac", "wav"]);
+const COVER_CAPABLE_FORMATS = new Set(["mp3", "m4a", "flac", "wav", "opus"]);
 
 function runTool(
   cmd: string,
@@ -77,34 +96,43 @@ function audioCodecFor(
   format: string,
   bitrate?: string,
 ): { codec: string; bitrate: string } {
-  switch (format) {
-    case "mp3":
-      return {
-        codec: "libmp3lame",
-        bitrate: bitrate && bitrate !== "native" ? bitrate : "160k",
-      };
-    case "m4a":
-      return { codec: "aac", bitrate: "128k" };
-    case "opus":
-      return { codec: "libopus", bitrate: "160k" };
-    case "flac":
-      return { codec: "flac", bitrate: "0" };
-    case "wav":
-      return { codec: "pcm_s16le", bitrate: "" };
-    default:
-      throw new Error(`Unsupported target format: ${format}`);
+  // Single shared map (server/services/audioFilterService.ts).
+  return codecForTarget(format, bitrate);
+}
+
+async function sourceHasCover(filePath: string): Promise<boolean> {
+  try {
+    const { stdout } = await runTool(
+      ffprobeCmd(),
+      ["-v", "quiet", "-print_format", "json", "-show_streams", filePath],
+      15000,
+    );
+    const parsed = JSON.parse(stdout) as {
+      streams?: Array<{ codec_type?: string; tags?: Record<string, string> }>;
+    };
+    if ((parsed.streams ?? []).some((s) => s.codec_type === "video"))
+      return true;
+    // Opus/Ogg artwork lives as METADATA_BLOCK_PICTURE, not a video stream.
+    const audioTags =
+      parsed.streams?.find((s) => s.codec_type === "audio")?.tags ?? {};
+    return Object.keys(audioTags).some(
+      (k) => k.toUpperCase() === "METADATA_BLOCK_PICTURE",
+    );
+  } catch {
+    return false;
   }
 }
 
-function audioFilters(patch: {
-  normalizeAudio?: boolean;
-  volumeBoost?: number;
-}): string[] {
-  if (patch.normalizeAudio) return ["loudnorm,aresample=48000"];
-  if (patch.volumeBoost && patch.volumeBoost !== 100) {
-    return [`volume=${(patch.volumeBoost / 100).toFixed(2)}`];
+/** Raw cover bytes from any supported source (video stream or opus block). */
+async function sourceCoverBytes(
+  filePath: string,
+  ext: string,
+): Promise<Buffer | null> {
+  if (ext === "opus" || ext === "ogg" || ext === "oga") {
+    return extractOpusPicture(filePath);
   }
-  return [];
+  const art = await AudioTagService.extractCoverArt(filePath).catch(() => null);
+  return art ? Buffer.from(art.data) : null;
 }
 
 export class AudioEditService {
@@ -155,24 +183,35 @@ export class AudioEditService {
     }
     const dir = path.dirname(filePath);
     const tmp = path.join(dir, `temp_trim_${crypto.randomUUID()}.${ext}`);
+    // Opus cannot carry a video stream (muxer rejects it) — capture artwork
+    // first and re-embed via METADATA_BLOCK_PICTURE after the trim.
+    const isOpusTrim = ext === "opus";
+    const trimCover = isOpusTrim
+      ? await sourceCoverBytes(filePath, ext).catch(() => null)
+      : null;
     try {
       const args = ["-y", "-i", filePath, "-ss", String(startSecs)];
       if (endSecs !== null) args.push("-to", String(endSecs));
-      if (COVER_CAPABLE_FORMATS.has(ext)) {
+      if (COVER_CAPABLE_FORMATS.has(ext) && !isOpusTrim) {
         args.push(
           "-map",
           "0:a",
           "-map",
           "0:v?",
+          "-map_metadata",
+          "0",
           ...audioArgs,
           "-c:v",
           "copy",
           tmp,
         );
       } else {
-        args.push("-map", "0:a", ...audioArgs, tmp);
+        args.push("-map", "0:a", "-map_metadata", "0", ...audioArgs, tmp);
       }
       await runTool(ffmpegCmd(), args, 120000);
+      if (isOpusTrim && trimCover) {
+        await embedOpusPicture(tmp, trimCover).catch(() => false);
+      }
       fs.copyFileSync(tmp, filePath);
       const stat = fs.statSync(filePath);
       return {
@@ -198,8 +237,22 @@ export class AudioEditService {
     if (!fs.existsSync(filePath))
       throw new Error("Audio file not found on disk.");
     const currentExt = path.extname(filePath).replace(".", "").toLowerCase();
-    const needsAudio =
-      target.format !== currentExt || audioFilters(patch).length > 0;
+    const mode = resolveNormalizeMode(patch);
+    let dspFilters: string[];
+    let loudness: EditResult["loudness"];
+    if (mode === "loudness") {
+      const measured = await measureLoudness(filePath);
+      if (measured !== null) {
+        const linear = linearGainFilter(measured);
+        dspFilters = [linear.filter];
+        loudness = { gainDb: linear.gainDb, outputI: linear.outputI };
+      } else {
+        dspFilters = buildAudioFilters(patch);
+      }
+    } else {
+      dspFilters = buildAudioFilters(patch);
+    }
+    const needsAudio = target.format !== currentExt || dspFilters.length > 0;
     const dir = path.dirname(target.filePath);
     const tmp = path.join(
       dir,
@@ -207,27 +260,68 @@ export class AudioEditService {
     );
 
     try {
-      const args = ["-y", "-i", filePath, "-map", "0:a"];
-      if (COVER_CAPABLE_FORMATS.has(target.format)) {
-        args.push("-map", "0:v?", "-c:v", "copy");
+      const existing = await AudioTagService.readTags(filePath).catch(() => ({
+        title: "",
+        artist: "",
+      }));
+      const title = patch.title !== undefined ? patch.title : existing.title;
+      const artist =
+        patch.artist !== undefined ? patch.artist : existing.artist;
+      const hadCover = await sourceHasCover(filePath);
+      const isOpusTarget = target.format === "opus";
+
+      const buildArgs = (withCover: boolean): string[] => {
+        const a = ["-y", "-i", filePath, "-map", "0:a"];
+        if (
+          withCover &&
+          !isOpusTarget &&
+          COVER_CAPABLE_FORMATS.has(target.format)
+        ) {
+          a.push("-map", "0:v?", "-c:v", "copy");
+        }
+        a.push("-map_metadata", "0");
+        if (needsAudio) {
+          const { codec, bitrate } = audioCodecFor(
+            target.format,
+            patch.bitrate,
+          );
+          a.push("-c:a", codec);
+          if (bitrate) a.push("-b:a", bitrate);
+          if (dspFilters.length > 0) a.push("-af", dspFilters.join(","));
+        } else {
+          a.push("-c:a", "copy");
+        }
+        if (title) a.push("-metadata", `title=${title}`);
+        if (artist) {
+          a.push("-metadata", `artist=${artist}`);
+          a.push("-metadata", `album_artist=${artist}`);
+        }
+        a.push(tmp);
+        return a;
+      };
+
+      let coverDropped = false;
+      try {
+        await runTool(ffmpegCmd(), buildArgs(true), 180000);
+      } catch (err) {
+        if (hadCover && !isOpusTarget) {
+          if (fs.existsSync(tmp)) fs.rmSync(tmp, { force: true });
+          await runTool(ffmpegCmd(), buildArgs(false), 180000);
+          coverDropped = true;
+        } else {
+          throw err;
+        }
       }
-      if (needsAudio) {
-        const { codec, bitrate } = audioCodecFor(target.format, patch.bitrate);
-        args.push("-c:a", codec);
-        if (bitrate) args.push("-b:a", bitrate);
-        const filters = audioFilters(patch);
-        if (filters.length > 0) args.push("-af", filters.join(","));
-      } else {
-        args.push("-c:a", "copy");
+
+      if (isOpusTarget && hadCover) {
+        try {
+          const cover = await sourceCoverBytes(filePath, currentExt);
+          const ok = await embedOpusPicture(tmp, cover);
+          if (!ok) coverDropped = true;
+        } catch {
+          coverDropped = true;
+        }
       }
-      if (patch.title !== undefined)
-        args.push("-metadata", `title=${patch.title}`);
-      if (patch.artist !== undefined) {
-        args.push("-metadata", `artist=${patch.artist}`);
-        args.push("-metadata", `album_artist=${patch.artist}`);
-      }
-      args.push(tmp);
-      await runTool(ffmpegCmd(), args, 180000);
 
       fs.mkdirSync(dir, { recursive: true });
       if (path.resolve(tmp) !== path.resolve(target.filePath)) {
@@ -246,6 +340,8 @@ export class AudioEditService {
         fileName: path.basename(target.filePath),
         fileSizeBytes: stat.size,
         format: target.format,
+        ...(coverDropped ? { coverDropped: true as const } : {}),
+        ...(loudness ? { loudness } : {}),
       };
     } finally {
       if (fs.existsSync(tmp)) {

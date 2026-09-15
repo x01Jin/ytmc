@@ -1,7 +1,8 @@
 import { Loader2, Settings2 } from "lucide-react";
 import { useState } from "react";
 import { ApiClient } from "../../services/apiClient";
-import type { AudioBitrate } from "../../types";
+import type { AudioBitrate, NormalizeMode } from "../../types";
+import { NORMALIZE_MODES } from "../../utils/normalizeModes";
 import { useEditPanel } from "./LibraryEditPanel";
 
 const FORMATS = ["mp3", "m4a", "opus", "flac", "wav"] as const;
@@ -19,7 +20,7 @@ export function AdvancedPane() {
     : "mp3";
   const [format, setFormat] = useState<string>(currentFormat);
   const [bitrate, setBitrate] = useState<AudioBitrate>("native");
-  const [normalizeAudio, setNormalizeAudio] = useState(false);
+  const [normalizeMode, setNormalizeMode] = useState<NormalizeMode>("off");
   const [volumeBoost, setVolumeBoost] = useState(100);
   const [title, setTitle] = useState(record.title);
   const [artist, setArtist] = useState(record.author);
@@ -31,7 +32,7 @@ export function AdvancedPane() {
   const touchesAudio =
     format !== record.format ||
     (format === "mp3" && bitrate !== "native") ||
-    normalizeAudio ||
+    normalizeMode !== "off" ||
     volumeBoost !== 100;
   const touchesName =
     title.trim() !== record.title || artist.trim() !== record.author;
@@ -51,18 +52,24 @@ export function AdvancedPane() {
     }
     setIsSaving(true);
     try {
-      await ApiClient.editLibraryFile(record.jobId, {
+      const result = await ApiClient.editLibraryFile(record.jobId, {
         ...(touchesAudio
           ? {
               format,
               bitrate: format === "mp3" ? bitrate : undefined,
-              normalizeAudio,
+              normalizeMode,
+              // Legacy compat for older servers.
+              normalizeAudio: normalizeMode === "loudness",
               volumeBoost,
             }
           : {}),
         ...(touchesName ? { title: title.trim(), artist: artist.trim() } : {}),
       });
-      setNotice("Changes applied. The file was rewritten in place.");
+      setNotice(
+        result && result.coverDropped
+          ? "Changes applied. Note: cover art could not be carried to the new container — audio and tags are intact."
+          : "Changes applied. Tags and cover art are preserved across the rewrite.",
+      );
       setConfirmArmed(false);
       onEdited();
     } catch (err) {
@@ -138,29 +145,57 @@ export function AdvancedPane() {
         <span className="mb-2 block text-xs font-semibold text-px-text">
           Audio Enhancements
         </span>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="flex cursor-pointer items-center gap-2 rounded-[2px] border border-px-line bg-px-bg p-2 text-xs">
-            <input
-              type="checkbox"
-              checked={normalizeAudio}
-              onChange={(e) => {
-                setNormalizeAudio(e.target.checked);
-                markDirty();
-              }}
-              className="h-4 w-4 accent-[#7c5cff]"
-            />
-            <span>
-              <span className="font-semibold text-px-text">
-                Loudness normalization
-              </span>
-              <span className="block text-[10px] text-px-dim">
-                EBU R128, requires re-encode
-              </span>
-            </span>
-          </label>
+        <fieldset>
+          <legend className="sr-only">Loudness handling</legend>
+          <div
+            className="grid grid-cols-1 gap-1.5 sm:grid-cols-3"
+            role="radiogroup"
+            aria-label="Loudness handling"
+          >
+            {NORMALIZE_MODES.map((m) => {
+              const selected = normalizeMode === m.id;
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  title={m.hint}
+                  onClick={() => {
+                    setNormalizeMode(m.id);
+                    markDirty();
+                  }}
+                  className={`border-2 px-2 py-1.5 text-left transition-colors ${
+                    selected
+                      ? "border-px-acc bg-px-panel-2 text-px-acc"
+                      : "border-px-line bg-px-bg hover:border-px-dim"
+                  }`}
+                >
+                  <span className="block text-xs font-bold">{m.label}</span>
+                  <span className="block text-[10px] text-px-dim">
+                    {m.hint}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+        {normalizeMode !== "off" && (
+          <p className="mt-1 text-[11px] text-px-dim" role="note">
+            Requires re-encode. Existing tags and cover art are preserved.
+          </p>
+        )}
+        <div className="mt-2">
           <div className="flex items-center justify-between rounded-[2px] border border-px-line bg-px-bg p-2">
             <span className="text-xs font-semibold text-px-text">
-              Volume gain
+              Volume gain{" "}
+              <span className="font-normal text-px-dim">
+                {normalizeMode === "loudness"
+                  ? "(fixed by loudness mode)"
+                  : normalizeMode === "peak"
+                    ? "(limited to −1 dBTP)"
+                    : ""}
+              </span>
             </span>
             <select
               aria-label="Volume gain"
@@ -169,7 +204,7 @@ export function AdvancedPane() {
                 setVolumeBoost(Number(e.target.value));
                 markDirty();
               }}
-              disabled={normalizeAudio}
+              disabled={normalizeMode === "loudness"}
               className="px-select py-1 text-xs disabled:opacity-50"
             >
               <option value={100}>100%</option>

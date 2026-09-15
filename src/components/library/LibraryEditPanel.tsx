@@ -143,16 +143,42 @@ export function LibraryEditPanel({
           </span>
         </div>
         <EditTabs tab={tab} onTabChange={setTab} baseId={baseId} />
-        <div
-          key={tab}
-          role="tabpanel"
-          id={`${baseId}-panel-${tab}`}
-          aria-labelledby={`${baseId}-tab-${tab}`}
-          className="pt-3"
-        >
-          {tab === "trim" && <TrimPane />}
-          {tab === "tags" && <TagPane />}
-          {tab === "advanced" && <AdvancedPane />}
+        {/*
+         * All panes stay mounted and are toggled with `hidden` instead of
+         * conditional rendering: switching tabs used to remount TagEditor
+         * (key={tab}) and silently discard unsaved tag drafts, so a format
+         * change in Advanced looked like a "metadata reset". Hidden panes
+         * preserve their local state; re-render cost is negligible.
+         * See rerender-* / state-lift-state guidelines.
+         */}
+        <div className="pt-3">
+          <div
+            role="tabpanel"
+            id={`${baseId}-panel-trim`}
+            aria-labelledby={`${baseId}-tab-trim`}
+            hidden={tab !== "trim"}
+            className="pt-0"
+          >
+            <TrimPane />
+          </div>
+          <div
+            role="tabpanel"
+            id={`${baseId}-panel-tags`}
+            aria-labelledby={`${baseId}-tab-tags`}
+            hidden={tab !== "tags"}
+            className="pt-0"
+          >
+            <TagPane />
+          </div>
+          <div
+            role="tabpanel"
+            id={`${baseId}-panel-advanced`}
+            aria-labelledby={`${baseId}-tab-advanced`}
+            hidden={tab !== "advanced"}
+            className="pt-0"
+          >
+            <AdvancedPane />
+          </div>
         </div>
       </div>
     </EditPanelContext>

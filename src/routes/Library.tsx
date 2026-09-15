@@ -4,6 +4,7 @@ import { AudioPlayer } from "../components/AudioPlayer";
 import { LibraryEditPanel } from "../components/library/LibraryEditPanel";
 import { useLibrary } from "../store/appStore";
 import type { ConversionJob, LibraryRecord } from "../types";
+import { previewStreamUrl } from "../utils/audioSupport";
 
 type SortKey = "recent" | "name" | "size";
 
@@ -30,7 +31,7 @@ function recordToJob(record: LibraryRecord): ConversionJob {
     outputFilePath: record.filePath,
     fileSizeBytes: record.fileSizeBytes,
     downloadUrl: `/api/download/${encodeURIComponent(record.jobId)}`,
-    streamUrl: `/api/stream/${encodeURIComponent(record.jobId)}`,
+    streamUrl: previewStreamUrl(record.jobId, record.format),
     createdAt: record.completedAt,
     completedAt: record.completedAt,
   };

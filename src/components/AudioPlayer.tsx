@@ -1,6 +1,10 @@
 import { Pause, Play, Repeat, Volume2, VolumeX } from "lucide-react";
 import React, { useEffect, useRef, useState } from "react";
 import { ConversionJob } from "../types";
+import {
+  needsPreviewPlayback,
+  withPreviewForFormat,
+} from "../utils/audioSupport";
 
 interface AudioPlayerProps {
   job?: ConversionJob;
@@ -15,6 +19,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
   const [isMuted, setIsMuted] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [previewFallback, setPreviewFallback] = useState(false);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -23,6 +28,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
     setCurrentTime(0);
     setDuration(0);
     setLoadError(null);
+    setPreviewFallback(false);
     audio?.load();
   }, [job?.id, job?.streamUrl]);
 
@@ -111,6 +117,16 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
     );
   }
 
+  const streamSrc = job
+    ? withPreviewForFormat(
+        previewFallback
+          ? `/api/stream/${encodeURIComponent(job.id)}?preview=mp3`
+          : job.streamUrl || `/api/stream/${encodeURIComponent(job.id)}`,
+        job.id,
+        job.format,
+      )
+    : "";
+
   return (
     <article
       id="audio-player-component"
@@ -119,7 +135,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
     >
       <audio
         ref={audioRef}
-        src={job.streamUrl || `/api/stream/${encodeURIComponent(job.id)}`}
+        src={streamSrc}
         preload="metadata"
         onDurationChange={(event) => {
           const nextDuration = event.currentTarget.duration;
@@ -131,9 +147,13 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onError={() => {
+          if (needsPreviewPlayback(job.format) && !previewFallback) {
+            setPreviewFallback(true);
+            return;
+          }
           setIsPlaying(false);
           setLoadError(
-            "This track could not be played. The file may be missing, still processing, or in a format this player can't decode — try another format.",
+            "This track could not be played. The file may be missing or still processing.",
           );
         }}
         onEnded={() => {

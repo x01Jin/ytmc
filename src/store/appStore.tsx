@@ -17,6 +17,7 @@ import type {
   VideoMetadata,
 } from "../types";
 import { useJobPolling } from "../hooks/useJobPolling";
+import { migrateNormalizeMode } from "../utils/normalizeModes";
 
 // --- Jobs ---
 
@@ -314,7 +315,7 @@ const DEFAULT_CONVERT_OPTIONS: ConversionOptions = {
   trimStart: "",
   trimEnd: "",
   volumeBoost: 100,
-  normalizeAudio: false,
+  normalizeMode: "off",
   embedThumbnail: true,
 };
 
@@ -348,7 +349,17 @@ function loadConvertDraft(): Omit<ConvertDraft, "pendingInspectUrl"> {
           : null,
       options:
         parsed.options && typeof parsed.options === "object"
-          ? { ...DEFAULT_CONVERT_OPTIONS, ...parsed.options }
+          ? {
+              ...DEFAULT_CONVERT_OPTIONS,
+              ...parsed.options,
+              // Migrate legacy boolean drafts to the dual-mode selector.
+              normalizeMode: migrateNormalizeMode(
+                parsed.options as {
+                  normalizeMode?: string;
+                  normalizeAudio?: boolean;
+                },
+              ),
+            }
           : DEFAULT_CONVERT_OPTIONS,
     };
   } catch {

@@ -2,6 +2,7 @@ import { Loader2, Scissors } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ApiClient } from "../../services/apiClient";
 import { formatSeconds, parseTimeToSeconds } from "../../utils/time";
+import { previewStreamUrl } from "../../utils/audioSupport";
 import { useEditPanel } from "./LibraryEditPanel";
 
 /**
@@ -117,7 +118,7 @@ export function TrimPane() {
     <div className="space-y-3">
       <audio
         ref={audioRef}
-        src={`/api/stream/${record.jobId}`}
+        src={previewStreamUrl(record.jobId, record.format)}
         preload="metadata"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={(e) => {

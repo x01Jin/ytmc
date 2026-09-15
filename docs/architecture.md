@@ -70,6 +70,7 @@ The backend codebase adheres strictly to the single-purpose pattern:
 | `server/services/cookieService.ts`     | Netscape/JSON cookie parsing, verification, and file persistence.                                                    |
 | `server/services/settingsService.ts`   | Library-folder settings in `data/settings.json` with Windows path validation.                                        |
 | `server/services/fileService.ts`       | Library dir resolution, on-disk scan, `.part` sweep.                                                                 |
+| `server/services/previewService.ts`    | Cached 320 kbps MP3 previews for Opus/M4A playback; on-demand transcode, mtime validation, invalidation.           |
 | `server/services/libraryStore.ts`      | Persistent `data/library.json` index for converted and imported library files; conversion history survives restarts. |
 | `server/utils/filename.ts`             | Windows-safe filename sanitizer, display names, dedupe.                                                              |
 | `server/utils/mime.ts`                 | Fast audio MIME-type resolution for streaming and downloads.                                                         |
@@ -106,5 +107,5 @@ The frontend is constructed with focused React components:
 - **`ConversionOptionsPanel.tsx`**: Single-section conversion panel: format grid, audio enhancement controls (loudness normalization, volume gain), album-cover/ID3 embed toggle, and the convert action.
 - **`TagEditor.tsx`**: Music metadata editor and autotagger interface. Automatically searches online sources as the track name is typed, allowing one-click tag application and cover art selection.
 - **`ConversionProgress.tsx`**: Real-time progress bar reflecting conversion steps (stream download, audio extraction, metadata embedding).
-- **`AudioPlayer.tsx`**: Custom HTML5 audio player supporting play/pause, time scrubbing, volume adjustments, and loop repeat.
+- **`AudioPlayer.tsx`**: Custom HTML5 audio player supporting play/pause, time scrubbing, volume adjustments, and loop repeat. Opus and M4A tracks play via their cached 320 kbps MP3 preview stream (`?preview=mp3`); all other formats stream natively.
 - **`CookieModal.tsx`**: Configuration modal for YouTube session cookies to bypass bot detection.

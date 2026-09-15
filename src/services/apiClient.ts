@@ -57,7 +57,9 @@ export class ApiClient {
         trimStart: options.trimStart.trim() || undefined,
         trimEnd: options.trimEnd.trim() || undefined,
         volumeBoost: options.volumeBoost,
-        normalizeAudio: options.normalizeAudio,
+        normalizeMode: options.normalizeMode,
+        // Legacy compat for older servers.
+        normalizeAudio: options.normalizeMode === "loudness",
         embedThumbnail: options.embedThumbnail,
       }),
     });
@@ -307,12 +309,13 @@ export class ApiClient {
     patch: {
       format?: string;
       bitrate?: string;
+      normalizeMode?: string;
       normalizeAudio?: boolean;
       volumeBoost?: number;
       title?: string;
       artist?: string;
     },
-  ): Promise<void> {
+  ): Promise<{ coverDropped?: boolean } | void> {
     const res = await fetch(`/api/library/${encodeURIComponent(jobId)}/edit`, {
       method: "POST",
       headers: await mutatingHeaders(),
@@ -322,6 +325,7 @@ export class ApiClient {
     if (!res.ok || !json.success) {
       throw new Error(json.error || "Could not update the audio file");
     }
+    return json.data ?? undefined;
   }
 
   public static async deleteLibraryFile(jobId: string): Promise<void> {
