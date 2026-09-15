@@ -1,7 +1,7 @@
 {
   "name": "youtube-to-music-converter",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Convert YouTube videos to studio-grade MP3, M4A, FLAC, WAV, or Opus audio with ID3 tagging.",
   "type": "module",
   "main": "dist-electron/main.cjs",
