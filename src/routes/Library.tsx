@@ -1,6 +1,7 @@
 import { Upload } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { AudioPlayer } from "../components/AudioPlayer";
+import { CoverArtPreview } from "../components/CoverArtPreview";
 import { LibraryEditPanel } from "../components/library/LibraryEditPanel";
 import { useLibrary } from "../store/appStore";
 import type { ConversionJob, LibraryRecord } from "../types";
@@ -43,6 +44,8 @@ export function LibraryRoute() {
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<SortKey>("recent");
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [playNonce, setPlayNonce] = useState(0);
+  const [artPreviewId, setArtPreviewId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -88,6 +91,7 @@ export function LibraryRoute() {
     try {
       await actions.deleteFile(jobId);
       if (playingId === jobId) setPlayingId(null);
+      if (artPreviewId === jobId) setArtPreviewId(null);
       if (editingId === jobId) setEditingId(null);
     } catch (err) {
       setActionError(
@@ -145,6 +149,9 @@ export function LibraryRoute() {
   const playingRecord = playingId
     ? (records.find((r) => r.jobId === playingId) ?? null)
     : null;
+  const artPreviewRecord = artPreviewId
+    ? (records.find((r) => r.jobId === artPreviewId) ?? null)
+    : null;
 
   return (
     <div
@@ -163,7 +170,7 @@ export function LibraryRoute() {
       }}
     >
       <section
-        className={`px-panel flex flex-col gap-2 p-3 sm:flex-row sm:items-center ${
+        className={`px-panel flex flex-col gap-3 p-3 sm:flex-row sm:items-end ${
           isDragging ? "border-px-acc" : ""
         }`}
         aria-label="Library controls"
@@ -184,27 +191,31 @@ export function LibraryRoute() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Artist, title, filename…"
-            className="px-input w-full text-sm"
+            className="px-input h-11 w-full text-sm"
           />
         </div>
-        <div className="flex items-end gap-2">
-          <label
-            htmlFor="library-sort"
-            className="mb-1 block text-xs text-px-dim"
-          >
-            Sort
-          </label>
-          <select
-            id="library-sort"
-            name="library-sort"
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortKey)}
-            className="px-select text-sm"
-          >
-            <option value="recent">Most recent</option>
-            <option value="name">Title A to Z</option>
-            <option value="size">Largest first</option>
-          </select>
+
+        <div className="flex flex-wrap items-end justify-end gap-2 sm:justify-start">
+          <div className="flex min-w-0 flex-col">
+            <label
+              htmlFor="library-sort"
+              className="mb-1 block text-xs text-px-dim"
+            >
+              Sort
+            </label>
+            <select
+              id="library-sort"
+              name="library-sort"
+              value={sort}
+              onChange={(e) => setSort(e.target.value as SortKey)}
+              className="px-select h-11 min-w-[9rem] text-sm"
+            >
+              <option value="recent">Most recent</option>
+              <option value="name">Title A to Z</option>
+              <option value="size">Largest first</option>
+            </select>
+          </div>
+
           <input
             ref={fileInputRef}
             type="file"
@@ -218,7 +229,7 @@ export function LibraryRoute() {
           />
           <button
             type="button"
-            className="px-btn flex items-center gap-1.5 text-xs"
+            className="px-btn h-11 items-center gap-1.5 text-xs"
             onClick={() => fileInputRef.current?.click()}
             disabled={isImporting}
             title="Copy audio into the library"
@@ -261,15 +272,23 @@ export function LibraryRoute() {
             return (
               <div key={record.jobId} className="px-row min-w-0">
                 <div className="flex min-w-0 items-center gap-3 p-2.5">
-                  <img
-                    src={record.thumbnail}
-                    alt=""
-                    width={40}
-                    height={40}
-                    loading="lazy"
-                    referrerPolicy="no-referrer"
-                    className="px-pixelated h-10 w-10 shrink-0 border-2 border-px-line object-cover"
-                  />
+                  <button
+                    type="button"
+                    onClick={() => setArtPreviewId(record.jobId)}
+                    aria-label={`View cover art for ${record.title}`}
+                    title="View cover art"
+                    className="shrink-0 cursor-zoom-in border-2 border-px-line transition-colors hover:border-px-acc"
+                  >
+                    <img
+                      src={record.thumbnail}
+                      alt=""
+                      width={40}
+                      height={40}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      className="px-pixelated block h-10 w-10 object-cover"
+                    />
+                  </button>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">
                       {record.title}
@@ -283,9 +302,12 @@ export function LibraryRoute() {
                     <button
                       type="button"
                       className="px-btn !px-2 !py-1 text-xs"
-                      onClick={() => setPlayingId(record.jobId)}
-                      aria-label={`Load ${record.title} in the player`}
-                      title="Load in player"
+                      onClick={() => {
+                        setPlayingId(record.jobId);
+                        setPlayNonce((n) => n + 1);
+                      }}
+                      aria-label={`Play ${record.title}`}
+                      title="Play in player"
                     >
                       ▶
                     </button>
@@ -348,8 +370,18 @@ export function LibraryRoute() {
       >
         <AudioPlayer
           job={playingRecord ? recordToJob(playingRecord) : undefined}
+          autoPlayNonce={playNonce}
         />
       </section>
+
+      {artPreviewRecord && (
+        <CoverArtPreview
+          src={artPreviewRecord.thumbnail}
+          title={artPreviewRecord.title}
+          subtitle={artPreviewRecord.author}
+          onClose={() => setArtPreviewId(null)}
+        />
+      )}
 
       {confirmDeleteId && (
         <div

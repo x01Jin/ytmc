@@ -8,9 +8,13 @@ import {
 
 interface AudioPlayerProps {
   job?: ConversionJob;
+  autoPlayNonce?: number;
 }
 
-export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
+export const AudioPlayer: React.FC<AudioPlayerProps> = ({
+  job,
+  autoPlayNonce = 0,
+}) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -31,6 +35,14 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job }) => {
     setPreviewFallback(false);
     audio?.load();
   }, [job?.id, job?.streamUrl]);
+
+  useEffect(() => {
+    if (autoPlayNonce === 0) return;
+    audioRef.current
+      ?.play()
+      .then(() => setIsPlaying(true))
+      .catch(() => setIsPlaying(false));
+  }, [autoPlayNonce]);
 
   useEffect(() => {
     if (!isPlaying) return;

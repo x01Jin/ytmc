@@ -14,6 +14,7 @@ import {
 import React, { useEffect, useRef, useState } from "react";
 import { ApiClient } from "../services/apiClient";
 import { MusicTagCandidate, MusicTags, TagSource } from "../types";
+import { CoverArtPreview } from "./CoverArtPreview";
 
 interface TagEditorProps {
   initialTags?: MusicTags;
@@ -62,6 +63,10 @@ export const TagEditor: React.FC<TagEditorProps> = ({
   const [appliedSource, setAppliedSource] = useState<string | null>(null);
   const [hasUserEdited, setHasUserEdited] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const [artPreview, setArtPreview] = useState<{
+    src: string;
+    title: string;
+  } | null>(null);
 
   const debounceTimeoutRef = useRef<any>(null);
 
@@ -306,12 +311,26 @@ export const TagEditor: React.FC<TagEditorProps> = ({
                 title="Click to apply these tags"
               >
                 {c.coverUrl ? (
-                  <img
-                    src={c.coverUrl}
-                    alt={c.title}
-                    referrerPolicy="no-referrer"
-                    className="h-11 w-11 shrink-0 border border-px-line bg-px-bg object-cover"
-                  />
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setArtPreview({
+                        src: c.coverUrl ?? "",
+                        title: `${c.title} • ${c.artist}`,
+                      });
+                    }}
+                    aria-label={`Preview cover art for ${c.title}`}
+                    title="Preview cover art"
+                    className="shrink-0 cursor-zoom-in border border-px-line transition-colors hover:border-px-acc"
+                  >
+                    <img
+                      src={c.coverUrl}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      className="block h-11 w-11 object-cover"
+                    />
+                  </button>
                 ) : (
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center border border-px-line bg-px-panel-2 text-px-dim">
                     <Music className="h-5 w-5" />
@@ -493,12 +512,25 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
         <div className="flex items-center gap-3">
           {tags.coverUrl ? (
-            <img
-              src={tags.coverUrl}
-              alt="Album Artwork"
-              referrerPolicy="no-referrer"
-              className="h-14 w-14 shrink-0 border border-px-line bg-px-bg object-cover"
-            />
+            <button
+              type="button"
+              onClick={() =>
+                setArtPreview({
+                  src: tags.coverUrl ?? "",
+                  title: tags.album || tags.title,
+                })
+              }
+              aria-label="Preview current cover art"
+              title="Preview cover art"
+              className="shrink-0 cursor-zoom-in border border-px-line transition-colors hover:border-px-acc"
+            >
+              <img
+                src={tags.coverUrl}
+                alt=""
+                referrerPolicy="no-referrer"
+                className="block h-14 w-14 object-cover"
+              />
+            </button>
           ) : (
             <div className="flex h-14 w-14 shrink-0 items-center justify-center border border-dashed border-px-line bg-px-bg text-px-dim">
               <ImageIcon className="h-6 w-6" />
@@ -594,6 +626,14 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           </button>
         )}
       </div>
+
+      {artPreview && (
+        <CoverArtPreview
+          src={artPreview.src}
+          title={artPreview.title}
+          onClose={() => setArtPreview(null)}
+        />
+      )}
     </div>
   );
 };
