@@ -13,6 +13,9 @@ export interface YtDlpLaunch {
 
 let cached: YtDlpLaunch | null = null;
 
+const YTDLP_VERSION_TIMEOUT_MS = 30000;
+const FFMPEG_VERSION_TIMEOUT_MS = 15000;
+
 /**
  * Shared environment for every yt-dlp child process (plugin discovery).
  */
@@ -48,7 +51,7 @@ export async function ensureYtDlp(): Promise<YtDlpLaunch> {
   for (const c of candidates) {
     try {
       const version = await new Promise<string>((resolve, reject) => {
-        execFile(c.command, [...c.prefixArgs, '--version'], { timeout: 30000, env: ytdlpEnv() }, (err, stdout) => {
+        execFile(c.command, [...c.prefixArgs, '--version'], { timeout: YTDLP_VERSION_TIMEOUT_MS, env: ytdlpEnv() }, (err, stdout) => {
           if (err) reject(err);
           else resolve(String(stdout).trim().split('\n')[0]);
         });
@@ -86,7 +89,7 @@ export async function ensureFfmpeg(): Promise<string | null> {
   const cmd = fs.existsSync(FFMPEG_PATH) ? FFMPEG_PATH : 'ffmpeg';
   try {
     const version: string = await new Promise((resolve, reject) => {
-      execFile(cmd, ['-version'], { timeout: 15000 }, (err, stdout) => {
+      execFile(cmd, ['-version'], { timeout: FFMPEG_VERSION_TIMEOUT_MS }, (err, stdout) => {
         if (err) reject(err);
         else resolve(String(stdout).split('\n')[0].trim());
       });

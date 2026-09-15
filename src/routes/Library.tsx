@@ -16,7 +16,8 @@ function formatBytes(bytes: number): string {
   return `${mb.toFixed(1)} MB`;
 }
 
-function recordToJob(record: LibraryRecord): ConversionJob {
+function recordToJob(record: LibraryRecord, mediaVersion = 0): ConversionJob {
+  const base = previewStreamUrl(record.jobId, record.format);
   return {
     id: record.jobId,
     videoId: record.videoId,
@@ -32,7 +33,9 @@ function recordToJob(record: LibraryRecord): ConversionJob {
     outputFilePath: record.filePath,
     fileSizeBytes: record.fileSizeBytes,
     downloadUrl: `/api/download/${encodeURIComponent(record.jobId)}`,
-    streamUrl: previewStreamUrl(record.jobId, record.format),
+    // Cache-buster so trims/retags reload the rewritten file instead of a
+    // stale buffered stream. The server ignores the extra query param.
+    streamUrl: `${base}${base.includes("?") ? "&" : "?"}v=${mediaVersion}`,
     createdAt: record.completedAt,
     completedAt: record.completedAt,
   };
@@ -51,6 +54,12 @@ export function LibraryRoute() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  // Per-track media version: bumped on edit so the player and trim preview
+  // reload the rewritten file. Keyed by track so editing one row never
+  // interrupts playback of another.
+  const [mediaVersions, setMediaVersions] = useState<Record<string, number>>(
+    {},
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const records = useMemo(() => {
@@ -66,11 +75,11 @@ export function LibraryRoute() {
       : [...list];
     switch (sort) {
       case "name":
-        return filtered.sort((a, b) => a.title.localeCompare(b.title));
+        return [...filtered].sort((a, b) => a.title.localeCompare(b.title));
       case "size":
-        return filtered.sort((a, b) => b.fileSizeBytes - a.fileSizeBytes);
+        return [...filtered].sort((a, b) => b.fileSizeBytes - a.fileSizeBytes);
       default:
-        return filtered.sort((a, b) => b.completedAt - a.completedAt);
+        return [...filtered].sort((a, b) => b.completedAt - a.completedAt);
     }
   }, [library, query, sort]);
 
@@ -118,6 +127,11 @@ export function LibraryRoute() {
     }
   };
 
+  const handleEdited = (jobId: string) => {
+    setMediaVersions((prev) => ({ ...prev, [jobId]: (prev[jobId] ?? 0) + 1 }));
+    void actions.refresh();
+  };
+
   if (isLoading && !library) {
     return (
       <section className="px-panel p-4" aria-label="Library">
@@ -148,8 +162,7 @@ export function LibraryRoute() {
 
   const playingRecord = playingId
     ? (records.find((r) => r.jobId === playingId) ?? null)
-    : null;
-  const artPreviewRecord = artPreviewId
+    : null;  const artPreviewRecord = artPreviewId
     ? (records.find((r) => r.jobId === artPreviewId) ?? null)
     : null;
 
@@ -353,8 +366,9 @@ export function LibraryRoute() {
                 {isEditing && (
                   <div id={`library-edit-${record.jobId}`}>
                     <LibraryEditPanel
+                      key={`${record.jobId}:${record.fileName}:${record.fileSizeBytes}`}
                       record={record}
-                      onEdited={() => void actions.refresh()}
+                      onEdited={() => handleEdited(record.jobId)}
                     />
                   </div>
                 )}
@@ -369,7 +383,14 @@ export function LibraryRoute() {
         aria-label="Preview player"
       >
         <AudioPlayer
-          job={playingRecord ? recordToJob(playingRecord) : undefined}
+          job={
+            playingRecord
+              ? recordToJob(
+                  playingRecord,
+                  mediaVersions[playingRecord.jobId] ?? 0,
+                )
+              : undefined
+          }
           autoPlayNonce={playNonce}
         />
       </section>

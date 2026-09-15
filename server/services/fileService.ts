@@ -1,7 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { DOWNLOADS_DIR } from "../config.js";
-import { SettingsService } from "./settingsService.js";
+import { SettingsService, WRITE_TEST_FILENAME } from "./settingsService.js";
 
 export const AUDIO_EXTENSIONS = new Set([
   ".opus",
@@ -23,7 +23,6 @@ export interface LibraryFile {
 }
 
 export class FileService {
-  public static readonly AUDIO_EXTENSIONS = AUDIO_EXTENSIONS;
   public static getDownloadsDir(): string {
     const configured = SettingsService.getSettings().downloadsDir;
     return configured && configured.trim() ? configured : DOWNLOADS_DIR;
@@ -54,7 +53,7 @@ export class FileService {
       if (
         entry.endsWith(".part") ||
         entry.endsWith(".ytdl") ||
-        entry === ".writetest"
+        entry === WRITE_TEST_FILENAME
       )
         continue;
       const filePath = path.join(dir, entry);

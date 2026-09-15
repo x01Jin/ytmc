@@ -1,4 +1,5 @@
 import express, { Request, Response, Router } from "express";
+import { spawn } from "child_process";
 import fs from "fs";
 import path from "path";
 import { DEFAULT_DEMO_TRACKS, DOWNLOADS_DIR } from "../config.js";
@@ -10,9 +11,10 @@ import {
 } from "../services/audioEditService.js";
 import { ConversionService } from "../services/conversionService.js";
 import { CookieService } from "../services/cookieService.js";
-import { FileService } from "../services/fileService.js";
+import { FileService, AUDIO_EXTENSIONS } from "../services/fileService.js";
+import { HistoryStore } from "../services/historyStore.js";
 import { JobManager } from "../services/jobManager.js";
-import { LibraryStore } from "../services/libraryStore.js";
+import { LibraryStore, isSameFilePath } from "../services/libraryStore.js";
 import { MetadataService } from "../services/metadataService.js";
 import { SettingsService } from "../services/settingsService.js";
 import { TagFetcherService } from "../services/tagFetcherService.js";
@@ -20,8 +22,8 @@ import { buildDisplayFileName, dedupeFileName } from "../utils/filename.js";
 import { getAudioMimeType } from "../utils/mime.js";
 import { PreviewService } from "../services/previewService.js";
 import {
+  AUDIO_DSP,
   isValidNormalizeMode,
-  resolveNormalizeMode,
 } from "../services/audioFilterService.js";
 
 export const apiRouter: Router = express.Router();
@@ -225,40 +227,38 @@ apiRouter.get("/status/:id", (req: Request, res: Response) => {
 });
 
 /**
- * List recent jobs
+ * Live conversion jobs (queue). History lives in its own persistent store
+ * below — library edits never touch it.
  */
 apiRouter.get("/jobs", (req: Request, res: Response) => {
-  const liveJobs = JobManager.listRecentJobs();
-  const liveIds = new Set(liveJobs.map((job) => job.id));
-  const persistedJobs = LibraryStore.list()
-    .filter(
-      (record) => record.source !== "import" && !liveIds.has(record.jobId),
-    )
-    .map((record) => ({
-      id: record.jobId,
-      videoId: record.videoId,
-      title: record.title,
-      author: record.author,
-      thumbnail: record.thumbnail,
-      format: record.format,
-      bitrate: "native",
-      status: "completed" as const,
-      progress: 100,
-      stageMessage: "Finished",
-      outputFileName: record.fileName,
-      outputFilePath: record.filePath,
-      fileSizeBytes: record.fileSizeBytes,
-      downloadUrl: `/api/download/${record.jobId}`,
-      streamUrl: PreviewService.isEligible(record.format)
-        ? `/api/stream/${record.jobId}?preview=mp3`
-        : `/api/stream/${record.jobId}`,
-      createdAt: record.completedAt,
-      completedAt: record.completedAt,
-    }));
-  const jobs = [...liveJobs, ...persistedJobs].sort(
-    (a, b) => (b.completedAt ?? b.createdAt) - (a.completedAt ?? a.createdAt),
-  );
+  const jobs = JobManager.listRecentJobs();
   res.json({ success: true, jobs });
+});
+
+/**
+ * Conversion history: every finished Convert-tab job, frozen with its
+ * original YouTube title, author, and thumbnail. Persists across restarts.
+ */
+apiRouter.get("/history", (req: Request, res: Response) => {
+  res.json({ success: true, data: HistoryStore.list() });
+});
+
+apiRouter.delete("/history/:id", (req: Request, res: Response) => {
+  const id = String(req.params.id ?? "");
+  if (!id) {
+    res.status(400).json({ success: false, error: "History id is required" });
+    return;
+  }
+  if (!HistoryStore.remove(id)) {
+    res.status(404).json({ success: false, error: "History entry not found" });
+    return;
+  }
+  res.json({ success: true, message: "History entry removed." });
+});
+
+apiRouter.delete("/history", (req: Request, res: Response) => {
+  HistoryStore.clear();
+  res.json({ success: true, message: "History cleared." });
 });
 
 apiRouter.get("/stream/:id", async (req: Request, res: Response) => {
@@ -404,7 +404,7 @@ apiRouter.post("/cookies/auto-fetch", async (req: Request, res: Response) => {
   try {
     const result = await CookieService.autoFetchGuestSession();
     const status = CookieService.getStatus();
-    const { success: _serviceSuccess, ...details } = result;
+    const { ...details } = result;
     res.json({ success: true, ...details, status });
   } catch (error: any) {
     res.status(500).json({
@@ -442,7 +442,7 @@ apiRouter.post("/cookies", (req: Request, res: Response) => {
       return;
     }
     const result = CookieService.saveCookies(cookies);
-    const { success: _serviceSuccess, ...details } = result;
+    const { ...details } = result;
     res.json({ success: true, ...details });
   } catch (error: any) {
     res.status(400).json({
@@ -522,9 +522,8 @@ apiRouter.get("/library", async (req: Request, res: Response) => {
     }
   }
   records = LibraryStore.list();
-  const indexedPaths = new Set(records.map((r) => path.normalize(r.filePath)));
   const loose = FileService.scanLibrary().filter(
-    (f) => !indexedPaths.has(path.normalize(f.filePath)),
+    (f) => !records.some((r) => isSameFilePath(r.filePath, f.filePath)),
   );
   for (const file of loose) {
     const tags = await AudioTagService.readTags(file.filePath);
@@ -546,10 +545,7 @@ apiRouter.get("/library", async (req: Request, res: Response) => {
   }
   records = LibraryStore.list();
   const looseFiles = FileService.scanLibrary().filter(
-    (f) =>
-      !records.some(
-        (r) => path.normalize(r.filePath) === path.normalize(f.filePath),
-      ),
+    (f) => !records.some((r) => isSameFilePath(r.filePath, f.filePath)),
   );
   const totalSizeBytes =
     records.reduce((sum, r) => sum + r.fileSizeBytes, 0) +
@@ -585,7 +581,7 @@ apiRouter.post(
           : null;
       if (
         !fileName ||
-        !FileService.AUDIO_EXTENSIONS.has(ext) ||
+        !AUDIO_EXTENSIONS.has(ext) ||
         !data?.length
       ) {
         res.status(400).json({
@@ -845,7 +841,7 @@ apiRouter.post("/library/:id/edit", async (req: Request, res: Response) => {
     return;
   }
   const gain = volumeBoost === undefined ? 100 : Number(volumeBoost);
-  if (![100, 125, 150].includes(gain)) {
+  if (!(AUDIO_DSP.VOLUME.ALLOWED as readonly number[]).includes(gain)) {
     res.status(400).json({ success: false, error: "Invalid volume gain." });
     return;
   }
@@ -950,7 +946,6 @@ apiRouter.post("/files/reveal", async (req: Request, res: Response) => {
         .json({ success: false, error: "File is outside the library folder." });
       return;
     }
-    const { spawn } = await import("child_process");
     if (process.platform === "win32") {
       spawn("explorer", ["/select,", absolute], {
         detached: true,
@@ -1084,6 +1079,11 @@ apiRouter.post("/tags/apply/:id", async (req: Request, res: Response) => {
     const nextTitle = tags.title;
     const nextAuthor = tags.artist || target.author;
     const nextThumbnail = tags.coverUrl || target.thumbnail;
+    // Preserve the record origin: retagging an imported file must not turn
+    // it into a conversion (which would leak it into History).
+    const existingSource = LibraryStore.list().find(
+      (r) => r.jobId === jobId,
+    )?.source;
     const updatedJob = job
       ? JobManager.updateJob(jobId, {
           title: nextTitle,
@@ -1097,6 +1097,7 @@ apiRouter.post("/tags/apply/:id", async (req: Request, res: Response) => {
       : undefined;
     LibraryStore.upsert({
       jobId,
+      source: existingSource,
       videoId: target.videoId,
       title: nextTitle,
       author: nextAuthor,

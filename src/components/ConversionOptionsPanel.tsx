@@ -22,7 +22,7 @@ const FORMAT_DESCRIPTIONS: Record<AudioFormat, string> = {
 const FORMATS = ["best", "opus", "m4a", "mp3", "flac", "wav"] as AudioFormat[];
 
 const CONVERT_LABELS: Record<AudioFormat, string> = {
-  best: "Extract Best Native Stream ",
+  best: "Extract Best Native Stream",
   opus: "Extract Native Opus",
   m4a: "Extract Native AAC",
   mp3: "Transcode to MP3",

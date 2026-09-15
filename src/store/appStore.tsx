@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import type { ReactNode } from "react";
@@ -13,6 +14,7 @@ import type {
   ConversionJob,
   ConversionOptions,
   CookieStatus,
+  HistoryEntry,
   LibraryData,
   VideoMetadata,
 } from "../types";
@@ -119,6 +121,85 @@ export function useJobs(): JobsContextValue {
   return ctx;
 }
 
+// --- History (persistent convert-tab log; untouched by library edits) ---
+
+interface HistoryContextValue {
+  state: {
+    entries: HistoryEntry[];
+    isLoading: boolean;
+  };
+  actions: {
+    refresh: () => Promise<void>;
+    removeEntry: (jobId: string) => Promise<void>;
+    clear: () => Promise<void>;
+  };
+}
+
+const HistoryContext = createContext<HistoryContextValue | null>(null);
+
+export function HistoryProvider({ children }: { children: ReactNode }) {
+  const [entries, setEntries] = useState<HistoryEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      setEntries(await ApiClient.getHistory());
+    } catch {
+      // History stays as-is on network failure; never blanked optimistically.
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  // Optimistic removal with rollback (per frontend-api-integration-patterns).
+  const removeEntry = useCallback(
+    async (jobId: string) => {
+      const previous = entries;
+      if (!previous.some((e) => e.jobId === jobId)) return;
+      setEntries(previous.filter((e) => e.jobId !== jobId));
+      try {
+        await ApiClient.deleteHistoryItem(jobId);
+      } catch {
+        // Roll back on failure so the entry is not silently lost.
+        setEntries(previous);
+      }
+    },
+    [entries],
+  );
+
+  const clear = useCallback(async () => {
+    const previous = entries;
+    setEntries([]);
+    try {
+      await ApiClient.clearHistory();
+    } catch (err) {
+      setEntries(previous);
+      throw err;
+    }
+  }, [entries]);
+
+  const value = useMemo<HistoryContextValue>(
+    () => ({
+      state: { entries, isLoading },
+      actions: { refresh, removeEntry, clear },
+    }),
+    [entries, isLoading, refresh, removeEntry, clear],
+  );
+
+  return <HistoryContext value={value}>{children}</HistoryContext>;
+}
+
+export function useHistory(): HistoryContextValue {
+  const ctx = use(HistoryContext);
+  if (!ctx) throw new Error("useHistory must be used inside HistoryProvider");
+  return ctx;
+}
+
 // --- Library ---
 
 interface LibraryContextValue {
@@ -141,18 +222,25 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const [library, setLibrary] = useState<LibraryData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Sequence guard: overlapping refreshes (edit + import + poll) resolve in
+  // any order, so only the newest response may write state (race-safe fetch).
+  const refreshSeq = useRef(0);
 
   const refresh = useCallback(async () => {
+    const seq = (refreshSeq.current += 1);
     setIsLoading(true);
     setError(null);
     try {
-      setLibrary(await ApiClient.getLibrary());
+      const data = await ApiClient.getLibrary();
+      if (seq !== refreshSeq.current) return;
+      setLibrary(data);
     } catch (err) {
+      if (seq !== refreshSeq.current) return;
       setError(
         err instanceof Error ? err.message : "Could not load your library.",
       );
     } finally {
-      setIsLoading(false);
+      if (seq === refreshSeq.current) setIsLoading(false);
     }
   }, []);
 

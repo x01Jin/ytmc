@@ -14,6 +14,8 @@ interface ConversionProgressProps {
   onOpenCookiesModal: () => void;
 }
 
+const MIN_BAR_PCT = 4;
+
 export const ConversionProgress: React.FC<ConversionProgressProps> = ({
   job,
   onRetry,
@@ -71,7 +73,7 @@ export const ConversionProgress: React.FC<ConversionProgressProps> = ({
           className={`px-progress-fill h-full ${
             isError ? "bg-px-err" : isCompleted ? "bg-px-ok" : "bg-px-acc"
           }`}
-          style={{ width: `${Math.max(4, job.progress)}%` }}
+          style={{ width: `${Math.max(MIN_BAR_PCT, job.progress)}%` }}
         />
       </div>
 

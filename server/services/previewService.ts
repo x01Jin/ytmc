@@ -15,6 +15,10 @@ import { DATA_DIR, FFMPEG_PATH } from "../config.js";
  */
 export const PREVIEW_ELIGIBLE_FORMATS = new Set(["opus", "m4a"]);
 
+const PREVIEW_SUFFIX = ".preview.mp3";
+const PREVIEW_TIMEOUT_MS = 120000;
+const FFMPEG_ERROR_TAIL = 800;
+
 function ffmpegCmd(): string {
   return fs.existsSync(FFMPEG_PATH) ? FFMPEG_PATH : "ffmpeg";
 }
@@ -31,15 +35,15 @@ function cacheKey(jobId: string): string {
 }
 
 function previewPath(jobId: string): string {
-  return path.join(previewsDir(), `${cacheKey(jobId)}.preview.mp3`);
+  return path.join(previewsDir(), `${cacheKey(jobId)}${PREVIEW_SUFFIX}`);
 }
 
 function runFfmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    execFile(ffmpegCmd(), args, { timeout: 120000 }, (err, _stdout, stderr) => {
+    execFile(ffmpegCmd(), args, { timeout: PREVIEW_TIMEOUT_MS }, (err, _stdout, stderr) => {
       if (err) {
         const raw = String(stderr || err.message);
-        const tail = raw.length > 800 ? `…${raw.slice(-800)}` : raw;
+        const tail = raw.length > FFMPEG_ERROR_TAIL ? `…${raw.slice(-FFMPEG_ERROR_TAIL)}` : raw;
         reject(new Error(`Preview transcode failed: ${tail}`));
       } else {
         resolve();
@@ -137,8 +141,8 @@ export class PreviewService {
       return 0;
     }
     for (const entry of entries) {
-      if (!entry.endsWith(".preview.mp3")) continue;
-      const key = entry.slice(0, -".preview.mp3".length);
+      if (!entry.endsWith(PREVIEW_SUFFIX)) continue;
+      const key = entry.slice(0, -PREVIEW_SUFFIX.length);
       if (validKeys.has(key)) continue;
       try {
         fs.unlinkSync(path.join(previewsDir(), entry));

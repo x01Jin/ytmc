@@ -1,8 +1,10 @@
+const NUMERIC_RE = /^\d+(\.\d+)?$/;
+
 /** Parse `MM:SS`, `HH:MM:SS`, or raw seconds into seconds. Returns null when invalid. */
 export function parseTimeToSeconds(raw: string): number | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
-  if (/^\d+(\.\d+)?$/.test(trimmed)) {
+  if (NUMERIC_RE.test(trimmed)) {
     const val = Number(trimmed);
     return Number.isFinite(val) && val >= 0 ? val : null;
   }
@@ -10,7 +12,7 @@ export function parseTimeToSeconds(raw: string): number | null {
   if (
     parts.length < 2 ||
     parts.length > 3 ||
-    parts.some((p) => !/^\d+(\.\d+)?$/.test(p))
+    parts.some((p) => !NUMERIC_RE.test(p))
   )
     return null;
   const nums = parts.map(Number);

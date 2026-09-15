@@ -1,11 +1,9 @@
 import {
   Check,
   Disc3,
-  ExternalLink,
   Image as ImageIcon,
   Loader2,
   Music,
-  RefreshCw,
   Search,
   Sparkles,
   Trash2,
@@ -27,6 +25,25 @@ interface TagEditorProps {
   mode?: "pre-convert" | "post-convert";
 }
 
+function buildDefaultTags(
+  title: string,
+  artist: string,
+  thumbnail: string,
+): MusicTags {
+  return {
+    title,
+    artist,
+    album: title,
+    albumArtist: artist,
+    year: "",
+    genre: "Music",
+    trackNumber: "1",
+    coverUrl: thumbnail,
+    cleanDescription: true,
+    comment: "YouTube to Music Converter",
+  };
+}
+
 export const TagEditor: React.FC<TagEditorProps> = ({
   initialTags,
   defaultVideoTitle = "",
@@ -37,25 +54,12 @@ export const TagEditor: React.FC<TagEditorProps> = ({
   isSavingToFile = false,
   mode = "pre-convert",
 }) => {
-  // Current active tags
-  const [tags, setTags] = useState<MusicTags>(() => {
-    return (
-      initialTags || {
-        title: defaultVideoTitle,
-        artist: defaultArtist,
-        album: defaultVideoTitle,
-        albumArtist: defaultArtist,
-        year: "",
-        genre: "Music",
-        trackNumber: "1",
-        coverUrl: defaultThumbnail,
-        cleanDescription: true,
-        comment: "YouTube to Music Converter",
-      }
-    );
-  });
+  const [tags, setTags] = useState<MusicTags>(
+    () =>
+      initialTags ||
+      buildDefaultTags(defaultVideoTitle, defaultArtist, defaultThumbnail),
+  );
 
-  // Autotag search and detection state
   const [selectedSource, setSelectedSource] = useState<TagSource>("all");
   const [candidates, setCandidates] = useState<MusicTagCandidate[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -68,16 +72,14 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     title: string;
   } | null>(null);
 
-  const debounceTimeoutRef = useRef<any>(null);
+  const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Synchronize internal tags when initialTags change from outside
   useEffect(() => {
     if (initialTags && !hasUserEdited) {
       setTags(initialTags);
     }
   }, [initialTags]);
 
-  // Execute tag detection based on track name input
   const performSearch = async (query: string, source: TagSource) => {
     const trimmed = query.trim();
     if (!trimmed || trimmed.length < 2) {
@@ -98,7 +100,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     }
   };
 
-  // Live detection whenever the Name / Title input changes
   const handleNameInputChange = (newName: string) => {
     setHasUserEdited(true);
     const updated = { ...tags, title: newName };
@@ -115,7 +116,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     }, 400);
   };
 
-  // Initial detection on mount or when default title is loaded
   useEffect(() => {
     if (tags.title && tags.title.trim().length >= 2 && !lastSearchedQuery) {
       performSearch(tags.title, selectedSource);
@@ -164,7 +164,10 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     setTimeout(() => setAppliedSource(null), 4000);
   };
 
-  const handleFieldChange = (field: keyof MusicTags, value: any) => {
+  const handleFieldChange = (
+    field: keyof MusicTags,
+    value: MusicTags[keyof MusicTags],
+  ) => {
     setHasUserEdited(true);
     const updated = {
       ...tags,
@@ -176,18 +179,11 @@ export const TagEditor: React.FC<TagEditorProps> = ({
   };
 
   const handleResetToDefaults = () => {
-    const reset: MusicTags = {
-      title: defaultVideoTitle,
-      artist: defaultArtist,
-      album: defaultVideoTitle,
-      albumArtist: defaultArtist,
-      year: "",
-      genre: "Music",
-      trackNumber: "1",
-      coverUrl: defaultThumbnail,
-      cleanDescription: true,
-      comment: "YouTube to Music Converter",
-    };
+    const reset = buildDefaultTags(
+      defaultVideoTitle,
+      defaultArtist,
+      defaultThumbnail,
+    );
     setTags(reset);
     onChange(reset);
     setHasUserEdited(false);
@@ -196,7 +192,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
   return (
     <div className="min-w-0 space-y-3 text-px-text">
-      {/* PRIMARY INPUT: Track Name / Music Name (Autotag Detector) */}
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <label

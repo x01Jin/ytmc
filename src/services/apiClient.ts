@@ -1,9 +1,10 @@
-import {
+import type {
   AppSettings,
   ConversionJob,
   ConversionOptions,
   CookieStatus,
   DemoTrack,
+  HistoryEntry,
   LibraryData,
   MusicTagCandidate,
   MusicTags,
@@ -121,6 +122,37 @@ export class ApiClient {
       return [];
     }
     return json.jobs || [];
+  }
+
+  public static async getHistory(): Promise<HistoryEntry[]> {
+    const res = await fetch("/api/history");
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      return [];
+    }
+    return json.data || [];
+  }
+
+  public static async deleteHistoryItem(jobId: string): Promise<void> {
+    const res = await fetch(`/api/history/${encodeURIComponent(jobId)}`, {
+      method: "DELETE",
+      headers: await mutatingHeaders(),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || "Failed to remove history entry");
+    }
+  }
+
+  public static async clearHistory(): Promise<void> {
+    const res = await fetch("/api/history", {
+      method: "DELETE",
+      headers: await mutatingHeaders(),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || "Failed to clear history");
+    }
   }
 
   public static async getCookieStatus(): Promise<CookieStatus> {

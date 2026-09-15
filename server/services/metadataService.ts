@@ -1,7 +1,7 @@
 import { execFile } from 'child_process';
 import { CookieService } from './cookieService.js';
 import { cookiesAllowed, extractorArgsFor, resolveStrategy } from './potService.js';
-import { extractYouTubeId, parseYouTubeInput } from './urlService.js';
+import { parseYouTubeInput } from './urlService.js';
 import { ytdlpEnv, ytdlpLaunch } from './ytdlpRunner.js';
 
 export interface NativeAudioStreamInfo {

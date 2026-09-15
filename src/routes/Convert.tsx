@@ -6,12 +6,8 @@ import { CookieModal } from "../components/CookieModal";
 import { UrlInput } from "../components/UrlInput";
 import { VideoCard } from "../components/VideoCard";
 import { ApiClient } from "../services/apiClient";
-import {
-  useConvertDraft,
-  useJobs,
-  useLibrary,
-  useSession,
-} from "../store/appStore";
+import { useConvertDraft, useHistory, useJobs, useLibrary, useSession } from "../store/appStore";
+import { canonicalWatchUrl } from "./History";
 
 const SAVE_BANNER_TIMEOUT_MS = 6000;
 
@@ -20,6 +16,7 @@ export function ConvertRoute() {
   const { state: session, actions: sessionActions } = useSession();
   const { state: draft, actions: draftActions } = useConvertDraft();
   const { actions: libraryActions } = useLibrary();
+  const { actions: historyActions } = useHistory();
   const { activeJob, isConverting } = jobs;
   const { url, metadata, options, pendingInspectUrl } = draft;
   const { setUrl, setMetadata, setOptions, consumeInspectUrl, resetDraft } =
@@ -56,11 +53,13 @@ export function ConvertRoute() {
     [url, jobActions, setMetadata],
   );
 
-  const handleStartConversion = async () => {
+  const handleStartConversion = useCallback(async () => {
     if (!metadata) return;
     try {
-      const canonicalUrl = `https://www.youtube.com/watch?v=${metadata.id}`;
-      await jobActions.startConversion(canonicalUrl, options);
+      await jobActions.startConversion(
+        canonicalWatchUrl(metadata.id),
+        options,
+      );
     } catch (err: unknown) {
       setInspectError(
         err instanceof Error
@@ -68,7 +67,7 @@ export function ConvertRoute() {
           : "Failed to start conversion. Try again.",
       );
     }
-  };
+  }, [metadata, jobActions, options]);
 
   // Completion handoff: the finished track already lives in the library, so
   // the tab resets to its blank state and reports success briefly.
@@ -80,7 +79,7 @@ export function ConvertRoute() {
       return;
     completedIdRef.current = activeJob.id;
     const title = activeJob.title;
-    void jobActions.refreshRecent();
+    void historyActions.refresh();
     void libraryActions.refresh().catch(() => {});
     jobActions.resetActive();
     resetDraft();
@@ -91,7 +90,7 @@ export function ConvertRoute() {
       SAVE_BANNER_TIMEOUT_MS,
     );
     return () => window.clearTimeout(timer);
-  }, [activeJob, jobActions, libraryActions, resetDraft]);
+  }, [activeJob, jobActions, historyActions, libraryActions, resetDraft]);
 
   // Re-convert entry: the History tab queues a URL, Convert pastes and inspects it once.
   useEffect(() => {

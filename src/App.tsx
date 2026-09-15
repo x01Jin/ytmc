@@ -14,6 +14,7 @@ import { QueueRoute } from "./routes/Queue";
 import { SettingsRoute } from "./routes/Settings";
 import {
   ConvertDraftProvider,
+  HistoryProvider,
   JobsProvider,
   LibraryProvider,
   SessionProvider,
@@ -25,12 +26,15 @@ import {
 } from "./store/appStore";
 import { ApiClient } from "./services/apiClient";
 
+const BYTES_PER_MB = 1024 * 1024;
+const MB_PER_GB = 1024;
+
 function formatTotal(bytes: number): string {
-  const mb = bytes / (1024 * 1024);
+  const mb = bytes / BYTES_PER_MB;
   const formatted = new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 1,
   });
-  if (mb >= 1024) return `${formatted.format(mb / 1024)} GB`;
+  if (mb >= MB_PER_GB) return `${formatted.format(mb / MB_PER_GB)} GB`;
   return `${formatted.format(mb)} MB`;
 }
 
@@ -97,7 +101,9 @@ export default function App() {
         <JobsProvider>
           <ConvertDraftProvider>
             <LibraryProvider>
-              <ShellChrome />
+              <HistoryProvider>
+                <ShellChrome />
+              </HistoryProvider>
             </LibraryProvider>
           </ConvertDraftProvider>
         </JobsProvider>

@@ -9,6 +9,7 @@ import {
 } from "../config.js";
 import { buildDisplayFileName, dedupeFileName } from "../utils/filename.js";
 import { FileService } from "./fileService.js";
+import { HistoryStore } from "./historyStore.js";
 import { LibraryStore } from "./libraryStore.js";
 import { AudioTagService, MusicTags } from "./audioTagService.js";
 import { CookieService } from "./cookieService.js";
@@ -43,14 +44,10 @@ export interface ConvertRequestOptions {
 }
 
 export class ConversionService {
-  private static ensureDownloadsDir(): void {
-    FileService.ensureDownloadsDir();
-  }
-
   public static async startConversion(
     options: ConvertRequestOptions,
   ): Promise<ConversionJob> {
-    this.ensureDownloadsDir();
+    FileService.ensureDownloadsDir();
 
     const parsed = parseYouTubeInput(options.url);
     if (!parsed.isValid || !parsed.videoId || !parsed.canonicalUrl) {
@@ -60,11 +57,13 @@ export class ConversionService {
     const videoId = parsed.videoId;
     const canonicalUrl = parsed.canonicalUrl;
     const format =
-      options.format && SUPPORTED_FORMATS.includes(options.format as any)
+      options.format &&
+      (SUPPORTED_FORMATS as readonly string[]).includes(options.format)
         ? options.format
         : "best";
     const bitrate =
-      options.bitrate && SUPPORTED_BITRATES.includes(options.bitrate as any)
+      options.bitrate &&
+      (SUPPORTED_BITRATES as readonly string[]).includes(options.bitrate)
         ? options.bitrate
         : "native";
 
@@ -417,13 +416,16 @@ export class ConversionService {
           const minimalTags: MusicTags = {
             title: current?.title ?? `Track_${videoId}`,
             artist: current?.author ?? "YouTube",
-            album: "",
+            album: undefined,
             coverUrl: current?.thumbnail,
             cleanDescription: true,
           };
           await AudioTagService.applyTagsToFile(finalFile, minimalTags);
-        } catch (tagErr: any) {
-          console.warn(`Tagging warning for job ${jobId}:`, tagErr.message);
+        } catch (tagErr: unknown) {
+          console.warn(
+            `Tagging warning for job ${jobId}:`,
+            tagErr instanceof Error ? tagErr.message : tagErr,
+          );
         }
       }
 
@@ -452,6 +454,7 @@ export class ConversionService {
       if (updated?.outputFilePath) {
         LibraryStore.upsert({
           jobId,
+          source: "conversion",
           videoId,
           title: updated.title,
           author: updated.author,
@@ -462,6 +465,20 @@ export class ConversionService {
           fileSizeBytes: fileStat.size,
           completedAt: updated.completedAt ?? Date.now(),
           tags: updated.tags,
+        });
+        // Freeze the original YouTube identity for History. This runs
+        // synchronously at completion — before any library edit is
+        // possible — so these are the untouched conversion values. The
+        // entry is never modified afterwards.
+        HistoryStore.add({
+          jobId,
+          videoId,
+          canonicalUrl,
+          title: updated.title,
+          author: updated.author,
+          thumbnail: updated.thumbnail,
+          createdAt: updated.createdAt ?? Date.now(),
+          completedAt: updated.completedAt ?? Date.now(),
         });
       }
     });

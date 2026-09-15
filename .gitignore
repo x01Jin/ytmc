@@ -73,9 +73,6 @@ Thumbs.db
 .cache/
 coverage/
 
-# Single lockfile
-bun.lock
-
 # Private agent/dev context
 AGENTS.md
 context/

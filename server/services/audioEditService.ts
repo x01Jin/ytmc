@@ -92,14 +92,6 @@ function runTool(
   });
 }
 
-function audioCodecFor(
-  format: string,
-  bitrate?: string,
-): { codec: string; bitrate: string } {
-  // Single shared map (server/services/audioFilterService.ts).
-  return codecForTarget(format, bitrate);
-}
-
 async function sourceHasCover(filePath: string): Promise<boolean> {
   try {
     const { stdout } = await runTool(
@@ -176,9 +168,13 @@ export class AudioEditService {
     const ext = path.extname(filePath).replace(".", "").toLowerCase();
     let audioArgs: string[];
     try {
-      const { codec } = audioCodecFor(ext === "best" ? "opus" : ext);
+      const { codec } = codecForTarget(ext);
       audioArgs = ["-c:a", codec];
-    } catch {
+    } catch (err: unknown) {
+      console.warn(
+        `trim: unsupported format "${ext}", falling back to stream copy:`,
+        err instanceof Error ? err.message : err,
+      );
       audioArgs = ["-c:a", "copy"];
     }
     const dir = path.dirname(filePath);
@@ -281,7 +277,7 @@ export class AudioEditService {
         }
         a.push("-map_metadata", "0");
         if (needsAudio) {
-          const { codec, bitrate } = audioCodecFor(
+          const { codec, bitrate } = codecForTarget(
             target.format,
             patch.bitrate,
           );

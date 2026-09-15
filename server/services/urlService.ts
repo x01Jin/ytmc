@@ -44,8 +44,8 @@ export function extractYouTubeId(input: string): string | null {
 
 export function parseTimestamp(input: string): number | undefined {
   if (!input) return undefined;
-  // Match t=120 or t=2m0s
-  const tMatch = input.match(/[?&]t=([0-9mhseconds]+)/i);
+  // Match t=120 or t=2m0s / t=1h2m3s
+  const tMatch = input.match(/[?&]t=([0-9hms]+)/i);
   if (!tMatch) return undefined;
 
   const raw = tMatch[1];

@@ -1,6 +1,6 @@
-import { Check, FileAudio, Link2, RotateCcw } from "lucide-react";
+import { Check, FileAudio, Link2, RotateCcw, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
-import { useConvertDraft, useJobs } from "../store/appStore";
+import { useConvertDraft, useHistory } from "../store/appStore";
 
 export function canonicalWatchUrl(videoId: string): string {
   return `https://www.youtube.com/watch?v=${videoId}`;
@@ -9,9 +9,10 @@ export function canonicalWatchUrl(videoId: string): string {
 const COPY_CONFIRM_TIMEOUT_MS = 2000;
 
 export function HistoryRoute({ onReconvert }: { onReconvert: () => void }) {
-  const { state: jobs } = useJobs();
+  const { state: history, actions: historyActions } = useHistory();
   const { actions: draftActions } = useConvertDraft();
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
   const copyTimerRef = useRef<number | null>(null);
 
   useEffect(
@@ -22,9 +23,7 @@ export function HistoryRoute({ onReconvert }: { onReconvert: () => void }) {
     [],
   );
 
-  const completedJobs = jobs.recentJobs.filter(
-    (job) => job.status === "completed",
-  );
+  const entries = history.entries;
 
   const handleCopyLink = async (jobId: string, videoId: string) => {
     try {
@@ -48,7 +47,7 @@ export function HistoryRoute({ onReconvert }: { onReconvert: () => void }) {
     onReconvert();
   };
 
-  if (completedJobs.length === 0) {
+  if (entries.length === 0) {
     return (
       <section className="px-panel p-6 text-center" aria-label="History">
         <p className="font-display text-xs">NO HISTORY YET</p>
@@ -67,22 +66,46 @@ export function HistoryRoute({ onReconvert }: { onReconvert: () => void }) {
     >
       <div className="flex items-center justify-between border-b-2 border-px-line pb-2">
         <h3 className="font-display text-[10px]">HISTORY</h3>
-        <span className="px-tabular text-xs text-px-dim">
-          {completedJobs.length} tracks
+        <span className="flex items-center gap-2">
+          <span className="px-tabular text-xs text-px-dim">
+            {entries.length} tracks
+          </span>
+          <button
+            type="button"
+            className={`px-btn shrink-0 !px-2 !py-1 text-xs ${
+              confirmClear ? "!border-px-err !text-px-err" : ""
+            }`}
+            onClick={() => {
+              if (!confirmClear) {
+                setConfirmClear(true);
+                return;
+              }
+              setConfirmClear(false);
+              void historyActions.clear().catch(() => {});
+            }}
+            onBlur={() => setConfirmClear(false)}
+            title={confirmClear ? "Click again to confirm" : "Clear history"}
+            aria-label={
+              confirmClear ? "Confirm clear history" : "Clear history"
+            }
+          >
+            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+            {confirmClear ? "Confirm" : "Clear"}
+          </button>
         </span>
       </div>
 
       <div className="divide-y divide-px-line">
-        {completedJobs.map((job) => (
+        {entries.map((entry) => (
           <div
-            key={job.id}
-            id={`history-item-${job.id}`}
+            key={entry.jobId}
+            id={`history-item-${entry.jobId}`}
             className="px-row flex items-center gap-3 py-2.5"
           >
             <span className="h-10 w-10 shrink-0 overflow-hidden border-2 border-px-line bg-px-bg">
-              {job.thumbnail ? (
+              {entry.thumbnail ? (
                 <img
-                  src={job.thumbnail}
+                  src={entry.thumbnail}
                   alt=""
                   width={40}
                   height={40}
@@ -100,25 +123,25 @@ export function HistoryRoute({ onReconvert }: { onReconvert: () => void }) {
 
             <span className="min-w-0 flex-1">
               <span className="block truncate text-xs font-semibold">
-                {job.title}
+                {entry.title}
               </span>
               <span className="block truncate text-[11px] text-px-dim">
-                {job.author}
+                {entry.author}
               </span>
             </span>
 
             <button
               type="button"
               className="px-btn shrink-0 !p-2"
-              onClick={() => void handleCopyLink(job.id, job.videoId)}
+              onClick={() => void handleCopyLink(entry.jobId, entry.videoId)}
               title="Copy YouTube link"
               aria-label={
-                copiedId === job.id
+                copiedId === entry.jobId
                   ? "Link copied"
-                  : `Copy YouTube link for ${job.title}`
+                  : `Copy YouTube link for ${entry.title}`
               }
             >
-              {copiedId === job.id ? (
+              {copiedId === entry.jobId ? (
                 <Check className="h-4 w-4 text-px-ok" aria-hidden="true" />
               ) : (
                 <Link2 className="h-4 w-4" aria-hidden="true" />
@@ -127,11 +150,20 @@ export function HistoryRoute({ onReconvert }: { onReconvert: () => void }) {
             <button
               type="button"
               className="px-btn shrink-0 !p-2"
-              onClick={() => handleReconvert(job.videoId)}
+              onClick={() => handleReconvert(entry.videoId)}
               title="Convert again"
-              aria-label={`Convert ${job.title} again`}
+              aria-label={`Convert ${entry.title} again`}
             >
               <RotateCcw className="h-4 w-4" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="px-btn shrink-0 !p-2"
+              onClick={() => void historyActions.removeEntry(entry.jobId)}
+              title="Remove from history"
+              aria-label={`Remove ${entry.title} from history`}
+            >
+              <Trash2 className="h-4 w-4" aria-hidden="true" />
             </button>
           </div>
         ))}

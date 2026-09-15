@@ -8,7 +8,11 @@ const RESERVED_NAMES = new Set([
   'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9',
 ]);
 
-export function sanitizeSegment(name: string, maxLength = 100): string {
+const MAX_SEGMENT_LENGTH = 100;
+const DEFAULT_EXT = 'opus';
+const DEDUPE_COUNTER_WIDTH = 2;
+
+export function sanitizeSegment(name: string, maxLength = MAX_SEGMENT_LENGTH): string {
   let clean = name
     .replace(ILLEGAL_CHARS, '')
     .replace(/\s+/g, ' ')
@@ -24,7 +28,7 @@ export function sanitizeSegment(name: string, maxLength = 100): string {
 export function buildDisplayFileName(artist: string, title: string, ext: string): string {
   const cleanTitle = sanitizeSegment(title);
   const cleanArtist = sanitizeSegment(artist);
-  const normalizedExt = ext.replace(/^\./, '').toLowerCase() || 'opus';
+  const normalizedExt = ext.replace(/^\./, '').toLowerCase() || DEFAULT_EXT;
   if (cleanTitle.toLowerCase().startsWith(cleanArtist.toLowerCase())) {
     return `${cleanTitle}.${normalizedExt}`;
   }
@@ -37,7 +41,7 @@ export function dedupeFileName(dir: string, fileName: string): string {
   let candidate = fileName;
   let counter = 1;
   while (fs.existsSync(path.join(dir, candidate))) {
-    candidate = `${base} - ${String(counter).padStart(2, '0')}${ext}`;
+    candidate = `${base} - ${String(counter).padStart(DEDUPE_COUNTER_WIDTH, '0')}${ext}`;
     counter += 1;
   }
   return candidate;

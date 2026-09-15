@@ -14,7 +14,6 @@ export const AUDIO_DSP = {
     TP: -1.0,
     /** Loudness range target (single-pass fallback only). */
     LRA: 11,
-    LINEAR: true,
     RESAMPLE_RATE: 48000,
     /**
      * Peak headroom (dB) reserved below TP when computing the uniform gain,
@@ -41,10 +40,6 @@ export const AUDIO_DSP = {
     ATTACK: 7,
     /** ms to recover to unity. */
     RELEASE: 100,
-    /** Auto-level output back to 0 dB — always false. */
-    LEVEL_ENABLED: false,
-    /** Automatic release adjustment — off for transparent music limiting. */
-    ASC: false,
     RESAMPLE_RATE: 48000,
   },
   VOLUME: {
@@ -185,7 +180,7 @@ export function buildAudioFilters(input: NormalizeInput): string[] {
     // Volume gain is intentionally ignored in loudness mode — loudnorm sets
     // absolute level; pre-gain would just be undone / risk clipping.
     return [
-      `loudnorm=I=${l.I}:TP=${l.TP}:LRA=${l.LRA}:linear=${l.LINEAR ? "true" : "false"},aresample=${l.RESAMPLE_RATE}`,
+      `loudnorm=I=${l.I}:TP=${l.TP}:LRA=${l.LRA}:linear=true,aresample=${l.RESAMPLE_RATE}`,
     ];
   }
 
@@ -195,7 +190,7 @@ export function buildAudioFilters(input: NormalizeInput): string[] {
     if (vol) chain.push(`volume=${vol}`);
     chain.push(`aresample=${p.RESAMPLE_RATE}`);
     chain.push(
-      `alimiter=limit=${p.LIMIT}:attack=${p.ATTACK}:release=${p.RELEASE}:level=${p.LEVEL_ENABLED ? "enabled" : "disabled"}:asc=${p.ASC ? "1" : "0"}`,
+      `alimiter=limit=${p.LIMIT}:attack=${p.ATTACK}:release=${p.RELEASE}:level=disabled:asc=0`,
     );
     return [chain.join(",")];
   }

@@ -36,11 +36,24 @@ export class CookieService {
   }
 
   public static hasCookies(): boolean {
-    return fs.existsSync(COOKIES_FILE) && fs.statSync(COOKIES_FILE).size > 10;
+    try {
+      return (
+        fs.existsSync(COOKIES_FILE) && fs.statSync(COOKIES_FILE).size > 10
+      );
+    } catch {
+      return false;
+    }
   }
 
   public static hasGuestCookies(): boolean {
-    return fs.existsSync(GUEST_COOKIES_FILE) && fs.statSync(GUEST_COOKIES_FILE).size > 10;
+    try {
+      return (
+        fs.existsSync(GUEST_COOKIES_FILE) &&
+        fs.statSync(GUEST_COOKIES_FILE).size > 10
+      );
+    } catch {
+      return false;
+    }
   }
 
   public static getCookiesPath(): string | null {

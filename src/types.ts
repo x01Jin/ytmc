@@ -172,3 +172,14 @@ export interface LibraryData {
   looseFiles: LooseLibraryFile[];
   totalSizeBytes: number;
 }
+
+export interface HistoryEntry {
+  jobId: string;
+  videoId: string;
+  canonicalUrl: string;
+  title: string;
+  author: string;
+  thumbnail: string;
+  createdAt: number;
+  completedAt: number;
+}

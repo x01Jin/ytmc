@@ -1,6 +1,10 @@
-import { startTransition, useCallback, useEffect, useRef } from "react";
+import { startTransition, useEffect, useRef } from "react";
 import { ApiClient } from "../services/apiClient";
-import { ConversionJob } from "../types";
+import type { ConversionJob } from "../types";
+
+const POLL_INTERVAL_MS = 1000;
+const BACKOFF_AFTER_FAILURES = 3;
+const BACKOFF_INTERVAL_MS = 3000;
 
 interface PollCallbacks {
   onUpdate: (job: ConversionJob) => void;
@@ -42,29 +46,18 @@ export function useJobPolling(
         failures += 1;
       }
       if (!stopped) {
-        const delay = failures >= 3 ? 3000 : 1000;
+        const delay =
+          failures >= BACKOFF_AFTER_FAILURES
+            ? BACKOFF_INTERVAL_MS
+            : POLL_INTERVAL_MS;
         timer = setTimeout(tick, delay);
       }
     };
 
-    timer = setTimeout(tick, 1000);
+    timer = setTimeout(tick, POLL_INTERVAL_MS);
     return () => {
       stopped = true;
       if (timer) clearTimeout(timer);
     };
   }, [jobId, status]);
-}
-
-export function useMountEffect(effect: () => void | (() => void)) {
-  const runRef = useRef(effect);
-  runRef.current = effect;
-  useEffect(() => runRef.current(), []);
-}
-
-export function useStableCallback<T extends (...args: never[]) => unknown>(
-  fn: T,
-): T {
-  const fnRef = useRef(fn);
-  fnRef.current = fn;
-  return useCallback(((...args: never[]) => fnRef.current(...args)) as T, []);
 }

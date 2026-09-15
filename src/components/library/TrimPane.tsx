@@ -23,6 +23,9 @@ export function TrimPane() {
   const [isProbing, setIsProbing] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [confirmArmed, setConfirmArmed] = useState(false);
+  // Bumped after each applied trim so the preview element reloads the
+  // rewritten file (cache-busted src) and the duration is re-probed.
+  const [mediaNonce, setMediaNonce] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,7 +43,7 @@ export function TrimPane() {
     return () => {
       cancelled = true;
     };
-  }, [record.jobId]);
+  }, [record.jobId, mediaNonce]);
 
   const parsedStart = start.trim() ? parseTimeToSeconds(start) : 0;
   const parsedEnd = end.trim() ? parseTimeToSeconds(end) : duration;
@@ -104,6 +107,13 @@ export function TrimPane() {
       );
       setStatus("Trim applied. The file was overwritten.");
       setConfirmArmed(false);
+      // Reset the trimmer onto the rewritten file: clear the bounds, drop
+      // the playback position, and reload the preview (new duration/src).
+      audioRef.current?.pause();
+      setStart("");
+      setEnd("");
+      setPosition(0);
+      setMediaNonce((n) => n + 1);
       onEdited();
     } catch (err) {
       setFieldError(
@@ -114,11 +124,15 @@ export function TrimPane() {
     }
   };
 
+  const previewBase = previewStreamUrl(record.jobId, record.format);
+  const previewSrc = `${previewBase}${previewBase.includes("?") ? "&" : "?"}v=${mediaNonce}`;
+
   return (
     <div className="space-y-3">
       <audio
         ref={audioRef}
-        src={previewStreamUrl(record.jobId, record.format)}
+        key={`${record.jobId}:${mediaNonce}`}
+        src={previewSrc}
         preload="metadata"
         onTimeUpdate={handleTimeUpdate}
         onLoadedMetadata={(e) => {

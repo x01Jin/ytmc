@@ -59,7 +59,7 @@ export class TagFetcherService {
   /**
    * Fetch candidates from Apple / iTunes Search API.
    */
-  public static async fetchFromItunes(query: string): Promise<MusicTagCandidate[]> {
+  private static async fetchFromItunes(query: string): Promise<MusicTagCandidate[]> {
     try {
       const endpoint = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=10`;
       const res = await fetch(endpoint, {
@@ -103,7 +103,7 @@ export class TagFetcherService {
   /**
    * Fetch candidates from Deezer Public Search API.
    */
-  public static async fetchFromDeezer(query: string): Promise<MusicTagCandidate[]> {
+  private static async fetchFromDeezer(query: string): Promise<MusicTagCandidate[]> {
     try {
       const endpoint = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=10`;
       const res = await fetch(endpoint, {
@@ -139,7 +139,7 @@ export class TagFetcherService {
   /**
    * Fetch candidates from MusicBrainz Open Database.
    */
-  public static async fetchFromMusicBrainz(query: string): Promise<MusicTagCandidate[]> {
+  private static async fetchFromMusicBrainz(query: string): Promise<MusicTagCandidate[]> {
     try {
       // Clean query for MusicBrainz lucene syntax
       const cleanQ = query.replace(/[^\w\s]/gi, ' ').trim();

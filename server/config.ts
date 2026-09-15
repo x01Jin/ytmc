@@ -1,17 +1,21 @@
 import path from 'path';
 
+const MAX_PORT = 65535;
+const DEV_PORT = 3000;
+const DEFAULT_POT_PORT = 4416;
+
 function resolvePort(): number {
   const raw = process.env.PORT;
   if (raw !== undefined && raw !== '') {
     const parsed = Number(raw);
-    if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 65535) {
+    if (Number.isInteger(parsed) && parsed >= 0 && parsed <= MAX_PORT) {
       return parsed;
     }
     console.warn(`Invalid PORT="${raw}", falling back to default`);
   }
   // Production (incl. desktop app) defaults to a random free port (0);
   // development defaults to 3000 for a stable local URL.
-  return process.env.NODE_ENV === 'production' ? 0 : 3000;
+  return process.env.NODE_ENV === 'production' ? 0 : DEV_PORT;
 }
 
 export const PORT = resolvePort();
@@ -24,7 +28,19 @@ export const YTDLP_PATH = process.env.YTDLP_PATH || path.join(BIN_DIR, 'yt-dlp')
 export const FFMPEG_PATH = process.env.FFMPEG_PATH || path.join(BIN_DIR, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
 export const FFPROBE_PATH = process.env.FFPROBE_PATH || path.join(BIN_DIR, process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe');
 export const BGUTIL_PATH = path.join(BIN_DIR, 'bgutil-pot');
-export const POT_PORT = process.env.POT_PORT ? Number(process.env.POT_PORT) || 4416 : 4416;
+function resolvePotPort(): number {
+  const raw = process.env.POT_PORT;
+  if (raw !== undefined && raw !== '') {
+    const parsed = Number(raw);
+    if (Number.isInteger(parsed) && parsed > 0 && parsed <= MAX_PORT) {
+      return parsed;
+    }
+    console.warn(`Invalid POT_PORT="${raw}", falling back to default`);
+  }
+  return DEFAULT_POT_PORT;
+}
+
+export const POT_PORT = resolvePotPort();
 // Packaged desktop builds override these so the app writes outside ASAR.
 export const DATA_DIR = process.env.APP_DATA_DIR || path.join(ROOT_DIR, 'data');
 export const DOWNLOADS_DIR = process.env.APP_DOWNLOADS_DIR || path.join(ROOT_DIR, 'downloads');

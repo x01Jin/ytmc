@@ -7,12 +7,14 @@ import {
   User,
 } from "lucide-react";
 import React from "react";
-import { VideoMetadata } from "../types";
+import type { VideoMetadata } from "../types";
 
 interface VideoCardProps {
   metadata: VideoMetadata;
   onOpenCookiesModal: () => void;
 }
+
+const viewCountFormatter = new Intl.NumberFormat("en-US");
 
 export const VideoCard: React.FC<VideoCardProps> = ({
   metadata,
@@ -60,8 +62,7 @@ export const VideoCard: React.FC<VideoCardProps> = ({
 
               {metadata.viewCount !== undefined && (
                 <span className="px-tabular">
-                  {new Intl.NumberFormat("en-US").format(metadata.viewCount)}{" "}
-                  views
+                  {viewCountFormatter.format(metadata.viewCount)} views
                 </span>
               )}
 

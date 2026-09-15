@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { spawn } from "child_process";
+import { spawn, type ChildProcess } from "child_process";
 import crypto from "crypto";
 import express from "express";
 import fs from "fs";
@@ -13,13 +13,14 @@ import {
 } from "./server/config.js";
 import { apiRouter } from "./server/routes/api.js";
 import { FileService } from "./server/services/fileService.js";
+import { LibraryStore } from "./server/services/libraryStore.js";
 import { refreshSidecarReachability } from "./server/services/potService.js";
 import { ensureYtDlp, ensureFfmpeg } from "./server/services/ytdlpRunner.js";
 
 /** Per-process token that mutating same-origin API calls must echo back. */
 export const LOOPBACK_TOKEN = crypto.randomUUID();
 
-let potProcess: any = null;
+let potProcess: ChildProcess | null = null;
 
 function startPotServer(): void {
   if (fs.existsSync(BGUTIL_PATH)) {
@@ -32,7 +33,7 @@ function startPotServer(): void {
           stdio: "ignore",
         },
       );
-      potProcess.on("error", (err: any) => {
+      potProcess.on("error", (err: Error) => {
         console.warn("POT sidecar process error:", err.message);
       });
       console.log(
@@ -45,8 +46,11 @@ function startPotServer(): void {
             : `WARNING: POT sidecar spawned but not reachable on 127.0.0.1:${POT_PORT}; extractions will use the no-POT fallback.`,
         );
       });
-    } catch (err: any) {
-      console.warn("Could not launch POT server:", err.message);
+    } catch (err: unknown) {
+      console.warn(
+        "Could not launch POT server:",
+        err instanceof Error ? err.message : err,
+      );
     }
   } else {
     console.warn(
@@ -80,6 +84,12 @@ export async function startServer(): Promise<StartedServer> {
   await ensureFfmpeg();
   void refreshSidecarReachability();
   FileService.sweepPartFiles();
+  try {
+    const { removed } = LibraryStore.reconcile();
+    if (removed > 0) console.log(`Library reconciled: removed ${removed} stale/duplicate row(s).`);
+  } catch (err: unknown) {
+    console.warn("Library reconcile failed:", err instanceof Error ? err.message : err);
+  }
 
   const app = express();
 
@@ -162,13 +172,18 @@ export async function startServer(): Promise<StartedServer> {
           new Promise<void>((done) => {
             try {
               potProcess?.kill();
-            } catch {}
+            } catch (err: unknown) {
+              console.warn(
+                "POT sidecar kill failed:",
+                err instanceof Error ? err.message : err,
+              );
+            }
             server.close(() => done());
           }),
       });
     });
 
-    server.on("error", (err: any) => {
+    server.on("error", (err: NodeJS.ErrnoException) => {
       if (err?.code === "EADDRINUSE") {
         console.error(
           `Port ${PORT} on ${HOST} is already in use. Stop the other server (Ctrl+C) ` +
@@ -186,7 +201,12 @@ const cleanup = () => {
   if (potProcess) {
     try {
       potProcess.kill();
-    } catch {}
+    } catch (err: unknown) {
+      console.warn(
+        "POT sidecar kill failed:",
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
   process.exit(0);
 };

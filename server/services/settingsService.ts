@@ -9,9 +9,10 @@ export interface AppSettings {
 }
 
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+export const WRITE_TEST_FILENAME = '.writetest';
 
 const DEFAULTS: AppSettings = {
-  downloadsDir: process.env.APP_DOWNLOADS_DIR || DOWNLOADS_DIR,
+  downloadsDir: DOWNLOADS_DIR,
   filenameTemplate: '{artist} - {title}.{ext}',
   revealAfterConvert: false,
 };
@@ -71,7 +72,7 @@ export class SettingsService {
     const error = validateDownloadsDir(next.downloadsDir);
     if (error) throw new Error(error);
     fs.mkdirSync(next.downloadsDir, { recursive: true });
-    const probe = path.join(next.downloadsDir, '.writetest');
+    const probe = path.join(next.downloadsDir, WRITE_TEST_FILENAME);
     try {
       fs.writeFileSync(probe, 'ok', 'utf8');
       fs.unlinkSync(probe);

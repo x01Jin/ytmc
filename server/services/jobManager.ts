@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { MusicTags } from './audioTagService.js';
+import type { MusicTags } from './audioTagService.js';
 import { FileService } from './fileService.js';
 
 export type JobStatus = 'queued' | 'downloading' | 'converting' | 'completed' | 'error';
@@ -31,6 +31,9 @@ export interface ConversionJob {
   completedAt?: number;
   tags?: MusicTags;
 }
+
+const JOB_RETENTION_MS = 2 * 60 * 60 * 1000;
+const CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
 
 export class JobManager {
   private static jobs: Map<string, ConversionJob> = new Map();
@@ -82,14 +85,17 @@ export class JobManager {
    * Cleanup old jobs and files older than 2 hours.
    */
   public static cleanupOldJobs(): void {
-    const twoHoursAgo = Date.now() - 2 * 60 * 60 * 1000;
+    const twoHoursAgo = Date.now() - JOB_RETENTION_MS;
     for (const [id, job] of this.jobs.entries()) {
       if (job.createdAt < twoHoursAgo) {
         if (job.outputFilePath && fs.existsSync(job.outputFilePath)) {
           try {
             fs.unlinkSync(job.outputFilePath);
-          } catch {
-            // Ignore file deletion error
+          } catch (err: unknown) {
+            console.warn(
+              `cleanup: could not delete ${job.outputFilePath}:`,
+              err instanceof Error ? err.message : err,
+            );
           }
         }
         this.jobs.delete(id);
@@ -108,8 +114,11 @@ export class JobManager {
             fs.unlinkSync(filePath);
           }
         }
-      } catch {
-        // Ignore directory cleanup error
+      } catch (err: unknown) {
+        console.warn(
+          `cleanup: could not sweep ${downloadsDir}:`,
+          err instanceof Error ? err.message : err,
+        );
       }
     }
   }
@@ -118,4 +127,4 @@ export class JobManager {
 // Periodically run cleanup every 30 minutes
 setInterval(() => {
   JobManager.cleanupOldJobs();
-}, 30 * 60 * 1000);
+}, CLEANUP_INTERVAL_MS);

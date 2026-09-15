@@ -5,6 +5,7 @@ import {
   needsPreviewPlayback,
   withPreviewForFormat,
 } from "../utils/audioSupport";
+import { formatSeconds } from "../utils/time";
 
 interface AudioPlayerProps {
   job?: ConversionJob;
@@ -110,13 +111,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     setIsLooping(!isLooping);
   };
 
-  const formatTime = (seconds: number) => {
-    if (isNaN(seconds) || seconds < 0) return "0:00";
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
-  };
-
   if (!job) {
     return (
       <article
@@ -129,15 +123,13 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
     );
   }
 
-  const streamSrc = job
-    ? withPreviewForFormat(
-        previewFallback
-          ? `/api/stream/${encodeURIComponent(job.id)}?preview=mp3`
-          : job.streamUrl || `/api/stream/${encodeURIComponent(job.id)}`,
-        job.id,
-        job.format,
-      )
-    : "";
+  const streamSrc = withPreviewForFormat(
+    previewFallback
+      ? `/api/stream/${encodeURIComponent(job.id)}?preview=mp3`
+      : job.streamUrl || `/api/stream/${encodeURIComponent(job.id)}`,
+    job.id,
+    job.format,
+  );
 
   return (
     <article
@@ -231,8 +223,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           className="h-1.5 w-full cursor-pointer appearance-none bg-px-line accent-[#7c5cff]"
         />
         <div className="px-tabular flex justify-between text-[11px] text-px-dim">
-          <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(duration)}</span>
+          <span>{formatSeconds(currentTime)}</span>
+          <span>{formatSeconds(duration)}</span>
         </div>
         {loadError && (
           <p role="alert" className="text-[11px] text-red-400">

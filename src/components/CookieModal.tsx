@@ -3,7 +3,6 @@ import {
   CheckCircle2,
   Cookie,
   Cpu,
-  HelpCircle,
   Loader2,
   RefreshCw,
   ShieldCheck,
@@ -69,10 +68,11 @@ export const CookieModal: React.FC<CookieModalProps> = ({
       onStatusUpdated(updated);
       setFeedback({ type: "success", message: result.message });
       setCookieText("");
-    } catch (err: any) {
+    } catch (err: unknown) {
       setFeedback({
         type: "error",
-        message: err.message || "Failed to save cookies.",
+        message:
+          err instanceof Error ? err.message : "Failed to save cookies.",
       });
     } finally {
       setIsSaving(false);
@@ -87,10 +87,13 @@ export const CookieModal: React.FC<CookieModalProps> = ({
       const result = await ApiClient.autoFetchCookies();
       onStatusUpdated(result.status);
       setFeedback({ type: "success", message: result.message });
-    } catch (err: any) {
+    } catch (err: unknown) {
       setFeedback({
         type: "error",
-        message: err.message || "Failed to auto-fetch YouTube guest session.",
+        message:
+          err instanceof Error
+            ? err.message
+            : "Failed to auto-fetch YouTube guest session.",
       });
     } finally {
       setIsAutoFetching(false);
@@ -103,10 +106,11 @@ export const CookieModal: React.FC<CookieModalProps> = ({
     try {
       const result = await ApiClient.testSession();
       setTestResult(result);
-    } catch (err: any) {
+    } catch (err: unknown) {
       setTestResult({
         success: false,
-        message: err.message || "Session verification failed.",
+        message:
+          err instanceof Error ? err.message : "Session verification failed.",
       });
     } finally {
       setIsTesting(false);

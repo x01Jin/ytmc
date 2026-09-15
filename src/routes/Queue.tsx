@@ -2,12 +2,8 @@ import { AlertCircle } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { ConversionProgress } from "../components/ConversionProgress";
 import { CookieModal } from "../components/CookieModal";
-import {
-  useConvertDraft,
-  useJobs,
-  useLibrary,
-  useSession,
-} from "../store/appStore";
+import { useConvertDraft, useJobs, useLibrary, useSession } from "../store/appStore";
+import { canonicalWatchUrl } from "./History";
 
 export function QueueRoute() {
   const { state: jobs, actions: jobActions } = useJobs();
@@ -37,7 +33,7 @@ export function QueueRoute() {
     setRetryError(null);
     try {
       await jobActions.startConversion(
-        `https://www.youtube.com/watch?v=${activeJob.videoId}`,
+        canonicalWatchUrl(activeJob.videoId),
         draft.options,
       );
     } catch (err) {
