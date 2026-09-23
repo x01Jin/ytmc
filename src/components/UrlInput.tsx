@@ -1,5 +1,5 @@
-import { ArrowRight, Clipboard, Loader2, X } from "lucide-react";
-import React, { useState } from "react";
+import { ArrowRight, Clipboard, Loader2, X } from 'lucide-react';
+import React, { useState } from 'react';
 
 interface UrlInputProps {
   value: string;
@@ -8,12 +8,7 @@ interface UrlInputProps {
   isLoading: boolean;
 }
 
-export const UrlInput: React.FC<UrlInputProps> = ({
-  value,
-  onChange,
-  onSubmit,
-  isLoading,
-}) => {
+export const UrlInput: React.FC<UrlInputProps> = ({ value, onChange, onSubmit, isLoading }) => {
   const [copiedNotification, setCopiedNotification] = useState(false);
 
   const handlePaste = async () => {
@@ -30,17 +25,13 @@ export const UrlInput: React.FC<UrlInputProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && value.trim() && !isLoading) {
+    if (e.key === 'Enter' && value.trim() && !isLoading) {
       onSubmit();
     }
   };
 
   return (
-    <section
-      id="url-input-section"
-      className="w-full space-y-3"
-      aria-label="Video source"
-    >
+    <section id="url-input-section" className="w-full space-y-3" aria-label="Video source">
       <div className="px-panel-raised flex items-center focus-within:border-px-acc">
         <label htmlFor="youtube-url-input" className="sr-only">
           YouTube link or video ID
@@ -52,7 +43,7 @@ export const UrlInput: React.FC<UrlInputProps> = ({
           autoComplete="off"
           spellCheck={false}
           value={value}
-          onChange={(e) => onChange(e.target.value)}
+          onChange={e => onChange(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Paste YouTube link or video ID…"
           disabled={isLoading}
@@ -64,7 +55,7 @@ export const UrlInput: React.FC<UrlInputProps> = ({
             <button
               id="clear-url-btn"
               type="button"
-              onClick={() => onChange("")}
+              onClick={() => onChange('')}
               aria-label="Clear input"
               title="Clear input"
               className="px-btn !border-0 !p-1.5"
@@ -81,9 +72,7 @@ export const UrlInput: React.FC<UrlInputProps> = ({
             className="px-btn hidden !py-1.5 text-xs sm:inline-flex sm:items-center sm:gap-1"
           >
             <Clipboard className="h-3.5 w-3.5" aria-hidden="true" />
-            <span aria-live="polite">
-              {copiedNotification ? "Pasted!" : "Paste"}
-            </span>
+            <span aria-live="polite">{copiedNotification ? 'Pasted!' : 'Paste'}</span>
           </button>
 
           <button

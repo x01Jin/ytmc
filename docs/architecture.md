@@ -59,25 +59,25 @@ The YouTube to Music Converter is a Windows desktop app: an Electron shell aroun
 
 The backend codebase adheres strictly to the single-purpose pattern:
 
-| File                                   | Purpose                                                                                                              |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `server/config.ts`                     | Centralized constants, binary paths, output directories, and supported formats.                                      |
-| `server/services/urlService.ts`        | Pure URL and ID parsing, extraction, and canonicalization.                                                           |
-| `server/services/metadataService.ts`   | Video metadata retrieval combining YouTube oEmbed and yt-dlp inspection.                                             |
-| `server/services/tagFetcherService.ts` | Multi-source music autotagging querying iTunes, Deezer, and MusicBrainz.                                             |
-| `server/services/audioTagService.ts`   | ID3, Vorbis, MP4 atom, and RIFF metadata injection with cover artwork using FFmpeg.                                  |
-| `server/services/conversionService.ts` | Audio extraction pipeline orchestrating `yt-dlp` and `ffmpeg`.                                                       |
-| `server/services/jobManager.ts`        | In-memory job state machine, progress tracking, and file lifecycle cleanup.                                          |
-| `server/services/cookieService.ts`     | Netscape/JSON cookie parsing, verification, and file persistence.                                                    |
-| `server/services/settingsService.ts`   | Library-folder settings in `data/settings.json` with Windows path validation.                                        |
-| `server/services/fileService.ts`       | Library dir resolution, on-disk scan, `.part` sweep.                                                                 |
-| `server/services/previewService.ts`    | Cached 320 kbps MP3 previews for Opus/M4A playback; on-demand transcode, mtime validation, invalidation.           |
-| `server/services/libraryStore.ts`      | Persistent `data/library.json` index for converted and imported library files; one row per file on disk, boot-time reconcile. |
+| File                                   | Purpose                                                                                                                        |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `server/config.ts`                     | Centralized constants, binary paths, output directories, and supported formats.                                                |
+| `server/services/urlService.ts`        | Pure URL and ID parsing, extraction, and canonicalization.                                                                     |
+| `server/services/metadataService.ts`   | Video metadata retrieval combining YouTube oEmbed and yt-dlp inspection.                                                       |
+| `server/services/tagFetcherService.ts` | Multi-source music autotagging querying iTunes, Deezer, and MusicBrainz.                                                       |
+| `server/services/audioTagService.ts`   | ID3, Vorbis, MP4 atom, and RIFF metadata injection with cover artwork using FFmpeg.                                            |
+| `server/services/conversionService.ts` | Audio extraction pipeline orchestrating `yt-dlp` and `ffmpeg`.                                                                 |
+| `server/services/jobManager.ts`        | In-memory job state machine, progress tracking, and file lifecycle cleanup.                                                    |
+| `server/services/cookieService.ts`     | Netscape/JSON cookie parsing, verification, and file persistence.                                                              |
+| `server/services/settingsService.ts`   | Library-folder settings in `data/settings.json` with Windows path validation.                                                  |
+| `server/services/fileService.ts`       | Library dir resolution, on-disk scan, `.part` sweep.                                                                           |
+| `server/services/previewService.ts`    | Cached 320 kbps MP3 previews for Opus/M4A playback; on-demand transcode, mtime validation, invalidation.                       |
+| `server/services/libraryStore.ts`      | Persistent `data/library.json` index for converted and imported library files; one row per file on disk, boot-time reconcile.  |
 | `server/services/historyStore.ts`      | Append-only `data/history.json` log of finished conversions with frozen original title, channel, thumbnail, and canonical URL. |
-| `server/utils/filename.ts`             | Windows-safe filename sanitizer, display names, dedupe.                                                              |
-| `server/utils/mime.ts`                 | Fast audio MIME-type resolution for streaming and downloads.                                                         |
-| `server/routes/api.ts`                 | Express router exposing the public REST API surface.                                                                 |
-| `server.ts`                            | Application entry point exporting `startServer()`; loopback-only + token guard.                                      |
+| `server/utils/filename.ts`             | Windows-safe filename sanitizer, display names, dedupe.                                                                        |
+| `server/utils/mime.ts`                 | Fast audio MIME-type resolution for streaming and downloads.                                                                   |
+| `server/routes/api.ts`                 | Express router exposing the public REST API surface.                                                                           |
+| `server.ts`                            | Application entry point exporting `startServer()`; loopback-only + token guard.                                                |
 
 ---
 

@@ -1,31 +1,17 @@
-import {
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  ExternalLink,
-  ShieldCheck,
-  User,
-} from "lucide-react";
-import React from "react";
-import type { VideoMetadata } from "../types";
+import { AlertTriangle, CheckCircle, Clock, ExternalLink, ShieldCheck, User } from 'lucide-react';
+import React from 'react';
+import type { VideoMetadata } from '../types';
 
 interface VideoCardProps {
   metadata: VideoMetadata;
   onOpenCookiesModal: () => void;
 }
 
-const viewCountFormatter = new Intl.NumberFormat("en-US");
+const viewCountFormatter = new Intl.NumberFormat('en-US');
 
-export const VideoCard: React.FC<VideoCardProps> = ({
-  metadata,
-  onOpenCookiesModal,
-}) => {
+export const VideoCard: React.FC<VideoCardProps> = ({ metadata, onOpenCookiesModal }) => {
   return (
-    <article
-      id="video-preview-card"
-      className="px-panel w-full p-3"
-      aria-label="Video preview"
-    >
+    <article id="video-preview-card" className="px-panel w-full p-3" aria-label="Video preview">
       <div className="flex flex-col gap-3 sm:flex-row">
         <div className="relative aspect-video w-full shrink-0 overflow-hidden border-2 border-px-line bg-px-bg sm:w-48">
           <img
@@ -47,10 +33,7 @@ export const VideoCard: React.FC<VideoCardProps> = ({
 
         <div className="flex min-w-0 flex-1 flex-col justify-between py-0.5">
           <div>
-            <h2
-              id="video-title"
-              className="line-clamp-2 text-base font-semibold leading-snug"
-            >
+            <h2 id="video-title" className="line-clamp-2 text-base font-semibold leading-snug">
               {metadata.title}
             </h2>
 
@@ -82,14 +65,9 @@ export const VideoCard: React.FC<VideoCardProps> = ({
           <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t-2 border-px-line pt-2">
             {metadata.botVerificationRequired ? (
               <div className="flex w-full items-center gap-2 border-2 border-px-warn bg-px-bg px-3 py-1.5 text-xs text-px-warn">
-                <AlertTriangle
-                  className="h-4 w-4 shrink-0"
-                  aria-hidden="true"
-                />
+                <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <div className="flex flex-1 flex-wrap items-center justify-between gap-2">
-                  <span>
-                    Session authentication recommended for this track.
-                  </span>
+                  <span>Session authentication recommended for this track.</span>
                   <button
                     id="video-card-cookie-btn"
                     type="button"
@@ -105,9 +83,7 @@ export const VideoCard: React.FC<VideoCardProps> = ({
                 <span className="inline-flex items-center gap-1 border-2 border-px-ok bg-px-bg px-2.5 py-1 text-xs text-px-ok">
                   <CheckCircle className="h-3.5 w-3.5" aria-hidden="true" />
                   <span>
-                    Native Audio:{" "}
-                    {metadata.bestNativeStream?.note ||
-                      "Opus ~160 kbps (48kHz)"}
+                    Native Audio: {metadata.bestNativeStream?.note || 'Opus ~160 kbps (48kHz)'}
                   </span>
                 </span>
                 <span className="flex items-center gap-1 text-[11px] font-medium text-px-dim">
@@ -117,14 +93,11 @@ export const VideoCard: React.FC<VideoCardProps> = ({
               </div>
             ) : (
               <div className="flex w-full items-center gap-2 border-2 border-px-line bg-px-bg px-3 py-1.5 text-xs text-px-dim">
-                <AlertTriangle
-                  className="h-4 w-4 shrink-0"
-                  aria-hidden="true"
-                />
+                <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
                 <div className="flex flex-1 flex-wrap items-center justify-between gap-2">
                   <span title={metadata.probeError}>
                     Stream check inconclusive
-                    {metadata.probeError ? " — conversion may still work" : ""}.
+                    {metadata.probeError ? ' — conversion may still work' : ''}.
                   </span>
                   <button
                     id="video-card-cookie-btn"

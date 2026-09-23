@@ -1,11 +1,11 @@
-import { Loader2, Settings2 } from "lucide-react";
-import { useState } from "react";
-import { ApiClient } from "../../services/apiClient";
-import type { AudioBitrate, NormalizeMode } from "../../types";
-import { NORMALIZE_MODES } from "../../utils/normalizeModes";
-import { useEditPanel } from "./LibraryEditPanel";
+import { Loader2, Settings2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { ApiClient } from '../../services/apiClient';
+import type { AudioBitrate, NormalizeMode } from '../../types';
+import { NORMALIZE_MODES } from '../../utils/normalizeModes';
+import { useEditPanel } from './LibraryEditPanel';
 
-const FORMATS = ["mp3", "m4a", "opus", "flac", "wav"] as const;
+const FORMATS = ['mp3', 'm4a', 'opus', 'flac', 'wav'] as const;
 
 /**
  * Advanced pane: change container/codec, loudness handling, and file name.
@@ -13,14 +13,12 @@ const FORMATS = ["mp3", "m4a", "opus", "flac", "wav"] as const;
  */
 export function AdvancedPane() {
   const { record, onEdited } = useEditPanel();
-  const currentFormat = FORMATS.includes(
-    record.format as (typeof FORMATS)[number],
-  )
+  const currentFormat = FORMATS.includes(record.format as (typeof FORMATS)[number])
     ? record.format
-    : "mp3";
+    : 'mp3';
   const [format, setFormat] = useState<string>(currentFormat);
-  const [bitrate, setBitrate] = useState<AudioBitrate>("native");
-  const [normalizeMode, setNormalizeMode] = useState<NormalizeMode>("off");
+  const [bitrate, setBitrate] = useState<AudioBitrate>('native');
+  const [normalizeMode, setNormalizeMode] = useState<NormalizeMode>('off');
   const [volumeBoost, setVolumeBoost] = useState(100);
   const [title, setTitle] = useState(record.title);
   const [artist, setArtist] = useState(record.author);
@@ -31,11 +29,10 @@ export function AdvancedPane() {
 
   const touchesAudio =
     format !== record.format ||
-    (format === "mp3" && bitrate !== "native") ||
-    normalizeMode !== "off" ||
+    (format === 'mp3' && bitrate !== 'native') ||
+    normalizeMode !== 'off' ||
     volumeBoost !== 100;
-  const touchesName =
-    title.trim() !== record.title || artist.trim() !== record.author;
+  const touchesName = title.trim() !== record.title || artist.trim() !== record.author;
   const dirty = touchesAudio || touchesName;
 
   const markDirty = () => {
@@ -56,10 +53,10 @@ export function AdvancedPane() {
         ...(touchesAudio
           ? {
               format,
-              bitrate: format === "mp3" ? bitrate : undefined,
+              bitrate: format === 'mp3' ? bitrate : undefined,
               normalizeMode,
               // Legacy compat for older servers.
-              normalizeAudio: normalizeMode === "loudness",
+              normalizeAudio: normalizeMode === 'loudness',
               volumeBoost,
             }
           : {}),
@@ -67,15 +64,13 @@ export function AdvancedPane() {
       });
       setNotice(
         result && result.coverDropped
-          ? "Changes applied. Note: cover art could not be carried to the new container — audio and tags are intact."
-          : "Changes applied. Tags and cover art are preserved across the rewrite.",
+          ? 'Changes applied. Note: cover art could not be carried to the new container — audio and tags are intact.'
+          : 'Changes applied. Tags and cover art are preserved across the rewrite.'
       );
       setConfirmArmed(false);
       onEdited();
     } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Could not update the audio file.",
-      );
+      setError(err instanceof Error ? err.message : 'Could not update the audio file.');
     } finally {
       setIsSaving(false);
     }
@@ -94,27 +89,26 @@ export function AdvancedPane() {
           id={`adv-format-${record.jobId}`}
           name={`adv-format-${record.jobId}`}
           value={format}
-          onChange={(e) => {
+          onChange={e => {
             setFormat(e.target.value);
             markDirty();
           }}
           className="px-select w-full text-sm"
         >
-          {FORMATS.map((f) => (
+          {FORMATS.map(f => (
             <option key={f} value={f}>
-              .{f} {f === record.format ? "(current)" : ""}
+              .{f} {f === record.format ? '(current)' : ''}
             </option>
           ))}
         </select>
         {touchesAudio && (
           <p className="mt-1 text-[11px] text-px-warn" role="note">
-            Changing the container re-encodes the audio. Quality cannot exceed
-            the source.
+            Changing the container re-encodes the audio. Quality cannot exceed the source.
           </p>
         )}
       </div>
 
-      {format === "mp3" && (
+      {format === 'mp3' && (
         <div>
           <label
             htmlFor={`adv-bitrate-${record.jobId}`}
@@ -126,7 +120,7 @@ export function AdvancedPane() {
             id={`adv-bitrate-${record.jobId}`}
             name={`adv-bitrate-${record.jobId}`}
             value={bitrate}
-            onChange={(e) => {
+            onChange={e => {
               setBitrate(e.target.value as AudioBitrate);
               markDirty();
             }}
@@ -142,9 +136,7 @@ export function AdvancedPane() {
       )}
 
       <div className="border-t border-px-line pt-3">
-        <span className="mb-2 block text-xs font-semibold text-px-text">
-          Audio Enhancements
-        </span>
+        <span className="mb-2 block text-xs font-semibold text-px-text">Audio Enhancements</span>
         <fieldset>
           <legend className="sr-only">Loudness handling</legend>
           <div
@@ -152,7 +144,7 @@ export function AdvancedPane() {
             role="radiogroup"
             aria-label="Loudness handling"
           >
-            {NORMALIZE_MODES.map((m) => {
+            {NORMALIZE_MODES.map(m => {
               const selected = normalizeMode === m.id;
               return (
                 <button
@@ -167,20 +159,18 @@ export function AdvancedPane() {
                   }}
                   className={`border-2 px-2 py-1.5 text-left transition-colors ${
                     selected
-                      ? "border-px-acc bg-px-panel-2 text-px-acc"
-                      : "border-px-line bg-px-bg hover:border-px-dim"
+                      ? 'border-px-acc bg-px-panel-2 text-px-acc'
+                      : 'border-px-line bg-px-bg hover:border-px-dim'
                   }`}
                 >
                   <span className="block text-xs font-bold">{m.label}</span>
-                  <span className="block text-[10px] text-px-dim">
-                    {m.hint}
-                  </span>
+                  <span className="block text-[10px] text-px-dim">{m.hint}</span>
                 </button>
               );
             })}
           </div>
         </fieldset>
-        {normalizeMode !== "off" && (
+        {normalizeMode !== 'off' && (
           <p className="mt-1 text-[11px] text-px-dim" role="note">
             Requires re-encode. Existing tags and cover art are preserved.
           </p>
@@ -188,23 +178,23 @@ export function AdvancedPane() {
         <div className="mt-2">
           <div className="flex items-center justify-between rounded-[2px] border border-px-line bg-px-bg p-2">
             <span className="text-xs font-semibold text-px-text">
-              Volume gain{" "}
+              Volume gain{' '}
               <span className="font-normal text-px-dim">
-                {normalizeMode === "loudness"
-                  ? "(fixed by loudness mode)"
-                  : normalizeMode === "peak"
-                    ? "(limited to −1 dBTP)"
-                    : ""}
+                {normalizeMode === 'loudness'
+                  ? '(fixed by loudness mode)'
+                  : normalizeMode === 'peak'
+                    ? '(limited to −1 dBTP)'
+                    : ''}
               </span>
             </span>
             <select
               aria-label="Volume gain"
               value={volumeBoost}
-              onChange={(e) => {
+              onChange={e => {
                 setVolumeBoost(Number(e.target.value));
                 markDirty();
               }}
-              disabled={normalizeMode === "loudness"}
+              disabled={normalizeMode === 'loudness'}
               className="px-select py-1 text-xs disabled:opacity-50"
             >
               <option value={100}>100%</option>
@@ -221,8 +211,7 @@ export function AdvancedPane() {
             htmlFor={`adv-title-${record.jobId}`}
             className="mb-1 block text-xs font-semibold text-px-text"
           >
-            Title{" "}
-            <span className="font-normal text-px-dim">(renames file)</span>
+            Title <span className="font-normal text-px-dim">(renames file)</span>
           </label>
           <input
             id={`adv-title-${record.jobId}`}
@@ -231,7 +220,7 @@ export function AdvancedPane() {
             autoComplete="off"
             spellCheck={false}
             value={title}
-            onChange={(e) => {
+            onChange={e => {
               setTitle(e.target.value);
               markDirty();
             }}
@@ -244,8 +233,7 @@ export function AdvancedPane() {
             htmlFor={`adv-artist-${record.jobId}`}
             className="mb-1 block text-xs font-semibold text-px-text"
           >
-            Artist{" "}
-            <span className="font-normal text-px-dim">(renames file)</span>
+            Artist <span className="font-normal text-px-dim">(renames file)</span>
           </label>
           <input
             id={`adv-artist-${record.jobId}`}
@@ -254,7 +242,7 @@ export function AdvancedPane() {
             autoComplete="off"
             spellCheck={false}
             value={artist}
-            onChange={(e) => {
+            onChange={e => {
               setArtist(e.target.value);
               markDirty();
             }}
@@ -265,10 +253,7 @@ export function AdvancedPane() {
       </div>
 
       {error && (
-        <p
-          role="alert"
-          className="border-2 border-px-err bg-px-bg p-2 text-xs text-px-err"
-        >
+        <p role="alert" className="border-2 border-px-err bg-px-bg p-2 text-xs text-px-err">
           {error}
         </p>
       )}
@@ -287,7 +272,7 @@ export function AdvancedPane() {
         onClick={() => void handleApply()}
         disabled={isSaving || !dirty}
         className={`px-btn flex w-full items-center justify-center gap-2 !py-2.5 text-sm font-bold ${
-          confirmArmed ? "!border-px-err !bg-px-err !text-[#0b0b12]" : ""
+          confirmArmed ? '!border-px-err !bg-px-err !text-[#0b0b12]' : ''
         }`}
       >
         {isSaving ? (
@@ -298,11 +283,7 @@ export function AdvancedPane() {
         ) : (
           <>
             <Settings2 className="h-4 w-4" aria-hidden="true" />
-            <span>
-              {confirmArmed
-                ? "Confirm — this rewrites the file"
-                : "Apply changes"}
-            </span>
+            <span>{confirmArmed ? 'Confirm — this rewrites the file' : 'Apply changes'}</span>
           </>
         )}
       </button>

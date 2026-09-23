@@ -29,7 +29,7 @@ export function extractYouTubeId(input: string): string | null {
     // Shorts URL: youtube.com/shorts/ID
     /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
     // Live URL: youtube.com/live/ID
-    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/live\/([a-zA-Z0-9_-]{11})/
+    /(?:https?:\/\/)?(?:www\.)?youtube\.com\/live\/([a-zA-Z0-9_-]{11})/,
   ];
 
   for (const pattern of patterns) {
@@ -71,7 +71,7 @@ export function parseYouTubeInput(input: string): ParsedYouTubeInfo {
     return {
       isValid: false,
       videoId: null,
-      canonicalUrl: null
+      canonicalUrl: null,
     };
   }
 
@@ -81,6 +81,6 @@ export function parseYouTubeInput(input: string): ParsedYouTubeInfo {
     isValid: true,
     videoId,
     canonicalUrl: `https://www.youtube.com/watch?v=${videoId}`,
-    timestampSeconds
+    timestampSeconds,
   };
 }

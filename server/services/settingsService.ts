@@ -17,11 +17,47 @@ const DEFAULTS: AppSettings = {
   revealAfterConvert: false,
 };
 
-const SEGMENT_ILLEGAL = /[<>:"|?*\x00-\x1F]/;
+function hasIllegalSegmentChar(seg: string): boolean {
+  for (const ch of seg) {
+    const code = ch.charCodeAt(0);
+    if (
+      ch === '<' ||
+      ch === '>' ||
+      ch === ':' ||
+      ch === '"' ||
+      ch === '|' ||
+      ch === '?' ||
+      ch === '*' ||
+      code <= 0x1f
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
 const RESERVED = new Set([
-  'CON', 'PRN', 'AUX', 'NUL',
-  'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
-  'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9',
+  'CON',
+  'PRN',
+  'AUX',
+  'NUL',
+  'COM1',
+  'COM2',
+  'COM3',
+  'COM4',
+  'COM5',
+  'COM6',
+  'COM7',
+  'COM8',
+  'COM9',
+  'LPT1',
+  'LPT2',
+  'LPT3',
+  'LPT4',
+  'LPT5',
+  'LPT6',
+  'LPT7',
+  'LPT8',
+  'LPT9',
 ]);
 
 function validateDownloadsDir(dir: string): string | null {
@@ -31,11 +67,14 @@ function validateDownloadsDir(dir: string): string | null {
   const segments = normalized.split(path.sep).filter(Boolean);
   const startIndex = /^[a-zA-Z]:$/.test(segments[0] ?? '') ? 1 : 0;
   for (const seg of segments.slice(startIndex)) {
-    if (SEGMENT_ILLEGAL.test(seg)) return `Folder name "${seg}" contains a character Windows forbids: < > : " | ? *`;
+    if (hasIllegalSegmentChar(seg))
+      return `Folder name "${seg}" contains a character Windows forbids: < > : " | ? *`;
     if (/[. ]$/.test(seg)) return `Folder name "${seg}" cannot end with a dot or space.`;
-    if (RESERVED.has(seg.toUpperCase().split('.')[0])) return `Folder name "${seg}" is reserved by Windows.`;
+    if (RESERVED.has(seg.toUpperCase().split('.')[0]))
+      return `Folder name "${seg}" is reserved by Windows.`;
   }
-  if (normalized.length >= 260) return 'Path is at or beyond the 260 character Windows limit. Choose a shorter folder.';
+  if (normalized.length >= 260)
+    return 'Path is at or beyond the 260 character Windows limit. Choose a shorter folder.';
   return null;
 }
 
@@ -57,16 +96,17 @@ function atomicWriteJson(filePath: string, value: unknown): void {
   fs.renameSync(tmp, filePath);
 }
 
-export class SettingsService {
-  public static getSettings(): AppSettings {
+export namespace SettingsService {
+  export function getSettings(): AppSettings {
     return { ...DEFAULTS, ...readStored() };
   }
 
-  public static updateSettings(patch: Partial<AppSettings>): AppSettings {
-    const current = this.getSettings();
+  export function updateSettings(patch: Partial<AppSettings>): AppSettings {
+    const current = SettingsService.getSettings();
     const next: AppSettings = {
       downloadsDir: (patch.downloadsDir ?? current.downloadsDir).trim(),
-      filenameTemplate: (patch.filenameTemplate ?? current.filenameTemplate).trim() || DEFAULTS.filenameTemplate,
+      filenameTemplate:
+        (patch.filenameTemplate ?? current.filenameTemplate).trim() || DEFAULTS.filenameTemplate,
       revealAfterConvert: patch.revealAfterConvert ?? current.revealAfterConvert,
     };
     const error = validateDownloadsDir(next.downloadsDir);
@@ -83,7 +123,7 @@ export class SettingsService {
     return next;
   }
 
-  public static resetSettings(): AppSettings {
+  export function resetSettings(): AppSettings {
     atomicWriteJson(SETTINGS_FILE, DEFAULTS);
     fs.mkdirSync(DEFAULTS.downloadsDir, { recursive: true });
     return { ...DEFAULTS };

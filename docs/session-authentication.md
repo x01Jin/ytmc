@@ -7,12 +7,14 @@ This document describes how YouTube session authentication, visitor cookies, PO 
 ## 1. Authentication Architecture
 
 YouTube protects video audio streams with layered verification mechanisms:
+
 1. **Visitor Sessions & Cookies**: Required to obtain valid player configuration contexts.
 2. **JavaScript Player Challenges**: Dynamic cryptographic challenges embedded in YouTube's `player.js` scripts that require a JavaScript runtime to solve.
 3. **Proof-of-Origin (PO) Tokens**: Botguard and GVS integrity tokens validating request legitimacy.
 4. **Account Authentication (Optional)**: Required only for private or age-restricted (18+) tracks.
 
 The converter addresses these challenges through a unified multi-layer engine:
+
 - **Automatic Guest Session Provisioning**: Fetches fresh visitor cookies directly from YouTube's edge API upon application initialization or user request.
 - **Node.js JavaScript Challenge Solver**: Executes player challenges natively using Node.js (`--js-runtimes node`).
 - **PO Token Provider Sidecar**: Automatically provides GVS and player PO tokens via the `bgutil-pot` HTTP sidecar service.
@@ -23,6 +25,7 @@ The converter addresses these challenges through a unified multi-layer engine:
 ## 2. Automatic Session Provisioning
 
 Users do not need to install browser extensions or extract cookies for standard conversion:
+
 1. **Initial Mount**: If no session cookie exists on the server, the application automatically requests fresh guest session tokens from YouTube.
 2. **On-Demand Refresh**: Clicking **Auto-Fetch Guest Session** in the Session Settings modal requests new session cookies and reloads the engine.
 3. **API Endpoint**: `POST /api/cookies/auto-fetch` triggers the guest cookie provisioning routine.
@@ -32,6 +35,7 @@ Users do not need to install browser extensions or extract cookies for standard 
 ## 3. Live Session Verification
 
 The system provides an integrated connectivity testing tool to verify that the active session and JavaScript solver can access YouTube audio streams:
+
 - **Trigger**: Click **Test Live Connection** in the Session Settings modal or call `POST /api/cookies/test`.
 - **Validation**: Executes `yt-dlp` in simulation mode with the Node.js runtime against a reference YouTube stream, using the exact same extraction path as real conversions: PO Token sidecar args when the sidecar is installed and reachable, otherwise the no-POT player-client fallback (`default,web_embedded,android_vr`) with cookies when present.
 - **Feedback**: Returns stream availability, track title, duration, session verification status, the strategy exercised (`pot` or `fallback`), whether the sidecar answered its `/ping`, whether cookies were sent, and raw `errorDetails` on failure (also rendered in the modal under Technical details).
@@ -55,6 +59,7 @@ To install the sidecar (pinned, security-checked): use `bgutil-ytdlp-pot-provide
 For age-restricted (18+) or private content, users can import their personal YouTube account cookies:
 
 ### Supported Formats
+
 - **Netscape HTTP Cookie Format**:
   ```
   # Netscape HTTP Cookie File
@@ -62,10 +67,11 @@ For age-restricted (18+) or private content, users can import their personal You
   .youtube.com	TRUE	/	TRUE	1789325080	LOGIN_INFO	...
   .youtube.com	TRUE	/	TRUE	1789325080	SAPISID	...
   ```
-- **JSON Format**: Exported directly from browser extensions such as *Cookie-Editor* or *EditThisCookie*.
+- **JSON Format**: Exported directly from browser extensions such as _Cookie-Editor_ or _EditThisCookie_.
 
 ### Exporting Steps
-1. Install a cookie exporter extension (e.g., *Cookie-Editor* or *Get cookies.txt locally*).
+
+1. Install a cookie exporter extension (e.g., _Cookie-Editor_ or _Get cookies.txt locally_).
 2. Open and sign in to [YouTube.com](https://youtube.com) in your browser.
 3. Open the extension and click **Export** (or **Copy**).
 4. In the app, open **Session Settings**, paste the content or drag & drop `cookies.txt`, and click **Save Cookies**.

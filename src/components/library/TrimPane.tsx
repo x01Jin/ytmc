@@ -1,10 +1,29 @@
-import { Loader2, Scissors } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
-import { ApiClient } from "../../services/apiClient";
-import { formatSeconds, parseTimeToSeconds } from "../../utils/time";
-import { previewStreamUrl } from "../../utils/audioSupport";
-import { useEditPanel } from "./LibraryEditPanel";
+import { Loader2, Scissors } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ApiClient } from '../../services/apiClient';
+import { formatSeconds, parseTimeToSeconds } from '../../utils/time';
+import { previewStreamUrl } from '../../utils/audioSupport';
+import { useEditPanel } from './LibraryEditPanel';
 
+/**
+ * Probe helper shared by the mount effect and the post-trim refresh.
+ * Takes a settlement callback instead of touching state, so effect bodies
+ * stay free of synchronous updates; every write happens in an async
+ * continuation. Returns a cancel function for effect cleanup.
+ */
+function probeDuration(jobId: string, onSettled: (seconds: number | null) => void): () => void {
+  let cancelled = false;
+  ApiClient.probeLibraryFile(jobId)
+    .then(probe => {
+      if (!cancelled) onSettled(probe.durationSeconds);
+    })
+    .catch(() => {
+      if (!cancelled) onSettled(null);
+    });
+  return () => {
+    cancelled = true;
+  };
+}
 /**
  * Trimmer pane: preview the track, pick start/end, loop the selection,
  * then overwrite the file. Destructive apply requires explicit confirmation.
@@ -15,8 +34,8 @@ export function TrimPane() {
   const startRef = useRef<HTMLInputElement | null>(null);
   const [duration, setDuration] = useState<number | null>(null);
   const [position, setPosition] = useState(0);
-  const [start, setStart] = useState("");
-  const [end, setEnd] = useState("");
+  const [start, setStart] = useState('');
+  const [end, setEnd] = useState('');
   const [loopSelection, setLoopSelection] = useState(true);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
@@ -27,29 +46,27 @@ export function TrimPane() {
   // rewritten file (cache-busted src) and the duration is re-probed.
   const [mediaNonce, setMediaNonce] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
+  // Re-probe when the record changes (normally a remount covers this via the
+  // parent key; this guards the ordering) — during render, not in an
+  // effect: synchronous updates do not belong in effects.
+  const [prevJobId, setPrevJobId] = useState(record.jobId);
+  if (record.jobId !== prevJobId) {
+    setPrevJobId(record.jobId);
     setIsProbing(true);
-    ApiClient.probeLibraryFile(record.jobId)
-      .then((probe) => {
-        if (!cancelled) setDuration(probe.durationSeconds);
-      })
-      .catch(() => {
-        if (!cancelled) setDuration(null);
-      })
-      .finally(() => {
-        if (!cancelled) setIsProbing(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [record.jobId, mediaNonce]);
+  }
+
+  useEffect(() => {
+    return probeDuration(record.jobId, seconds => {
+      setDuration(seconds);
+      setIsProbing(false);
+    });
+  }, [record.jobId]);
 
   const parsedStart = start.trim() ? parseTimeToSeconds(start) : 0;
   const parsedEnd = end.trim() ? parseTimeToSeconds(end) : duration;
   const selectionValid =
     parsedStart !== null &&
-    (end.trim() === "" || parsedEnd !== null) &&
+    (end.trim() === '' || parsedEnd !== null) &&
     (parsedEnd === null || parsedStart < parsedEnd) &&
     (duration === null || parsedStart < duration) &&
     (parsedEnd === null || duration === null || parsedEnd <= duration);
@@ -72,9 +89,9 @@ export function TrimPane() {
     void audio.play().catch(() => {});
   };
 
-  const setFromPosition = (which: "start" | "end") => {
+  const setFromPosition = (which: 'start' | 'end') => {
     const value = formatSeconds(position);
-    if (which === "start") setStart(value);
+    if (which === 'start') setStart(value);
     else setEnd(value);
     setFieldError(null);
     setConfirmArmed(false);
@@ -82,14 +99,12 @@ export function TrimPane() {
 
   const handleApply = async () => {
     if (!selectionValid) {
-      setFieldError(
-        "Check the trim bounds: start must be before end and inside the track.",
-      );
+      setFieldError('Check the trim bounds: start must be before end and inside the track.');
       startRef.current?.focus();
       return;
     }
     if (!start.trim() && !end.trim()) {
-      setFieldError("Enter a start or end time to trim.");
+      setFieldError('Enter a start or end time to trim.');
       startRef.current?.focus();
       return;
     }
@@ -100,32 +115,34 @@ export function TrimPane() {
     setIsSaving(true);
     setStatus(null);
     try {
-      await ApiClient.trimLibraryFile(
-        record.jobId,
-        start.trim() || "0",
-        end.trim(),
-      );
-      setStatus("Trim applied. The file was overwritten.");
+      await ApiClient.trimLibraryFile(record.jobId, start.trim() || '0', end.trim());
+      setStatus('Trim applied. The file was overwritten.');
       setConfirmArmed(false);
       // Reset the trimmer onto the rewritten file: clear the bounds, drop
       // the playback position, and reload the preview (new duration/src).
       audioRef.current?.pause();
-      setStart("");
-      setEnd("");
+      setStart('');
+      setEnd('');
       setPosition(0);
-      setMediaNonce((n) => n + 1);
+      setMediaNonce(n => n + 1);
+      // Re-probe the rewritten file directly: the duration display must
+      // refresh even when the trim leaves the file size unchanged (no
+      // remount). Same settlement path as the mount effect above.
+      setIsProbing(true);
+      probeDuration(record.jobId, seconds => {
+        setDuration(seconds);
+        setIsProbing(false);
+      });
       onEdited();
     } catch (err) {
-      setFieldError(
-        err instanceof Error ? err.message : "Could not trim the audio file.",
-      );
+      setFieldError(err instanceof Error ? err.message : 'Could not trim the audio file.');
     } finally {
       setIsSaving(false);
     }
   };
 
   const previewBase = previewStreamUrl(record.jobId, record.format);
-  const previewSrc = `${previewBase}${previewBase.includes("?") ? "&" : "?"}v=${mediaNonce}`;
+  const previewSrc = `${previewBase}${previewBase.includes('?') ? '&' : '?'}v=${mediaNonce}`;
 
   return (
     <div className="space-y-3">
@@ -135,10 +152,10 @@ export function TrimPane() {
         src={previewSrc}
         preload="metadata"
         onTimeUpdate={handleTimeUpdate}
-        onLoadedMetadata={(e) => {
+        onLoadedMetadata={e => {
           const d = e.currentTarget.duration;
           if (Number.isFinite(d)) {
-            setDuration((prev) => prev ?? d);
+            setDuration(prev => prev ?? d);
           }
         }}
         controls
@@ -146,17 +163,14 @@ export function TrimPane() {
         aria-label={`Preview ${record.title}`}
       />
 
-      <div
-        className="px-tabular flex justify-between text-[11px] text-px-dim"
-        aria-live="off"
-      >
+      <div className="px-tabular flex justify-between text-[11px] text-px-dim" aria-live="off">
         <span>Position {formatSeconds(position)}</span>
         <span>
           {isProbing
-            ? "Reading duration…"
+            ? 'Reading duration…'
             : duration !== null
               ? `Length ${formatSeconds(duration)}`
-              : "Length unknown"}
+              : 'Length unknown'}
         </span>
       </div>
 
@@ -178,7 +192,7 @@ export function TrimPane() {
               autoComplete="off"
               spellCheck={false}
               value={start}
-              onChange={(e) => {
+              onChange={e => {
                 setStart(e.target.value);
                 setFieldError(null);
                 setConfirmArmed(false);
@@ -196,7 +210,7 @@ export function TrimPane() {
             </button>
             <button
               type="button"
-              onClick={() => setFromPosition("start")}
+              onClick={() => setFromPosition('start')}
               className="px-btn shrink-0 !px-2 !py-1 text-xs"
               title="Use current playback position as start"
             >
@@ -209,10 +223,7 @@ export function TrimPane() {
             htmlFor={`trim-end-${record.jobId}`}
             className="mb-1 block text-xs font-semibold text-px-text"
           >
-            End{" "}
-            <span className="font-normal text-px-dim">
-              (blank = keep to end)
-            </span>
+            End <span className="font-normal text-px-dim">(blank = keep to end)</span>
           </label>
           <div className="flex gap-1.5">
             <input
@@ -223,7 +234,7 @@ export function TrimPane() {
               autoComplete="off"
               spellCheck={false}
               value={end}
-              onChange={(e) => {
+              onChange={e => {
                 setEnd(e.target.value);
                 setFieldError(null);
                 setConfirmArmed(false);
@@ -233,9 +244,7 @@ export function TrimPane() {
             />
             <button
               type="button"
-              onClick={() =>
-                seekTo(end.trim() ? parseTimeToSeconds(end) : duration)
-              }
+              onClick={() => seekTo(end.trim() ? parseTimeToSeconds(end) : duration)}
               className="px-btn shrink-0 !px-2 !py-1 text-xs"
               aria-label="Preview from end time"
             >
@@ -243,7 +252,7 @@ export function TrimPane() {
             </button>
             <button
               type="button"
-              onClick={() => setFromPosition("end")}
+              onClick={() => setFromPosition('end')}
               className="px-btn shrink-0 !px-2 !py-1 text-xs"
               title="Use current playback position as end"
             >
@@ -257,17 +266,14 @@ export function TrimPane() {
         <input
           type="checkbox"
           checked={loopSelection}
-          onChange={(e) => setLoopSelection(e.target.checked)}
+          onChange={e => setLoopSelection(e.target.checked)}
           className="h-4 w-4 accent-[#7c5cff]"
         />
         <span>Loop the selected region during preview</span>
       </label>
 
       {fieldError && (
-        <p
-          role="alert"
-          className="border-2 border-px-err bg-px-bg p-2 text-xs text-px-err"
-        >
+        <p role="alert" className="border-2 border-px-err bg-px-bg p-2 text-xs text-px-err">
           {fieldError}
         </p>
       )}
@@ -286,7 +292,7 @@ export function TrimPane() {
         onClick={() => void handleApply()}
         disabled={isSaving}
         className={`px-btn flex w-full items-center justify-center gap-2 !py-2.5 text-sm font-bold ${
-          confirmArmed ? "!border-px-err !bg-px-err !text-[#0b0b12]" : ""
+          confirmArmed ? '!border-px-err !bg-px-err !text-[#0b0b12]' : ''
         }`}
       >
         {isSaving ? (
@@ -297,11 +303,7 @@ export function TrimPane() {
         ) : (
           <>
             <Scissors className="h-4 w-4" aria-hidden="true" />
-            <span>
-              {confirmArmed
-                ? "Confirm trim — this overwrites the file"
-                : "Apply trim"}
-            </span>
+            <span>{confirmArmed ? 'Confirm trim — this overwrites the file' : 'Apply trim'}</span>
           </>
         )}
       </button>

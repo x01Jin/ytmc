@@ -1,23 +1,16 @@
-import { Pencil, Scissors, Settings2, Tag } from "lucide-react";
-import {
-  createContext,
-  use,
-  useCallback,
-  useId,
-  useRef,
-  useState,
-} from "react";
-import type { LibraryRecord } from "../../types";
-import { AdvancedPane } from "./AdvancedPane";
-import { TagPane } from "./TagPane";
-import { TrimPane } from "./TrimPane";
+import { Pencil, Scissors, Settings2, Tag } from 'lucide-react';
+import React, { createContext, use, useCallback, useId, useRef, useState } from 'react';
+import type { LibraryRecord } from '../../types';
+import { AdvancedPane } from './AdvancedPane';
+import { TagPane } from './TagPane';
+import { TrimPane } from './TrimPane';
 
-export type EditTabId = "trim" | "tags" | "advanced";
+export type EditTabId = 'trim' | 'tags' | 'advanced';
 
 const TABS: { id: EditTabId; label: string; icon: typeof Scissors }[] = [
-  { id: "trim", label: "Trimmer", icon: Scissors },
-  { id: "tags", label: "Tagger", icon: Tag },
-  { id: "advanced", label: "Advanced", icon: Settings2 },
+  { id: 'trim', label: 'Trimmer', icon: Scissors },
+  { id: 'tags', label: 'Tagger', icon: Tag },
+  { id: 'advanced', label: 'Advanced', icon: Settings2 },
 ];
 
 interface EditPanelContextValue {
@@ -32,8 +25,7 @@ const EditPanelContext = createContext<EditPanelContextValue | null>(null);
 /** Read the enclosing edit-panel context (React 19 `use`, conditional-safe). */
 export function useEditPanel(): EditPanelContextValue {
   const ctx = use(EditPanelContext);
-  if (!ctx)
-    throw new Error("Edit panel parts must render inside <LibraryEditPanel>");
+  if (!ctx) throw new Error('Edit panel parts must render inside <LibraryEditPanel>');
   return ctx;
 }
 
@@ -60,20 +52,20 @@ function EditTabs({
       tabRefs.current[next]?.focus();
       onTabChange(TABS[next].id);
     },
-    [onTabChange],
+    [onTabChange]
   );
 
   const handleKeyDown = (e: React.KeyboardEvent, index: number) => {
-    if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
       e.preventDefault();
       focusTab(index + 1);
-    } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
       e.preventDefault();
       focusTab(index - 1);
-    } else if (e.key === "Home") {
+    } else if (e.key === 'Home') {
       e.preventDefault();
       focusTab(0);
-    } else if (e.key === "End") {
+    } else if (e.key === 'End') {
       e.preventDefault();
       focusTab(TABS.length - 1);
     }
@@ -91,7 +83,7 @@ function EditTabs({
         return (
           <button
             key={t.id}
-            ref={(el) => {
+            ref={el => {
               tabRefs.current[i] = el;
             }}
             type="button"
@@ -101,9 +93,9 @@ function EditTabs({
             aria-controls={`${baseId}-panel-${t.id}`}
             tabIndex={selected ? 0 : -1}
             onClick={() => onTabChange(t.id)}
-            onKeyDown={(e) => handleKeyDown(e, i)}
+            onKeyDown={e => handleKeyDown(e, i)}
             className={`px-btn flex items-center gap-1.5 !border-0 !py-1.5 text-xs ${
-              selected ? "!bg-px-acc !text-[#0b0b12]" : ""
+              selected ? '!bg-px-acc !text-[#0b0b12]' : ''
             }`}
           >
             <Icon className="h-3.5 w-3.5" aria-hidden="true" />
@@ -120,13 +112,9 @@ function EditTabs({
  * Compound structure: <LibraryEditPanel> owns tab state + record context,
  * each pane is an explicit variant component (no boolean-prop modes).
  */
-export function LibraryEditPanel({
-  record,
-  initialTab = "trim",
-  onEdited,
-}: LibraryEditPanelProps) {
+export function LibraryEditPanel({ record, initialTab = 'trim', onEdited }: LibraryEditPanelProps) {
   const [tab, setTab] = useState<EditTabId>(initialTab);
-  const baseId = useId().replace(/[^a-zA-Z0-9]/g, "");
+  const baseId = useId().replace(/[^a-zA-Z0-9]/g, '');
 
   return (
     <EditPanelContext value={{ record, tab, baseId, onEdited }}>
@@ -134,10 +122,7 @@ export function LibraryEditPanel({
         <div className="mb-1 flex items-center gap-1.5 text-[11px] text-px-dim">
           <Pencil className="h-3 w-3" aria-hidden="true" />
           <span className="truncate">
-            Editing{" "}
-            <span className="font-semibold text-px-text">
-              {record.fileName}
-            </span>
+            Editing <span className="font-semibold text-px-text">{record.fileName}</span>
           </span>
         </div>
         <EditTabs tab={tab} onTabChange={setTab} baseId={baseId} />
@@ -147,7 +132,7 @@ export function LibraryEditPanel({
             role="tabpanel"
             id={`${baseId}-panel-trim`}
             aria-labelledby={`${baseId}-tab-trim`}
-            hidden={tab !== "trim"}
+            hidden={tab !== 'trim'}
           >
             <TrimPane />
           </div>
@@ -155,7 +140,7 @@ export function LibraryEditPanel({
             role="tabpanel"
             id={`${baseId}-panel-tags`}
             aria-labelledby={`${baseId}-tab-tags`}
-            hidden={tab !== "tags"}
+            hidden={tab !== 'tags'}
           >
             <TagPane />
           </div>
@@ -163,7 +148,7 @@ export function LibraryEditPanel({
             role="tabpanel"
             id={`${baseId}-panel-advanced`}
             aria-labelledby={`${baseId}-tab-advanced`}
-            hidden={tab !== "advanced"}
+            hidden={tab !== 'advanced'}
           >
             <AdvancedPane />
           </div>

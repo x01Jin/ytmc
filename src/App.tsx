@@ -1,3 +1,4 @@
+import React from 'react';
 import {
   AppShell,
   ShellContent,
@@ -6,12 +7,12 @@ import {
   StatusBar,
   TitleBar,
   useHashRoute,
-} from "./components/AppShell";
-import { ConvertRoute } from "./routes/Convert";
-import { HistoryRoute } from "./routes/History";
-import { LibraryRoute } from "./routes/Library";
-import { QueueRoute } from "./routes/Queue";
-import { SettingsRoute } from "./routes/Settings";
+} from './components/AppShell';
+import { ConvertRoute } from './routes/Convert';
+import { HistoryRoute } from './routes/History';
+import { LibraryRoute } from './routes/Library';
+import { QueueRoute } from './routes/Queue';
+import { SettingsRoute } from './routes/Settings';
 import {
   ConvertDraftProvider,
   HistoryProvider,
@@ -23,15 +24,15 @@ import {
   useLibrary,
   useSession,
   useSettings,
-} from "./store/appStore";
-import { ApiClient } from "./services/apiClient";
+} from './store/appStore';
+import { ApiClient } from './services/apiClient';
 
 const BYTES_PER_MB = 1024 * 1024;
 const MB_PER_GB = 1024;
 
 function formatTotal(bytes: number): string {
   const mb = bytes / BYTES_PER_MB;
-  const formatted = new Intl.NumberFormat("en-US", {
+  const formatted = new Intl.NumberFormat('en-US', {
     maximumFractionDigits: 1,
   });
   if (mb >= MB_PER_GB) return `${formatted.format(mb / MB_PER_GB)} GB`;
@@ -46,21 +47,13 @@ function ShellChrome() {
   const { state: session } = useSession();
 
   const activeCount =
-    jobs.activeJob &&
-    jobs.activeJob.status !== "completed" &&
-    jobs.activeJob.status !== "error"
+    jobs.activeJob && jobs.activeJob.status !== 'completed' && jobs.activeJob.status !== 'error'
       ? 1
       : 0;
   const folderLabel =
-    settingsState.settings?.downloadsDir ??
-    libraryState.library?.downloadsDir ??
-    "Library folder…";
-  const fileCount = libraryState.library
-    ? libraryState.library.records.length
-    : null;
-  const totalSize = libraryState.library
-    ? formatTotal(libraryState.library.totalSizeBytes)
-    : null;
+    settingsState.settings?.downloadsDir ?? libraryState.library?.downloadsDir ?? 'Library folder…';
+  const fileCount = libraryState.library ? libraryState.library.records.length : null;
+  const totalSize = libraryState.library ? formatTotal(libraryState.library.totalSizeBytes) : null;
 
   const handleRevealFolder = () => {
     const first = libraryState.library?.records[0];
@@ -73,13 +66,11 @@ function ShellChrome() {
       <ShellMain>
         <SideNav route={route} onNavigate={navigate} queueCount={activeCount} />
         <ShellContent>
-          {route === "convert" && <ConvertRoute />}
-          {route === "library" && <LibraryRoute />}
-          {route === "history" && (
-            <HistoryRoute onReconvert={() => navigate("convert")} />
-          )}
-          {route === "queue" && <QueueRoute />}
-          {route === "settings" && <SettingsRoute />}
+          {route === 'convert' && <ConvertRoute />}
+          {route === 'library' && <LibraryRoute />}
+          {route === 'history' && <HistoryRoute onReconvert={() => navigate('convert')} />}
+          {route === 'queue' && <QueueRoute />}
+          {route === 'settings' && <SettingsRoute />}
         </ShellContent>
       </ShellMain>
       <StatusBar

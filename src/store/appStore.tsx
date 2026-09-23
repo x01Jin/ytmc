@@ -1,14 +1,7 @@
-import {
-  createContext,
-  use,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import type { ReactNode } from "react";
-import { ApiClient } from "../services/apiClient";
+import { createContext, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React from 'react';
+import type { ReactNode } from 'react';
+import { ApiClient } from '../services/apiClient';
 import type {
   AppSettings,
   ConversionJob,
@@ -17,9 +10,9 @@ import type {
   HistoryEntry,
   LibraryData,
   VideoMetadata,
-} from "../types";
-import { useJobPolling } from "../hooks/useJobPolling";
-import { migrateNormalizeMode } from "../utils/normalizeModes";
+} from '../types';
+import { useJobPolling } from '../hooks/useJobPolling';
+import { migrateNormalizeMode } from '../utils/normalizeModes';
 
 // --- Jobs ---
 
@@ -53,36 +46,39 @@ export function JobsProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Mount fetch mirrors refreshRecent but keeps every state update inside
+  // async continuations: synchronous updates do not belong in effects.
   useEffect(() => {
-    void refreshRecent();
-  }, [refreshRecent]);
+    ApiClient.getRecentJobs()
+      .then(setRecentJobs)
+      .catch(() => {
+        // Library view has its own on-disk fallback.
+      });
+  }, []);
 
   useJobPolling(activeJob?.id ?? null, activeJob?.status, {
-    onUpdate: (job) => setActiveJob(job),
-    onDone: (job) => {
+    onUpdate: job => setActiveJob(job),
+    onDone: job => {
       setIsConverting(false);
-      if (job.status === "completed") void refreshRecent();
+      if (job.status === 'completed') void refreshRecent();
     },
   });
 
-  const startConversion = useCallback(
-    async (url: string, options: ConversionOptions) => {
-      setIsConverting(true);
-      try {
-        const job = await ApiClient.startConversion(url, options);
-        setActiveJob(job);
-      } catch (err) {
-        setIsConverting(false);
-        throw err;
-      }
-    },
-    [],
-  );
+  const startConversion = useCallback(async (url: string, options: ConversionOptions) => {
+    setIsConverting(true);
+    try {
+      const job = await ApiClient.startConversion(url, options);
+      setActiveJob(job);
+    } catch (err) {
+      setIsConverting(false);
+      throw err;
+    }
+  }, []);
 
   const selectJob = useCallback((job: ConversionJob) => setActiveJob(job), []);
   const updateJob = useCallback((job: ConversionJob) => {
     setActiveJob(job);
-    setRecentJobs((prev) => prev.map((j) => (j.id === job.id ? job : j)));
+    setRecentJobs(prev => prev.map(j => (j.id === job.id ? job : j)));
   }, []);
   const resetActive = useCallback(() => {
     setActiveJob(null);
@@ -109,7 +105,7 @@ export function JobsProvider({ children }: { children: ReactNode }) {
       updateJob,
       resetActive,
       refreshRecent,
-    ],
+    ]
   );
 
   return <JobsContext value={value}>{children}</JobsContext>;
@@ -117,7 +113,7 @@ export function JobsProvider({ children }: { children: ReactNode }) {
 
 export function useJobs(): JobsContextValue {
   const ctx = use(JobsContext);
-  if (!ctx) throw new Error("useJobs must be used inside JobsProvider");
+  if (!ctx) throw new Error('useJobs must be used inside JobsProvider');
   return ctx;
 }
 
@@ -152,16 +148,27 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Mount fetch mirrors refresh but keeps every state update inside async
+  // continuations: synchronous updates do not belong in effects. isLoading
+  // already starts true, so no sync reset is needed.
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    ApiClient.getHistory()
+      .then(loaded => {
+        setEntries(loaded);
+        setIsLoading(false);
+      })
+      .catch(() => {
+        // History stays as-is on network failure; never blanked optimistically.
+        setIsLoading(false);
+      });
+  }, []);
 
   // Optimistic removal with rollback (per frontend-api-integration-patterns).
   const removeEntry = useCallback(
     async (jobId: string) => {
       const previous = entries;
-      if (!previous.some((e) => e.jobId === jobId)) return;
-      setEntries(previous.filter((e) => e.jobId !== jobId));
+      if (!previous.some(e => e.jobId === jobId)) return;
+      setEntries(previous.filter(e => e.jobId !== jobId));
       try {
         await ApiClient.deleteHistoryItem(jobId);
       } catch {
@@ -169,7 +176,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         setEntries(previous);
       }
     },
-    [entries],
+    [entries]
   );
 
   const clear = useCallback(async () => {
@@ -188,7 +195,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       state: { entries, isLoading },
       actions: { refresh, removeEntry, clear },
     }),
-    [entries, isLoading, refresh, removeEntry, clear],
+    [entries, isLoading, refresh, removeEntry, clear]
   );
 
   return <HistoryContext value={value}>{children}</HistoryContext>;
@@ -196,7 +203,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
 
 export function useHistory(): HistoryContextValue {
   const ctx = use(HistoryContext);
-  if (!ctx) throw new Error("useHistory must be used inside HistoryProvider");
+  if (!ctx) throw new Error('useHistory must be used inside HistoryProvider');
   return ctx;
 }
 
@@ -236,24 +243,37 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       setLibrary(data);
     } catch (err) {
       if (seq !== refreshSeq.current) return;
-      setError(
-        err instanceof Error ? err.message : "Could not load your library.",
-      );
+      setError(err instanceof Error ? err.message : 'Could not load your library.');
     } finally {
       if (seq === refreshSeq.current) setIsLoading(false);
     }
   }, []);
 
+  // Mount fetch mirrors refresh (including its sequence guard) but keeps
+  // every state update inside async continuations: synchronous updates do
+  // not belong in effects. isLoading/error already start loading, so no
+  // sync reset is needed.
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    const seq = (refreshSeq.current += 1);
+    ApiClient.getLibrary()
+      .then(data => {
+        if (seq !== refreshSeq.current) return;
+        setLibrary(data);
+        setIsLoading(false);
+      })
+      .catch(err => {
+        if (seq !== refreshSeq.current) return;
+        setError(err instanceof Error ? err.message : 'Could not load your library.');
+        setIsLoading(false);
+      });
+  }, []);
 
   const deleteFile = useCallback(
     async (jobId: string) => {
       await ApiClient.deleteLibraryFile(jobId);
       await refresh();
     },
-    [refresh],
+    [refresh]
   );
 
   const importFile = useCallback(async (file: File) => {
@@ -269,7 +289,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
       state: { library, isLoading, error },
       actions: { refresh, importFile, deleteFile, revealFile },
     }),
-    [library, isLoading, error, refresh, importFile, deleteFile, revealFile],
+    [library, isLoading, error, refresh, importFile, deleteFile, revealFile]
   );
 
   return <LibraryContext value={value}>{children}</LibraryContext>;
@@ -277,7 +297,7 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
 
 export function useLibrary(): LibraryContextValue {
   const ctx = use(LibraryContext);
-  if (!ctx) throw new Error("useLibrary must be used inside LibraryProvider");
+  if (!ctx) throw new Error('useLibrary must be used inside LibraryProvider');
   return ctx;
 }
 
@@ -297,7 +317,7 @@ interface SettingsContextValue {
 
 const SettingsContext = createContext<SettingsContextValue | null>(null);
 
-const SETTINGS_CACHE_KEY = "ytm-settings-v1";
+const SETTINGS_CACHE_KEY = 'ytm-settings-v1';
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<AppSettings | null>(() => {
@@ -314,7 +334,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let cancelled = false;
     ApiClient.getSettings()
-      .then((s) => {
+      .then(s => {
         if (cancelled) return;
         setSettings(s);
         try {
@@ -322,10 +342,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
         } catch {}
       })
       .catch((err: unknown) => {
-        if (!cancelled)
-          setError(
-            err instanceof Error ? err.message : "Could not load settings.",
-          );
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not load settings.');
       })
       .finally(() => {
         if (!cancelled) setIsLoading(false);
@@ -353,7 +370,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<SettingsContextValue>(
     () => ({ state: { settings, isLoading, error }, actions: { save, reset } }),
-    [settings, isLoading, error, save, reset],
+    [settings, isLoading, error, save, reset]
   );
 
   return <SettingsContext value={value}>{children}</SettingsContext>;
@@ -361,7 +378,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
 
 export function useSettings(): SettingsContextValue {
   const ctx = use(SettingsContext);
-  if (!ctx) throw new Error("useSettings must be used inside SettingsProvider");
+  if (!ctx) throw new Error('useSettings must be used inside SettingsProvider');
   return ctx;
 }
 
@@ -391,25 +408,23 @@ interface ConvertDraftContextValue {
   };
 }
 
-const ConvertDraftContext = createContext<ConvertDraftContextValue | null>(
-  null,
-);
+const ConvertDraftContext = createContext<ConvertDraftContextValue | null>(null);
 
-const CONVERT_DRAFT_KEY = "ytm-convert-draft-v1";
+const CONVERT_DRAFT_KEY = 'ytm-convert-draft-v1';
 
 const DEFAULT_CONVERT_OPTIONS: ConversionOptions = {
-  format: "best",
-  bitrate: "native",
-  trimStart: "",
-  trimEnd: "",
+  format: 'best',
+  bitrate: 'native',
+  trimStart: '',
+  trimEnd: '',
   volumeBoost: 100,
-  normalizeMode: "off",
+  normalizeMode: 'off',
   embedThumbnail: true,
 };
 
-function loadConvertDraft(): Omit<ConvertDraft, "pendingInspectUrl"> {
+function loadConvertDraft(): Omit<ConvertDraft, 'pendingInspectUrl'> {
   const fallback = {
-    url: "",
+    url: '',
     metadata: null,
     options: DEFAULT_CONVERT_OPTIONS,
   };
@@ -420,23 +435,20 @@ function loadConvertDraft(): Omit<ConvertDraft, "pendingInspectUrl"> {
     // Sanitize: the convert flow no longer carries autotagger tags, but
     // drafts persisted by older builds may still contain them. Drop the
     // stale field so it can never leak into a future conversion.
-    if (
-      parsed.options &&
-      typeof parsed.options === "object" &&
-      "tags" in parsed.options
-    ) {
-      const { tags: _staleTags, ...rest } =
-        parsed.options as ConversionOptions & { tags?: unknown };
+    if (parsed.options && typeof parsed.options === 'object' && 'tags' in parsed.options) {
+      const { tags: _staleTags, ...rest } = parsed.options as ConversionOptions & {
+        tags?: unknown;
+      };
       parsed.options = rest;
     }
     return {
-      url: typeof parsed.url === "string" ? parsed.url : "",
+      url: typeof parsed.url === 'string' ? parsed.url : '',
       metadata:
-        parsed.metadata && typeof parsed.metadata === "object"
+        parsed.metadata && typeof parsed.metadata === 'object'
           ? (parsed.metadata as VideoMetadata)
           : null,
       options:
-        parsed.options && typeof parsed.options === "object"
+        parsed.options && typeof parsed.options === 'object'
           ? {
               ...DEFAULT_CONVERT_OPTIONS,
               ...parsed.options,
@@ -445,7 +457,7 @@ function loadConvertDraft(): Omit<ConvertDraft, "pendingInspectUrl"> {
                 parsed.options as {
                   normalizeMode?: string;
                   normalizeAudio?: boolean;
-                },
+                }
               ),
             }
           : DEFAULT_CONVERT_OPTIONS,
@@ -465,40 +477,35 @@ export function ConvertDraftProvider({ children }: { children: ReactNode }) {
     // Persist only the restorable fields; the one-shot inspect URL stays in memory.
     try {
       const { url, metadata, options } = draft;
-      localStorage.setItem(
-        CONVERT_DRAFT_KEY,
-        JSON.stringify({ url, metadata, options }),
-      );
+      localStorage.setItem(CONVERT_DRAFT_KEY, JSON.stringify({ url, metadata, options }));
     } catch {}
   }, [draft]);
 
   const setUrl = useCallback((url: string) => {
-    setDraft((prev) => (prev.url === url ? prev : { ...prev, url }));
+    setDraft(prev => (prev.url === url ? prev : { ...prev, url }));
   }, []);
   const setMetadata = useCallback((metadata: VideoMetadata | null) => {
-    setDraft((prev) => ({ ...prev, metadata }));
+    setDraft(prev => ({ ...prev, metadata }));
   }, []);
   const setOptions = useCallback((options: ConversionOptions) => {
-    setDraft((prev) => ({ ...prev, options }));
+    setDraft(prev => ({ ...prev, options }));
   }, []);
   // Explicit Reset clears the inspected video but keeps the user's
   // conversion configuration.
   const resetDraft = useCallback(() => {
-    setDraft((prev) => ({
-      url: "",
+    setDraft(prev => ({
+      url: '',
       metadata: null,
       options: prev.options,
       pendingInspectUrl: null,
     }));
   }, []);
   const queueInspectUrl = useCallback((url: string) => {
-    setDraft((prev) => ({ ...prev, pendingInspectUrl: url }));
+    setDraft(prev => ({ ...prev, pendingInspectUrl: url }));
   }, []);
   const consumeInspectUrl = useCallback(() => {
-    setDraft((prev) =>
-      prev.pendingInspectUrl === null
-        ? prev
-        : { ...prev, pendingInspectUrl: null },
+    setDraft(prev =>
+      prev.pendingInspectUrl === null ? prev : { ...prev, pendingInspectUrl: null }
     );
   }, []);
 
@@ -514,15 +521,7 @@ export function ConvertDraftProvider({ children }: { children: ReactNode }) {
         resetDraft,
       },
     }),
-    [
-      draft,
-      setUrl,
-      setMetadata,
-      setOptions,
-      queueInspectUrl,
-      consumeInspectUrl,
-      resetDraft,
-    ],
+    [draft, setUrl, setMetadata, setOptions, queueInspectUrl, consumeInspectUrl, resetDraft]
   );
 
   return <ConvertDraftContext value={value}>{children}</ConvertDraftContext>;
@@ -530,8 +529,7 @@ export function ConvertDraftProvider({ children }: { children: ReactNode }) {
 
 export function useConvertDraft(): ConvertDraftContextValue {
   const ctx = use(ConvertDraftContext);
-  if (!ctx)
-    throw new Error("useConvertDraft must be used inside ConvertDraftProvider");
+  if (!ctx) throw new Error('useConvertDraft must be used inside ConvertDraftProvider');
   return ctx;
 }
 
@@ -571,13 +569,24 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
+  // Mount fetch mirrors refresh but keeps every state update inside async
+  // continuations: synchronous updates do not belong in effects.
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
+    ApiClient.getCookieStatus()
+      .then(next => {
+        setStatus(next);
+        if (!next.configured) {
+          ApiClient.autoFetchCookies()
+            .then(res => setStatus(res.status))
+            .catch(() => {});
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const value = useMemo<SessionContextValue>(
     () => ({ state: { status }, actions: { refresh, update: setStatus } }),
-    [status, refresh],
+    [status, refresh]
   );
 
   return <SessionContext value={value}>{children}</SessionContext>;
@@ -585,6 +594,6 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
 export function useSession(): SessionContextValue {
   const ctx = use(SessionContext);
-  if (!ctx) throw new Error("useSession must be used inside SessionProvider");
+  if (!ctx) throw new Error('useSession must be used inside SessionProvider');
   return ctx;
 }

@@ -1,6 +1,5 @@
 import { execFile } from 'child_process';
 import fs from 'fs';
-import path from 'path';
 import { COOKIES_FILE, DATA_DIR, GUEST_COOKIES_FILE } from '../config.js';
 import { cookiesAllowed, extractorArgsFor, resolveStrategy } from './potService.js';
 import { ytdlpEnv, ytdlpLaunch } from './ytdlpRunner.js';
@@ -28,46 +27,45 @@ export interface SessionTestResult {
   cookiesUsed?: boolean;
 }
 
-export class CookieService {
-  private static ensureDataDir(): void {
+export namespace CookieService {
+  function ensureDataDir(): void {
     if (!fs.existsSync(DATA_DIR)) {
       fs.mkdirSync(DATA_DIR, { recursive: true });
     }
   }
 
-  public static hasCookies(): boolean {
+  export function hasCookies(): boolean {
     try {
-      return (
-        fs.existsSync(COOKIES_FILE) && fs.statSync(COOKIES_FILE).size > 10
-      );
+      return fs.existsSync(COOKIES_FILE) && fs.statSync(COOKIES_FILE).size > 10;
     } catch {
       return false;
     }
   }
 
-  public static hasGuestCookies(): boolean {
+  export function hasGuestCookies(): boolean {
     try {
-      return (
-        fs.existsSync(GUEST_COOKIES_FILE) &&
-        fs.statSync(GUEST_COOKIES_FILE).size > 10
-      );
+      return fs.existsSync(GUEST_COOKIES_FILE) && fs.statSync(GUEST_COOKIES_FILE).size > 10;
     } catch {
       return false;
     }
   }
 
-  public static getCookiesPath(): string | null {
-    if (this.hasCookies()) {
+  export function getCookiesPath(): string | null {
+    if (CookieService.hasCookies()) {
       return COOKIES_FILE;
     }
-    if (this.hasGuestCookies()) {
+    if (CookieService.hasGuestCookies()) {
       return GUEST_COOKIES_FILE;
     }
     return null;
   }
 
-  public static getStatus(): CookieStatus {
-    const activePath = this.hasCookies() ? COOKIES_FILE : (this.hasGuestCookies() ? GUEST_COOKIES_FILE : null);
+  export function getStatus(): CookieStatus {
+    const activePath = CookieService.hasCookies()
+      ? COOKIES_FILE
+      : CookieService.hasGuestCookies()
+        ? GUEST_COOKIES_FILE
+        : null;
 
     if (!activePath) {
       return {
@@ -77,7 +75,7 @@ export class CookieService {
         sizeBytes: 0,
         lineCount: 0,
         lastModified: null,
-        sampleDomains: []
+        sampleDomains: [],
       };
     }
 
@@ -85,13 +83,15 @@ export class CookieService {
       const stats = fs.statSync(activePath);
       const content = fs.readFileSync(activePath, 'utf-8');
       const lines = content.split('\n').filter(l => l.trim() && !l.startsWith('#'));
-      
-      const isAccount = content.includes('SAPISID') ||
-                        content.includes('LOGIN_INFO') ||
-                        content.includes('SSID') ||
-                        content.includes('__Secure-3PAPISID');
 
-      const isGuest = !isAccount && (content.includes('VISITOR_INFO1_LIVE') || content.includes('YSC'));
+      const isAccount =
+        content.includes('SAPISID') ||
+        content.includes('LOGIN_INFO') ||
+        content.includes('SSID') ||
+        content.includes('__Secure-3PAPISID');
+
+      const isGuest =
+        !isAccount && (content.includes('VISITOR_INFO1_LIVE') || content.includes('YSC'));
 
       const domains = new Set<string>();
       for (const line of lines) {
@@ -108,7 +108,7 @@ export class CookieService {
         sizeBytes: stats.size,
         lineCount: lines.length,
         lastModified: stats.mtime.toISOString(),
-        sampleDomains: Array.from(domains).slice(0, 5)
+        sampleDomains: Array.from(domains).slice(0, 5),
       };
     } catch {
       return {
@@ -118,7 +118,7 @@ export class CookieService {
         sizeBytes: 0,
         lineCount: 0,
         lastModified: null,
-        sampleDomains: []
+        sampleDomains: [],
       };
     }
   }
@@ -126,16 +126,21 @@ export class CookieService {
   /**
    * Automatically fetches fresh guest session visitor cookies directly from YouTube.
    */
-  public static async autoFetchGuestSession(): Promise<{ success: boolean; message: string; count: number }> {
-    this.ensureDataDir();
+  export async function autoFetchGuestSession(): Promise<{
+    success: boolean;
+    message: string;
+    count: number;
+  }> {
+    ensureDataDir();
 
     try {
       const response = await fetch('https://www.youtube.com', {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36',
           'Accept-Language': 'en-US,en;q=0.9',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-        }
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
       });
 
       const rawCookies = response.headers.getSetCookie ? response.headers.getSetCookie() : [];
@@ -147,7 +152,7 @@ export class CookieService {
         '# Netscape HTTP Cookie File',
         '# https://curl.se/docs/http-cookies.html',
         '# Auto-generated guest session for YouTube to Music Converter',
-        ''
+        '',
       ];
 
       for (const raw of rawCookies) {
@@ -189,39 +194,40 @@ export class CookieService {
       fs.writeFileSync(GUEST_COOKIES_FILE, content, 'utf-8');
 
       // If user has no personal cookies yet, also write to COOKIES_FILE so yt-dlp uses it by default
-      if (!this.hasCookies()) {
+      if (!CookieService.hasCookies()) {
         fs.writeFileSync(COOKIES_FILE, content, 'utf-8');
       }
 
-      const status = this.getStatus();
+      const status = CookieService.getStatus();
       return {
         success: true,
         message: `Successfully provisioned fresh YouTube guest session (${status.lineCount} cookies)!`,
-        count: status.lineCount
+        count: status.lineCount,
       };
     } catch (err: any) {
-      throw new Error(`Auto-fetch guest cookies failed: ${err.message || err}`);
+      throw new Error(`Auto-fetch guest cookies failed: ${err.message || err}`, { cause: err });
     }
   }
 
   /**
    * Tests whether the current session cookies work against YouTube.
    */
-  public static async testSession(): Promise<SessionTestResult> {
-    const cookiesPath = this.getCookiesPath();
-    const status = this.getStatus();
+  export async function testSession(): Promise<SessionTestResult> {
+    const cookiesPath = CookieService.getCookiesPath();
+    const status = CookieService.getStatus();
     const launch = ytdlpLaunch();
     const { strategy, reachable } = await resolveStrategy();
     const useCookies = cookiesAllowed(strategy, !!cookiesPath);
 
     const args = [
       ...launch.prefixArgs,
-      '--js-runtimes', `node:${process.execPath}`,
+      '--js-runtimes',
+      `node:${process.execPath}`,
       ...extractorArgsFor(strategy),
       '--simulate',
       '--dump-json',
       '--no-playlist',
-      '--no-warnings'
+      '--no-warnings',
     ];
 
     if (useCookies && cookiesPath) {
@@ -233,7 +239,7 @@ export class CookieService {
 
     const diagnostics = { strategy, potReachable: reachable, cookiesUsed: useCookies };
 
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       execFile(
         launch.command,
         args,
@@ -241,12 +247,15 @@ export class CookieService {
           // Cold-starting the bundled zipapp on Windows regularly takes
           // ~10s; anything shorter fails healthy machines (see P5 notes).
           timeout: 60000,
-          env: ytdlpEnv()
+          env: ytdlpEnv(),
         },
         (error, stdout, stderr) => {
           if (error) {
             const errStr = `${stderr} ${error.message}`;
-            const isBot = /sign in to confirm|not a bot|bot|login_required|cookies-from-browser|403/i.test(errStr);
+            const isBot =
+              /sign in to confirm|not a bot|bot|login_required|cookies-from-browser|403/i.test(
+                errStr
+              );
             const firstError = stderr.split('\n').filter(l => l.includes('ERROR:'))[0];
             const launchFailure = /ENOENT|not recognized|spawn/i.test(error.message || '');
 
@@ -259,7 +268,7 @@ export class CookieService {
                   ? `YouTube session test failed: yt-dlp could not start (${error.message}). Check that Python is installed on Windows.`
                   : 'YouTube session test failed to reach video streams.',
               errorDetails: firstError || stderr.slice(0, 300) || error.message,
-              ...diagnostics
+              ...diagnostics,
             });
             return;
           }
@@ -274,14 +283,14 @@ export class CookieService {
               message: status.isAccountSession
                 ? 'Verified! Your authenticated YouTube account session is working.'
                 : 'Verified! YouTube connection and JavaScript challenge solver are active.',
-              ...diagnostics
+              ...diagnostics,
             });
           } catch {
             resolve({
               success: true,
               isAccountSession: status.isAccountSession,
               message: 'Verified! YouTube responded successfully.',
-              ...diagnostics
+              ...diagnostics,
             });
           }
         }
@@ -289,8 +298,12 @@ export class CookieService {
     });
   }
 
-  public static saveCookies(rawText: string): { success: boolean; message: string; count: number } {
-    this.ensureDataDir();
+  export function saveCookies(rawText: string): {
+    success: boolean;
+    message: string;
+    count: number;
+  } {
+    ensureDataDir();
     if (!rawText || !rawText.trim()) {
       throw new Error('Cookie content cannot be empty');
     }
@@ -307,7 +320,7 @@ export class CookieService {
             '# Netscape HTTP Cookie File',
             '# Generated by YouTube to Music Converter',
             '# https://curl.haxx.se/rfc/cookie_spec.html',
-            ''
+            '',
           ];
           for (const item of jsonList) {
             if (item.domain && item.name && item.value !== undefined) {
@@ -315,8 +328,12 @@ export class CookieService {
               const flag = domain.startsWith('.') ? 'TRUE' : 'FALSE';
               const pathStr = item.path || '/';
               const secure = item.secure ? 'TRUE' : 'FALSE';
-              const expiration = item.expirationDate ? Math.floor(item.expirationDate) : Math.floor(Date.now() / 1000) + 86400 * 30;
-              lines.push(`${domain}\t${flag}\t${pathStr}\t${secure}\t${expiration}\t${item.name}\t${item.value}`);
+              const expiration = item.expirationDate
+                ? Math.floor(item.expirationDate)
+                : Math.floor(Date.now() / 1000) + 86400 * 30;
+              lines.push(
+                `${domain}\t${flag}\t${pathStr}\t${secure}\t${expiration}\t${item.name}\t${item.value}`
+              );
             }
           }
           netscapeFormat = lines.join('\n');
@@ -331,22 +348,24 @@ export class CookieService {
       const lines = trimmed.split('\n');
       const validLines = lines.filter(l => l.includes('\t') || l.startsWith('#'));
       if (validLines.length === 0) {
-        throw new Error('Invalid cookie format. Please paste cookies in Netscape format or JSON format.');
+        throw new Error(
+          'Invalid cookie format. Please paste cookies in Netscape format or JSON format.'
+        );
       }
       netscapeFormat = trimmed;
     }
 
     fs.writeFileSync(COOKIES_FILE, netscapeFormat, 'utf-8');
 
-    const status = this.getStatus();
+    const status = CookieService.getStatus();
     return {
       success: true,
       message: `Successfully saved ${status.lineCount} cookies! ${status.isAccountSession ? '(Account Session detected)' : '(Session cookies loaded)'}`,
-      count: status.lineCount
+      count: status.lineCount,
     };
   }
 
-  public static clearCookies(): { success: boolean } {
+  export function clearCookies(): { success: boolean } {
     if (fs.existsSync(COOKIES_FILE)) {
       try {
         fs.unlinkSync(COOKIES_FILE);

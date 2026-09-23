@@ -35,10 +35,10 @@ export interface ConversionJob {
 const JOB_RETENTION_MS = 2 * 60 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
 
-export class JobManager {
-  private static jobs: Map<string, ConversionJob> = new Map();
+export namespace JobManager {
+  let jobs: Map<string, ConversionJob> = new Map();
 
-  public static createJob(
+  export function createJob(
     id: string,
     videoId: string,
     title: string,
@@ -58,35 +58,38 @@ export class JobManager {
       status: 'queued',
       progress: 0,
       stageMessage: 'Initializing conversion job...',
-      createdAt: Date.now()
+      createdAt: Date.now(),
     };
-    this.jobs.set(id, job);
+    jobs.set(id, job);
     return job;
   }
 
-  public static getJob(id: string): ConversionJob | undefined {
-    return this.jobs.get(id);
+  export function getJob(id: string): ConversionJob | undefined {
+    return jobs.get(id);
   }
 
-  public static updateJob(id: string, updates: Partial<ConversionJob>): ConversionJob | undefined {
-    const job = this.jobs.get(id);
+  export function updateJob(
+    id: string,
+    updates: Partial<ConversionJob>
+  ): ConversionJob | undefined {
+    const job = jobs.get(id);
     if (!job) return undefined;
     Object.assign(job, updates);
     return job;
   }
 
-  public static listRecentJobs(limit = 10): ConversionJob[] {
-    return Array.from(this.jobs.values())
-      .sort((a, b) => b.createdAt - a.createdAt)
+  export function listRecentJobs(limit = 10): ConversionJob[] {
+    return Array.from(jobs.values())
+      .toSorted((a, b) => b.createdAt - a.createdAt)
       .slice(0, limit);
   }
 
   /**
    * Cleanup old jobs and files older than 2 hours.
    */
-  public static cleanupOldJobs(): void {
+  export function cleanupOldJobs(): void {
     const twoHoursAgo = Date.now() - JOB_RETENTION_MS;
-    for (const [id, job] of this.jobs.entries()) {
+    for (const [id, job] of jobs.entries()) {
       if (job.createdAt < twoHoursAgo) {
         if (job.outputFilePath && fs.existsSync(job.outputFilePath)) {
           try {
@@ -94,11 +97,11 @@ export class JobManager {
           } catch (err: unknown) {
             console.warn(
               `cleanup: could not delete ${job.outputFilePath}:`,
-              err instanceof Error ? err.message : err,
+              err instanceof Error ? err.message : err
             );
           }
         }
-        this.jobs.delete(id);
+        jobs.delete(id);
       }
     }
 
@@ -117,7 +120,7 @@ export class JobManager {
       } catch (err: unknown) {
         console.warn(
           `cleanup: could not sweep ${downloadsDir}:`,
-          err instanceof Error ? err.message : err,
+          err instanceof Error ? err.message : err
         );
       }
     }

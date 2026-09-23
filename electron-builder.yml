@@ -11,7 +11,7 @@ extraResources:
   - from: bin/
     to: bin
     filter:
-      - "**/*"
+      - '**/*'
   - from: dist/server.cjs
     to: server.cjs
 win:

@@ -34,11 +34,11 @@ export interface VideoMetadata {
   bestNativeStream?: NativeAudioStreamInfo;
 }
 
-export class MetadataService {
+export namespace MetadataService {
   /**
    * Fetches official oEmbed data for high reliability.
    */
-  public static async fetchOEmbed(canonicalUrl: string): Promise<{
+  export async function fetchOEmbed(canonicalUrl: string): Promise<{
     title: string;
     author: string;
     authorUrl?: string;
@@ -48,18 +48,18 @@ export class MetadataService {
       const endpoint = `https://www.youtube.com/oembed?url=${encodeURIComponent(canonicalUrl)}&format=json`;
       const response = await fetch(endpoint, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        },
       });
 
       if (!response.ok) return null;
-      const data = await response.json() as any;
+      const data = (await response.json()) as any;
 
       return {
         title: data.title || 'Untitled Video',
         author: data.author_name || 'Unknown Channel',
         authorUrl: data.author_url,
-        thumbnail: data.thumbnail_url || ''
+        thumbnail: data.thumbnail_url || '',
       };
     } catch {
       return null;
@@ -69,7 +69,7 @@ export class MetadataService {
   /**
    * Fetches full metadata using yt-dlp, augmented with oEmbed fallback.
    */
-  public static async getVideoInfo(input: string): Promise<VideoMetadata> {
+  export async function getVideoInfo(input: string): Promise<VideoMetadata> {
     const parsed = parseYouTubeInput(input);
     if (!parsed.isValid || !parsed.videoId || !parsed.canonicalUrl) {
       throw new Error('Please enter a valid YouTube video URL or ID');
@@ -81,7 +81,7 @@ export class MetadataService {
     const hasCookies = !!cookiesPath;
 
     // 1. Fetch oEmbed first
-    const oembed = await this.fetchOEmbed(canonicalUrl);
+    const oembed = await fetchOEmbed(canonicalUrl);
 
     // Default fallback metadata from oembed
     const metadata: VideoMetadata = {
@@ -92,22 +92,23 @@ export class MetadataService {
       thumbnail: oembed?.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
       isAvailable: true,
       botVerificationRequired: false,
-      hasCookiesConfigured: hasCookies
+      hasCookiesConfigured: hasCookies,
     };
 
     // 2. Query yt-dlp for detailed metadata (duration, format readiness)
     const { strategy } = await resolveStrategy();
     const launch = ytdlpLaunch();
     const useCookies = cookiesAllowed(strategy, hasCookies);
-    return new Promise((resolve) => {
+    return new Promise(resolve => {
       const args = [
         ...launch.prefixArgs,
-        '--js-runtimes', `node:${process.execPath}`,
+        '--js-runtimes',
+        `node:${process.execPath}`,
         ...extractorArgsFor(strategy),
         '--dump-json',
         '--no-playlist',
         '--no-warnings',
-        '--skip-download'
+        '--skip-download',
       ];
 
       if (useCookies && cookiesPath) {
@@ -122,12 +123,16 @@ export class MetadataService {
         args,
         {
           timeout: 45000,
-          env: ytdlpEnv()
+          env: ytdlpEnv(),
         },
         (error, stdout, stderr) => {
           if (error) {
             const errStr = `${stderr} ${error.message}`;
-            if (/sign in to confirm|not a bot|bot|login_required|cookies-from-browser|403/i.test(errStr)) {
+            if (
+              /sign in to confirm|not a bot|bot|login_required|cookies-from-browser|403/i.test(
+                errStr
+              )
+            ) {
               metadata.botVerificationRequired = true;
             }
             // Surface the probe failure instead of silently implying
@@ -169,14 +174,16 @@ export class MetadataService {
 
               // Extract native audio streams directly from YouTube server format definitions
               if (Array.isArray(details.formats)) {
-                const audioFormats = details.formats.filter((f: any) => 
-                  f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none')
+                const audioFormats = details.formats.filter(
+                  (f: any) => f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none')
                 );
 
                 const streams: NativeAudioStreamInfo[] = audioFormats.map((f: any) => {
                   const isOpus = (f.acodec || '').toLowerCase().includes('opus');
-                  const isAac = (f.acodec || '').toLowerCase().includes('mp4a') || (f.acodec || '').toLowerCase().includes('aac');
-                  const codecName = isOpus ? 'Opus' : isAac ? 'AAC' : (f.acodec || 'Audio');
+                  const isAac =
+                    (f.acodec || '').toLowerCase().includes('mp4a') ||
+                    (f.acodec || '').toLowerCase().includes('aac');
+                  const codecName = isOpus ? 'Opus' : isAac ? 'AAC' : f.acodec || 'Audio';
                   const abr = Math.round(f.abr || (f.tbr ? f.tbr : 128));
                   return {
                     formatId: String(f.format_id || ''),
@@ -185,7 +192,7 @@ export class MetadataService {
                     container: f.ext || (isOpus ? 'webm' : 'm4a'),
                     sampleRateHz: f.asr ? Number(f.asr) : undefined,
                     channels: f.audio_channels ? Number(f.audio_channels) : 2,
-                    note: `${codecName} ~${abr} kbps (${f.ext || (isOpus ? 'webm' : 'm4a')})${f.asr ? ` • ${f.asr / 1000}kHz` : ''}`
+                    note: `${codecName} ~${abr} kbps (${f.ext || (isOpus ? 'webm' : 'm4a')})${f.asr ? ` • ${f.asr / 1000}kHz` : ''}`,
                   };
                 });
 
@@ -207,7 +214,7 @@ export class MetadataService {
                   container: 'webm',
                   sampleRateHz: 48000,
                   channels: 2,
-                  note: 'Opus ~160 kbps (48kHz) • YouTube Max Native Stream'
+                  note: 'Opus ~160 kbps (48kHz) • YouTube Max Native Stream',
                 };
               }
             }

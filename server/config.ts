@@ -1,4 +1,11 @@
+import { config } from 'dotenv';
 import path from 'path';
+
+// Load .env before any process.env read below. This module is the only
+// top-level env reader and is imported before all other server modules,
+// so dotenv is always initialized first (replaces `import "dotenv/config"`
+// in the entry, which the import linter rejects as unassigned).
+config();
 
 const MAX_PORT = 65535;
 const DEV_PORT = 3000;
@@ -25,8 +32,12 @@ export const ROOT_DIR = process.cwd();
 export const BIN_DIR = path.join(ROOT_DIR, 'bin');
 export const PLUGINS_DIR = path.join(ROOT_DIR, 'plugins');
 export const YTDLP_PATH = process.env.YTDLP_PATH || path.join(BIN_DIR, 'yt-dlp');
-export const FFMPEG_PATH = process.env.FFMPEG_PATH || path.join(BIN_DIR, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
-export const FFPROBE_PATH = process.env.FFPROBE_PATH || path.join(BIN_DIR, process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe');
+export const FFMPEG_PATH =
+  process.env.FFMPEG_PATH ||
+  path.join(BIN_DIR, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+export const FFPROBE_PATH =
+  process.env.FFPROBE_PATH ||
+  path.join(BIN_DIR, process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe');
 export const BGUTIL_PATH = path.join(BIN_DIR, 'bgutil-pot');
 function resolvePotPort(): number {
   const raw = process.env.POT_PORT;
@@ -49,10 +60,10 @@ export const COOKIES_FILE = path.join(DATA_DIR, 'cookies.txt');
 export const GUEST_COOKIES_FILE = path.join(DATA_DIR, 'guest_cookies.txt');
 
 export const SUPPORTED_FORMATS = ['best', 'opus', 'm4a', 'mp3', 'flac', 'wav'] as const;
-export type AudioFormat = typeof SUPPORTED_FORMATS[number];
+export type AudioFormat = (typeof SUPPORTED_FORMATS)[number];
 
 export const SUPPORTED_BITRATES = ['native', '160k', '128k', '192k', '256k', '320k'] as const;
-export type AudioBitrate = typeof SUPPORTED_BITRATES[number];
+export type AudioBitrate = (typeof SUPPORTED_BITRATES)[number];
 
 export const DEFAULT_DEMO_TRACKS = [
   {
@@ -62,6 +73,6 @@ export const DEFAULT_DEMO_TRACKS = [
     duration: '3:33',
     thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
     genre: 'Pop / Dance',
-    tag: 'Direct Conversion Verified'
-  }
+    tag: 'Direct Conversion Verified',
+  },
 ];

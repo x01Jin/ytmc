@@ -6,7 +6,7 @@ const MIME_MAP: Record<string, string> = {
   opus: 'audio/opus',
   ogg: 'audio/ogg',
   webm: 'audio/webm',
-  aac: 'audio/aac'
+  aac: 'audio/aac',
 };
 
 export function getAudioMimeType(ext: string): string {

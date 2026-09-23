@@ -1,17 +1,9 @@
-import fs from "fs";
-import path from "path";
-import { DOWNLOADS_DIR } from "../config.js";
-import { SettingsService, WRITE_TEST_FILENAME } from "./settingsService.js";
+import fs from 'fs';
+import path from 'path';
+import { DOWNLOADS_DIR } from '../config.js';
+import { SettingsService, WRITE_TEST_FILENAME } from './settingsService.js';
 
-export const AUDIO_EXTENSIONS = new Set([
-  ".opus",
-  ".m4a",
-  ".mp3",
-  ".flac",
-  ".wav",
-  ".ogg",
-  ".aac",
-]);
+export const AUDIO_EXTENSIONS = new Set(['.opus', '.m4a', '.mp3', '.flac', '.wav', '.ogg', '.aac']);
 
 export interface LibraryFile {
   id: string;
@@ -22,26 +14,26 @@ export interface LibraryFile {
   ext: string;
 }
 
-export class FileService {
-  public static getDownloadsDir(): string {
+export namespace FileService {
+  export function getDownloadsDir(): string {
     const configured = SettingsService.getSettings().downloadsDir;
     return configured && configured.trim() ? configured : DOWNLOADS_DIR;
   }
 
-  public static ensureDownloadsDir(): string {
-    const dir = this.getDownloadsDir();
+  export function ensureDownloadsDir(): string {
+    const dir = getDownloadsDir();
     fs.mkdirSync(dir, { recursive: true });
     return dir;
   }
 
-  public static isInsideLibrary(absolutePath: string): boolean {
-    const dir = path.normalize(this.getDownloadsDir() + path.sep);
+  export function isInsideLibrary(absolutePath: string): boolean {
+    const dir = path.normalize(getDownloadsDir() + path.sep);
     const target = path.normalize(absolutePath);
     return target.startsWith(dir);
   }
 
-  public static scanLibrary(): LibraryFile[] {
-    const dir = this.ensureDownloadsDir();
+  export function scanLibrary(): LibraryFile[] {
+    const dir = ensureDownloadsDir();
     let entries: string[] = [];
     try {
       entries = fs.readdirSync(dir);
@@ -50,11 +42,7 @@ export class FileService {
     }
     const files: LibraryFile[] = [];
     for (const entry of entries) {
-      if (
-        entry.endsWith(".part") ||
-        entry.endsWith(".ytdl") ||
-        entry === WRITE_TEST_FILENAME
-      )
+      if (entry.endsWith('.part') || entry.endsWith('.ytdl') || entry === WRITE_TEST_FILENAME)
         continue;
       const filePath = path.join(dir, entry);
       let stat: fs.Stats;
@@ -71,14 +59,14 @@ export class FileService {
         filePath,
         sizeBytes: stat.size,
         mtimeMs: stat.mtimeMs,
-        ext: path.extname(entry).replace(".", "").toLowerCase(),
+        ext: path.extname(entry).replace('.', '').toLowerCase(),
       });
     }
-    return files.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    return files.toSorted((a, b) => b.mtimeMs - a.mtimeMs);
   }
 
-  public static sweepPartFiles(): number {
-    const dir = this.ensureDownloadsDir();
+  export function sweepPartFiles(): number {
+    const dir = ensureDownloadsDir();
     let removed = 0;
     let entries: string[] = [];
     try {
@@ -87,7 +75,7 @@ export class FileService {
       return 0;
     }
     for (const entry of entries) {
-      if (!entry.endsWith(".part")) continue;
+      if (!entry.endsWith('.part')) continue;
       try {
         fs.unlinkSync(path.join(dir, entry));
         removed += 1;

@@ -8,13 +8,8 @@ export function parseTimeToSeconds(raw: string): number | null {
     const val = Number(trimmed);
     return Number.isFinite(val) && val >= 0 ? val : null;
   }
-  const parts = trimmed.split(":").map((p) => p.trim());
-  if (
-    parts.length < 2 ||
-    parts.length > 3 ||
-    parts.some((p) => !NUMERIC_RE.test(p))
-  )
-    return null;
+  const parts = trimmed.split(':').map(p => p.trim());
+  if (parts.length < 2 || parts.length > 3 || parts.some(p => !NUMERIC_RE.test(p))) return null;
   const nums = parts.map(Number);
   const secs = nums[nums.length - 1];
   const mins = nums[nums.length - 2];
@@ -25,8 +20,8 @@ export function parseTimeToSeconds(raw: string): number | null {
 
 /** Format seconds as `M:SS`. */
 export function formatSeconds(total: number): string {
-  if (!Number.isFinite(total) || total < 0) return "0:00";
+  if (!Number.isFinite(total) || total < 0) return '0:00';
   const mins = Math.floor(total / 60);
   const secs = Math.floor(total % 60);
-  return `${mins}:${secs < 10 ? "0" : ""}${secs}`;
+  return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
 }

@@ -1,8 +1,8 @@
-import { useState } from "react";
-import { ApiClient } from "../../services/apiClient";
-import type { MusicTags } from "../../types";
-import { TagEditor } from "../TagEditor";
-import { useEditPanel } from "./LibraryEditPanel";
+import React, { useState } from 'react';
+import { ApiClient } from '../../services/apiClient';
+import type { MusicTags } from '../../types';
+import { TagEditor } from '../TagEditor';
+import { useEditPanel } from './LibraryEditPanel';
 
 /** Tagger pane: retag a finished file (metadata rewritten in place, file renamed to match). */
 export function TagPane() {
@@ -17,10 +17,10 @@ export function TagPane() {
     setError(null);
     try {
       await ApiClient.applyTags(record.jobId, tags);
-      setNotice("Tags saved and file renamed to match.");
+      setNotice('Tags saved and file renamed to match.');
       onEdited();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Could not save tags.");
+      setError(err instanceof Error ? err.message : 'Could not save tags.');
     } finally {
       setIsSaving(false);
     }
@@ -38,10 +38,7 @@ export function TagPane() {
         </p>
       )}
       {error && (
-        <p
-          role="alert"
-          className="border-2 border-px-err bg-px-bg p-2 text-xs text-px-err"
-        >
+        <p role="alert" className="border-2 border-px-err bg-px-bg p-2 text-xs text-px-err">
           {error}
         </p>
       )}
@@ -51,12 +48,12 @@ export function TagPane() {
           artist: record.tags?.artist || record.author,
           album: record.tags?.album || record.title,
           albumArtist: record.tags?.albumArtist || record.author,
-          year: record.tags?.year || "",
-          genre: record.tags?.genre || "Music",
-          trackNumber: record.tags?.trackNumber || "1",
+          year: record.tags?.year || '',
+          genre: record.tags?.genre || 'Music',
+          trackNumber: record.tags?.trackNumber || '1',
           coverUrl: record.tags?.coverUrl || record.thumbnail,
           cleanDescription: record.tags?.cleanDescription ?? true,
-          comment: record.tags?.comment || "YouTube to Music Converter",
+          comment: record.tags?.comment || 'YouTube to Music Converter',
         }}
         defaultVideoTitle={record.title}
         defaultArtist={record.author}

@@ -13,5 +13,3 @@ declare global {
     __BACKEND_PORT__?: number;
   }
 }
-
-export {};

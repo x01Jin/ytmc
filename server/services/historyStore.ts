@@ -1,6 +1,14 @@
-import fs from "fs";
-import path from "path";
-import { DATA_DIR } from "../config.js";
+import fs from 'fs';
+import path from 'path';
+import { DATA_DIR } from '../config.js';
+
+// Runtime ships Array.prototype.toSorted (ES2023) but the pinned ES2022 lib
+// has no type for it, so declare it once here for the whole project.
+declare global {
+  interface Array<T> {
+    toSorted(compareFn?: (a: T, b: T) => number): T[];
+  }
+}
 
 export interface HistoryEntry {
   jobId: string;
@@ -13,15 +21,13 @@ export interface HistoryEntry {
   completedAt: number;
 }
 
-const HISTORY_FILE = path.join(DATA_DIR, "history.json");
+const HISTORY_FILE = path.join(DATA_DIR, 'history.json');
 const MAX_ENTRIES = 200;
 
 function readAll(): HistoryEntry[] {
   try {
     if (!fs.existsSync(HISTORY_FILE)) return [];
-    const parsed = JSON.parse(
-      fs.readFileSync(HISTORY_FILE, "utf8"),
-    ) as HistoryEntry[];
+    const parsed = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')) as HistoryEntry[];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -31,11 +37,7 @@ function readAll(): HistoryEntry[] {
 function writeAll(entries: HistoryEntry[]): void {
   fs.mkdirSync(path.dirname(HISTORY_FILE), { recursive: true });
   const tmp = `${HISTORY_FILE}.${process.pid}.part`;
-  fs.writeFileSync(
-    tmp,
-    JSON.stringify(entries.slice(0, MAX_ENTRIES), null, 2),
-    "utf8",
-  );
+  fs.writeFileSync(tmp, JSON.stringify(entries.slice(0, MAX_ENTRIES), null, 2), 'utf8');
   fs.renameSync(tmp, HISTORY_FILE);
 }
 
@@ -48,27 +50,27 @@ function writeAll(entries: HistoryEntry[]): void {
  * library file does not remove its History entry — the link can still be
  * re-converted.
  */
-export class HistoryStore {
-  public static add(entry: HistoryEntry): void {
-    const entries = readAll().filter((e) => e.jobId !== entry.jobId);
+export namespace HistoryStore {
+  export function add(entry: HistoryEntry): void {
+    const entries = readAll().filter(e => e.jobId !== entry.jobId);
     entries.unshift(entry);
     writeAll(entries);
   }
 
-  public static list(): HistoryEntry[] {
-    return readAll().sort(
-      (a, b) => (b.completedAt ?? b.createdAt) - (a.completedAt ?? a.createdAt),
+  export function list(): HistoryEntry[] {
+    return readAll().toSorted(
+      (a, b) => (b.completedAt ?? b.createdAt) - (a.completedAt ?? a.createdAt)
     );
   }
 
-  public static remove(jobId: string): boolean {
+  export function remove(jobId: string): boolean {
     const entries = readAll();
-    if (!entries.some((e) => e.jobId === jobId)) return false;
-    writeAll(entries.filter((e) => e.jobId !== jobId));
+    if (!entries.some(e => e.jobId === jobId)) return false;
+    writeAll(entries.filter(e => e.jobId !== jobId));
     return true;
   }
 
-  public static clear(): void {
+  export function clear(): void {
     writeAll([]);
   }
 }

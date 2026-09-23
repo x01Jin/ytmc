@@ -1,13 +1,13 @@
-import { AlertCircle, CheckCircle2 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ConversionOptionsPanel } from "../components/ConversionOptionsPanel";
-import { ConversionProgress } from "../components/ConversionProgress";
-import { CookieModal } from "../components/CookieModal";
-import { UrlInput } from "../components/UrlInput";
-import { VideoCard } from "../components/VideoCard";
-import { ApiClient } from "../services/apiClient";
-import { useConvertDraft, useHistory, useJobs, useLibrary, useSession } from "../store/appStore";
-import { canonicalWatchUrl } from "./History";
+import { AlertCircle, CheckCircle2 } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ConversionOptionsPanel } from '../components/ConversionOptionsPanel';
+import { ConversionProgress } from '../components/ConversionProgress';
+import { CookieModal } from '../components/CookieModal';
+import { UrlInput } from '../components/UrlInput';
+import { VideoCard } from '../components/VideoCard';
+import { ApiClient } from '../services/apiClient';
+import { useConvertDraft, useHistory, useJobs, useLibrary, useSession } from '../store/appStore';
+import { canonicalWatchUrl } from './History';
 
 const SAVE_BANNER_TIMEOUT_MS = 6000;
 
@@ -19,8 +19,7 @@ export function ConvertRoute() {
   const { actions: historyActions } = useHistory();
   const { activeJob, isConverting } = jobs;
   const { url, metadata, options, pendingInspectUrl } = draft;
-  const { setUrl, setMetadata, setOptions, consumeInspectUrl, resetDraft } =
-    draftActions;
+  const { setUrl, setMetadata, setOptions, consumeInspectUrl, resetDraft } = draftActions;
   const [isInspecting, setIsInspecting] = useState(false);
   const [inspectError, setInspectError] = useState<string | null>(null);
   const [isCookieModalOpen, setIsCookieModalOpen] = useState(false);
@@ -43,28 +42,23 @@ export function ConvertRoute() {
         setInspectError(
           err instanceof Error
             ? err.message
-            : "Failed to load video details. Check the URL and try again.",
+            : 'Failed to load video details. Check the URL and try again.'
         );
         setMetadata(null);
       } finally {
         setIsInspecting(false);
       }
     },
-    [url, jobActions, setMetadata],
+    [url, jobActions, setMetadata]
   );
 
   const handleStartConversion = useCallback(async () => {
     if (!metadata) return;
     try {
-      await jobActions.startConversion(
-        canonicalWatchUrl(metadata.id),
-        options,
-      );
+      await jobActions.startConversion(canonicalWatchUrl(metadata.id), options);
     } catch (err: unknown) {
       setInspectError(
-        err instanceof Error
-          ? err.message
-          : "Failed to start conversion. Try again.",
+        err instanceof Error ? err.message : 'Failed to start conversion. Try again.'
       );
     }
   }, [metadata, jobActions, options]);
@@ -72,11 +66,7 @@ export function ConvertRoute() {
   // Completion handoff: the finished track already lives in the library, so
   // the tab resets to its blank state and reports success briefly.
   useEffect(() => {
-    if (
-      activeJob?.status !== "completed" ||
-      completedIdRef.current === activeJob.id
-    )
-      return;
+    if (activeJob?.status !== 'completed' || completedIdRef.current === activeJob.id) return;
     completedIdRef.current = activeJob.id;
     const title = activeJob.title;
     void historyActions.refresh();
@@ -85,21 +75,42 @@ export function ConvertRoute() {
     resetDraft();
     setInspectError(null);
     setSavedTitle(title);
-    const timer = window.setTimeout(
-      () => setSavedTitle(null),
-      SAVE_BANNER_TIMEOUT_MS,
-    );
+    const timer = window.setTimeout(() => setSavedTitle(null), SAVE_BANNER_TIMEOUT_MS);
     return () => window.clearTimeout(timer);
   }, [activeJob, jobActions, historyActions, libraryActions, resetDraft]);
 
-  // Re-convert entry: the History tab queues a URL, Convert pastes and inspects it once.
+  // Re-convert entry: the History tab queues a URL, Convert pastes it and
+  // inspects it once. The paste is state synced from the store during
+  // render; the effect below performs only side effects. Synchronous
+  // updates do not belong in effects.
+  const [prevInspectUrl, setPrevInspectUrl] = useState<string | null>(null);
+  if (pendingInspectUrl && pendingInspectUrl !== prevInspectUrl) {
+    setPrevInspectUrl(pendingInspectUrl);
+    setUrl(pendingInspectUrl);
+    setIsInspecting(true);
+    setInspectError(null);
+  }
+
   useEffect(() => {
     if (!pendingInspectUrl) return;
     const target = pendingInspectUrl;
     consumeInspectUrl();
-    setUrl(target);
-    void handleInspectUrl(target);
-  }, [pendingInspectUrl, consumeInspectUrl, setUrl, handleInspectUrl]);
+    jobActions.resetActive();
+    ApiClient.fetchVideoInfo(target)
+      .then(data => {
+        setMetadata(data);
+        setIsInspecting(false);
+      })
+      .catch((err: unknown) => {
+        setInspectError(
+          err instanceof Error
+            ? err.message
+            : 'Failed to load video details. Check the URL and try again.'
+        );
+        setMetadata(null);
+        setIsInspecting(false);
+      });
+  }, [pendingInspectUrl, consumeInspectUrl, jobActions, setMetadata]);
 
   return (
     <div className="space-y-3">
@@ -108,10 +119,7 @@ export function ConvertRoute() {
           role="status"
           className="px-panel fixed right-4 bottom-4 z-50 flex w-80 max-w-[calc(100vw-2rem)] items-center gap-3 border-px-ok p-3 text-xs sm:text-sm"
         >
-          <CheckCircle2
-            className="h-5 w-5 shrink-0 text-px-ok"
-            aria-hidden="true"
-          />
+          <CheckCircle2 className="h-5 w-5 shrink-0 text-px-ok" aria-hidden="true" />
           <p>
             <span className="font-semibold">Saved to library</span>
             <span className="block truncate text-px-dim">{savedTitle}</span>
@@ -121,7 +129,7 @@ export function ConvertRoute() {
 
       <UrlInput
         value={url}
-        onChange={(newVal) => {
+        onChange={newVal => {
           setUrl(newVal);
           if (inspectError) setInspectError(null);
         }}
@@ -134,10 +142,7 @@ export function ConvertRoute() {
           role="alert"
           className="px-panel flex items-start gap-3 border-px-err p-4 text-xs sm:text-sm"
         >
-          <AlertCircle
-            className="mt-0.5 h-5 w-5 shrink-0 text-px-err"
-            aria-hidden="true"
-          />
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-px-err" aria-hidden="true" />
           <div className="flex-1">
             <p className="font-semibold">Unable to load video</p>
             <p className="mt-0.5 text-px-dim">{inspectError}</p>
@@ -153,10 +158,7 @@ export function ConvertRoute() {
       )}
 
       {metadata && (
-        <VideoCard
-          metadata={metadata}
-          onOpenCookiesModal={() => setIsCookieModalOpen(true)}
-        />
+        <VideoCard metadata={metadata} onOpenCookiesModal={() => setIsCookieModalOpen(true)} />
       )}
 
       {activeJob ? (
@@ -183,7 +185,7 @@ export function ConvertRoute() {
           void sessionActions.refresh();
         }}
         status={session.status}
-        onStatusUpdated={(next) => sessionActions.update(next)}
+        onStatusUpdated={next => sessionActions.update(next)}
       />
     </div>
   );

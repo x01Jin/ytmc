@@ -1,36 +1,39 @@
-import express, { Request, Response, Router } from "express";
-import { spawn } from "child_process";
-import fs from "fs";
-import path from "path";
-import { DEFAULT_DEMO_TRACKS, DOWNLOADS_DIR } from "../config.js";
-import { AudioTagService, MusicTags } from "../services/audioTagService.js";
+import express, { NextFunction, Request, Response, Router } from 'express';
+import { spawn } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import { DEFAULT_DEMO_TRACKS, DOWNLOADS_DIR } from '../config.js';
+import { AudioTagService, MusicTags } from '../services/audioTagService.js';
 import {
   AudioEditService,
   EDITABLE_FORMATS,
   parseTimeInput,
-} from "../services/audioEditService.js";
-import { ConversionService } from "../services/conversionService.js";
-import { CookieService } from "../services/cookieService.js";
-import { FileService, AUDIO_EXTENSIONS } from "../services/fileService.js";
-import { HistoryStore } from "../services/historyStore.js";
-import { JobManager } from "../services/jobManager.js";
-import { LibraryStore, isSameFilePath } from "../services/libraryStore.js";
-import { MetadataService } from "../services/metadataService.js";
-import { SettingsService } from "../services/settingsService.js";
-import { TagFetcherService } from "../services/tagFetcherService.js";
-import { buildDisplayFileName, dedupeFileName } from "../utils/filename.js";
-import { getAudioMimeType } from "../utils/mime.js";
-import { PreviewService } from "../services/previewService.js";
-import {
-  AUDIO_DSP,
-  isValidNormalizeMode,
-} from "../services/audioFilterService.js";
+} from '../services/audioEditService.js';
+import { ConversionService } from '../services/conversionService.js';
+import { CookieService } from '../services/cookieService.js';
+import { FileService, AUDIO_EXTENSIONS } from '../services/fileService.js';
+import { HistoryStore } from '../services/historyStore.js';
+import { JobManager } from '../services/jobManager.js';
+import { LibraryStore, isSameFilePath } from '../services/libraryStore.js';
+import { MetadataService } from '../services/metadataService.js';
+import { SettingsService } from '../services/settingsService.js';
+import { TagFetcherService } from '../services/tagFetcherService.js';
+import { buildDisplayFileName, dedupeFileName } from '../utils/filename.js';
+import { getAudioMimeType } from '../utils/mime.js';
+import { PreviewService } from '../services/previewService.js';
+import { AUDIO_DSP, isValidNormalizeMode } from '../services/audioFilterService.js';
 
 export const apiRouter: Router = express.Router();
 
-function resolveAudioFile(
-  id: string,
-): { filePath: string; fileName: string } | null {
+function asyncHandler(
+  handler: (req: Request, res: Response, next: NextFunction) => Promise<unknown>
+): (req: Request, res: Response, next: NextFunction) => void {
+  return (req, res, next) => {
+    Promise.resolve(handler(req, res, next)).catch(next);
+  };
+}
+
+function resolveAudioFile(id: string): { filePath: string; fileName: string } | null {
   const job = JobManager.getJob(id);
   if (job?.outputFilePath && fs.existsSync(job.outputFilePath)) {
     return {
@@ -38,7 +41,7 @@ function resolveAudioFile(
       fileName: job.outputFileName || path.basename(job.outputFilePath),
     };
   }
-  const record = LibraryStore.list().find((r) => r.jobId === id);
+  const record = LibraryStore.list().find(r => r.jobId === id);
   if (record && fs.existsSync(record.filePath)) {
     return { filePath: record.filePath, fileName: record.fileName };
   }
@@ -46,7 +49,7 @@ function resolveAudioFile(
 }
 
 function buildArtworkUrl(jobId: string, filePath: string): string {
-  let version = "0";
+  let version = '0';
   try {
     version = String(Math.floor(fs.statSync(filePath).mtimeMs));
   } catch {
@@ -70,7 +73,7 @@ function resolveLibraryTarget(id: string): {
   tags?: MusicTags;
 } | null {
   const job = JobManager.getJob(id);
-  const record = LibraryStore.list().find((r) => r.jobId === id);
+  const record = LibraryStore.list().find(r => r.jobId === id);
   const filePath =
     job?.outputFilePath && fs.existsSync(job.outputFilePath)
       ? job.outputFilePath
@@ -82,9 +85,9 @@ function resolveLibraryTarget(id: string): {
     filePath,
     videoId: job?.videoId ?? record?.videoId ?? id,
     title: job?.title ?? record?.title ?? path.basename(filePath),
-    author: job?.author ?? record?.author ?? "Unknown",
-    thumbnail: job?.thumbnail ?? record?.thumbnail ?? "",
-    format: path.extname(filePath).replace(".", "").toLowerCase(),
+    author: job?.author ?? record?.author ?? 'Unknown',
+    thumbnail: job?.thumbnail ?? record?.thumbnail ?? '',
+    format: path.extname(filePath).replace('.', '').toLowerCase(),
     completedAt: record?.completedAt ?? job?.completedAt ?? Date.now(),
     tags: job?.tags ?? record?.tags,
   };
@@ -104,10 +107,10 @@ function syncLibraryIndexes(
     videoId: string;
     completedAt: number;
     tags?: MusicTags;
-  },
+  }
 ): void {
   const job = JobManager.getJob(id);
-  const existing = LibraryStore.list().find((record) => record.jobId === id);
+  const existing = LibraryStore.list().find(record => record.jobId === id);
   if (job) {
     JobManager.updateJob(id, {
       title: update.title,
@@ -138,89 +141,94 @@ function syncLibraryIndexes(
 /**
  * Fetch video metadata from YouTube URL or ID
  */
-apiRouter.get("/info", async (req: Request, res: Response) => {
-  try {
-    const url = req.query.url as string;
-    if (!url) {
-      res
-        .status(400)
-        .json({ success: false, error: "YouTube URL or video ID is required" });
-      return;
-    }
+apiRouter.get(
+  '/info',
+  asyncHandler(async (req: Request, res: Response) => {
+    try {
+      const url = req.query.url as string;
+      if (!url) {
+        res.status(400).json({
+          success: false,
+          error: 'YouTube URL or video ID is required',
+        });
+        return;
+      }
 
-    const metadata = await MetadataService.getVideoInfo(url);
-    res.json({ success: true, data: metadata });
-  } catch (error: any) {
-    res.status(400).json({
-      success: false,
-      error: error.message || "Failed to fetch video information",
-    });
-  }
-});
+      const metadata = await MetadataService.getVideoInfo(url);
+      res.json({ success: true, data: metadata });
+    } catch (error: any) {
+      res.status(400).json({
+        success: false,
+        error: error.message || 'Failed to fetch video information',
+      });
+    }
+  })
+);
 
 /**
  * Start conversion job
  */
-apiRouter.post("/convert", async (req: Request, res: Response) => {
-  try {
-    const {
-      url,
-      format,
-      bitrate,
-      trimStart,
-      trimEnd,
-      volumeBoost,
-      normalizeAudio,
-      normalizeMode,
-      embedThumbnail,
-    } = req.body;
-    if (!url) {
-      res.status(400).json({ success: false, error: "Target URL is required" });
-      return;
-    }
-    if (
-      normalizeMode !== undefined &&
-      !isValidNormalizeMode(String(normalizeMode).toLowerCase())
-    ) {
+apiRouter.post(
+  '/convert',
+  asyncHandler(async (req: Request, res: Response) => {
+    try {
+      const {
+        url,
+        format,
+        bitrate,
+        trimStart,
+        trimEnd,
+        volumeBoost,
+        normalizeAudio,
+        normalizeMode,
+        embedThumbnail,
+      } = req.body;
+      if (!url) {
+        res.status(400).json({ success: false, error: 'Target URL is required' });
+        return;
+      }
+      if (
+        normalizeMode !== undefined &&
+        !isValidNormalizeMode(String(normalizeMode).toLowerCase())
+      ) {
+        res.status(400).json({
+          success: false,
+          error: 'Invalid normalizeMode. Choose one of: off, loudness, peak.',
+        });
+        return;
+      }
+
+      const job = await ConversionService.startConversion({
+        url,
+        format,
+        bitrate,
+        trimStart,
+        trimEnd,
+        volumeBoost: volumeBoost ? parseInt(volumeBoost, 10) : undefined,
+        normalizeAudio: Boolean(normalizeAudio),
+        normalizeMode:
+          normalizeMode !== undefined ? String(normalizeMode).toLowerCase() : undefined,
+        embedThumbnail: embedThumbnail !== false,
+      });
+
+      res.json({ success: true, job });
+    } catch (error: any) {
       res.status(400).json({
         success: false,
-        error: "Invalid normalizeMode. Choose one of: off, loudness, peak.",
+        error: error.message || 'Failed to start conversion job',
       });
-      return;
     }
-
-    const job = await ConversionService.startConversion({
-      url,
-      format,
-      bitrate,
-      trimStart,
-      trimEnd,
-      volumeBoost: volumeBoost ? parseInt(volumeBoost, 10) : undefined,
-      normalizeAudio: Boolean(normalizeAudio),
-      normalizeMode:
-        normalizeMode !== undefined
-          ? String(normalizeMode).toLowerCase()
-          : undefined,
-      embedThumbnail: embedThumbnail !== false,
-    });
-
-    res.json({ success: true, job });
-  } catch (error: any) {
-    res.status(400).json({
-      success: false,
-      error: error.message || "Failed to start conversion job",
-    });
-  }
-});
+  })
+);
 
 /**
  * Check conversion status
  */
-apiRouter.get("/status/:id", (req: Request, res: Response) => {
+apiRouter.get('/status/:id', (req: Request, res: Response) => {
   const jobId = req.params.id;
   const job = JobManager.getJob(jobId);
   if (!job) {
-    res.status(404).json({ success: false, error: "Job not found" });
+    res.status(404).json({ success: false, error: 'Job not found' });
     return;
   }
   res.json({ success: true, job });
@@ -230,7 +238,7 @@ apiRouter.get("/status/:id", (req: Request, res: Response) => {
  * Live conversion jobs (queue). History lives in its own persistent store
  * below — library edits never touch it.
  */
-apiRouter.get("/jobs", (req: Request, res: Response) => {
+apiRouter.get('/jobs', (req: Request, res: Response) => {
   const jobs = JobManager.listRecentJobs();
   res.json({ success: true, jobs });
 });
@@ -239,152 +247,146 @@ apiRouter.get("/jobs", (req: Request, res: Response) => {
  * Conversion history: every finished Convert-tab job, frozen with its
  * original YouTube title, author, and thumbnail. Persists across restarts.
  */
-apiRouter.get("/history", (req: Request, res: Response) => {
+apiRouter.get('/history', (req: Request, res: Response) => {
   res.json({ success: true, data: HistoryStore.list() });
 });
 
-apiRouter.delete("/history/:id", (req: Request, res: Response) => {
-  const id = String(req.params.id ?? "");
+apiRouter.delete('/history/:id', (req: Request, res: Response) => {
+  const id = String(req.params.id ?? '');
   if (!id) {
-    res.status(400).json({ success: false, error: "History id is required" });
+    res.status(400).json({ success: false, error: 'History id is required' });
     return;
   }
   if (!HistoryStore.remove(id)) {
-    res.status(404).json({ success: false, error: "History entry not found" });
+    res.status(404).json({ success: false, error: 'History entry not found' });
     return;
   }
-  res.json({ success: true, message: "History entry removed." });
+  res.json({ success: true, message: 'History entry removed.' });
 });
 
-apiRouter.delete("/history", (req: Request, res: Response) => {
+apiRouter.delete('/history', (req: Request, res: Response) => {
   HistoryStore.clear();
-  res.json({ success: true, message: "History cleared." });
+  res.json({ success: true, message: 'History cleared.' });
 });
 
-apiRouter.get("/stream/:id", async (req: Request, res: Response) => {
-  const jobId = req.params.id;
-  const resolved = resolveAudioFile(jobId);
+apiRouter.get(
+  '/stream/:id',
+  asyncHandler(async (req: Request, res: Response) => {
+    const jobId = req.params.id;
+    const resolved = resolveAudioFile(jobId);
 
-  if (!resolved) {
-    res.status(404).json({
-      success: false,
-      error: "Audio file not found or still processing",
-    });
-    return;
-  }
-
-  let filePath = resolved.filePath;
-  const sourceExt = path.extname(filePath).replace(".", "").toLowerCase();
-  if (String(req.query.preview || "").toLowerCase() === "mp3") {
-    if (sourceExt === "mp3") {
-      // Already MP3: no preview needed.
-    } else if (PreviewService.isEligible(sourceExt)) {
-      try {
-        filePath = await PreviewService.getOrCreate(jobId, filePath);
-      } catch (error: any) {
-        res.status(500).json({
-          success: false,
-          error: error?.message || "Could not prepare the audio preview",
-        });
-        return;
-      }
-    }
-    // Non-eligible formats fall through to the native file.
-  }
-  let stat: fs.Stats;
-  try {
-    stat = fs.statSync(filePath);
-  } catch {
-    res.status(404).json({
-      success: false,
-      error: "Audio file not found or still processing",
-    });
-    return;
-  }
-  const fileSize = stat.size;
-  const range = req.headers.range;
-  const ext = path.extname(filePath).replace(".", "").toLowerCase();
-  const contentType = getAudioMimeType(ext);
-
-  if (range) {
-    const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
-    let start = match && match[1] ? parseInt(match[1], 10) : NaN;
-    let end = match && match[2] ? parseInt(match[2], 10) : fileSize - 1;
-    // Suffix ranges ("bytes=-500") mean "last 500 bytes".
-    if (match && !match[1] && match[2]) {
-      start = Math.max(0, fileSize - parseInt(match[2], 10));
-      end = fileSize - 1;
-    }
-    if (!match || Number.isNaN(start) || start >= fileSize || start > end) {
-      res.writeHead(416, {
-        "Content-Range": `bytes */${fileSize}`,
-        "Accept-Ranges": "bytes",
+    if (!resolved) {
+      res.status(404).json({
+        success: false,
+        error: 'Audio file not found or still processing',
       });
-      res.end();
       return;
     }
-    end = Math.min(end, fileSize - 1);
-    const chunksize = end - start + 1;
-    const file = fs.createReadStream(filePath, { start, end });
-    file.on("error", () => {
-      if (!res.headersSent) {
-        res
-          .status(404)
-          .json({ success: false, error: "Audio file unreadable" });
-      } else {
-        res.destroy();
-      }
-    });
 
-    res.writeHead(206, {
-      "Content-Range": `bytes ${start}-${end}/${fileSize}`,
-      "Accept-Ranges": "bytes",
-      "Content-Length": chunksize,
-      "Content-Type": contentType,
-    });
-    file.pipe(res);
-  } else {
-    res.writeHead(200, {
-      "Content-Length": fileSize,
-      "Content-Type": contentType,
-      "Accept-Ranges": "bytes",
-    });
-    const file = fs.createReadStream(filePath);
-    file.on("error", () => {
-      if (!res.headersSent) {
-        res
-          .status(404)
-          .json({ success: false, error: "Audio file unreadable" });
-      } else {
-        res.destroy();
+    let filePath = resolved.filePath;
+    const sourceExt = path.extname(filePath).replace('.', '').toLowerCase();
+    if (String(req.query.preview || '').toLowerCase() === 'mp3') {
+      if (sourceExt === 'mp3') {
+        // Already MP3: no preview needed.
+      } else if (PreviewService.isEligible(sourceExt)) {
+        try {
+          filePath = await PreviewService.getOrCreate(jobId, filePath);
+        } catch (error: any) {
+          res.status(500).json({
+            success: false,
+            error: error?.message || 'Could not prepare the audio preview',
+          });
+          return;
+        }
       }
-    });
-    file.pipe(res);
-  }
-});
+      // Non-eligible formats fall through to the native file.
+    }
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(filePath);
+    } catch {
+      res.status(404).json({
+        success: false,
+        error: 'Audio file not found or still processing',
+      });
+      return;
+    }
+    const fileSize = stat.size;
+    const range = req.headers.range;
+    const ext = path.extname(filePath).replace('.', '').toLowerCase();
+    const contentType = getAudioMimeType(ext);
+
+    if (range) {
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
+      let start = match && match[1] ? parseInt(match[1], 10) : NaN;
+      let end = match && match[2] ? parseInt(match[2], 10) : fileSize - 1;
+      // Suffix ranges ("bytes=-500") mean "last 500 bytes".
+      if (match && !match[1] && match[2]) {
+        start = Math.max(0, fileSize - parseInt(match[2], 10));
+        end = fileSize - 1;
+      }
+      if (!match || Number.isNaN(start) || start >= fileSize || start > end) {
+        res.writeHead(416, {
+          'Content-Range': `bytes */${fileSize}`,
+          'Accept-Ranges': 'bytes',
+        });
+        res.end();
+        return;
+      }
+      end = Math.min(end, fileSize - 1);
+      const chunksize = end - start + 1;
+      const file = fs.createReadStream(filePath, { start, end });
+      file.on('error', () => {
+        if (!res.headersSent) {
+          res.status(404).json({ success: false, error: 'Audio file unreadable' });
+        } else {
+          res.destroy();
+        }
+      });
+
+      res.writeHead(206, {
+        'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+        'Accept-Ranges': 'bytes',
+        'Content-Length': chunksize,
+        'Content-Type': contentType,
+      });
+      file.pipe(res);
+    } else {
+      res.writeHead(200, {
+        'Content-Length': fileSize,
+        'Content-Type': contentType,
+        'Accept-Ranges': 'bytes',
+      });
+      const file = fs.createReadStream(filePath);
+      file.on('error', () => {
+        if (!res.headersSent) {
+          res.status(404).json({ success: false, error: 'Audio file unreadable' });
+        } else {
+          res.destroy();
+        }
+      });
+      file.pipe(res);
+    }
+  })
+);
 
 /**
  * Download converted audio file
  */
-apiRouter.get("/download/:id", (req: Request, res: Response) => {
+apiRouter.get('/download/:id', (req: Request, res: Response) => {
   const jobId = req.params.id;
   const resolved = resolveAudioFile(jobId);
 
   if (!resolved) {
-    res.status(404).json({ success: false, error: "Audio file not found" });
+    res.status(404).json({ success: false, error: 'Audio file not found' });
     return;
   }
 
   const job = JobManager.getJob(jobId);
-  const fileName =
-    job?.outputFileName ||
-    resolved.fileName ||
-    `audio_${job?.videoId ?? jobId}.mp3`;
-  res.download(resolved.filePath, fileName, (err) => {
+  const fileName = job?.outputFileName || resolved.fileName || `audio_${job?.videoId ?? jobId}.mp3`;
+  res.download(resolved.filePath, fileName, err => {
     if (err && !res.headersSent) {
-      res
-        .status(500)
-        .json({ success: false, error: "Failed to download file" });
+      res.status(500).json({ success: false, error: 'Failed to download file' });
     }
   });
 });
@@ -392,7 +394,7 @@ apiRouter.get("/download/:id", (req: Request, res: Response) => {
 /**
  * Cookie status
  */
-apiRouter.get("/cookies", (req: Request, res: Response) => {
+apiRouter.get('/cookies', (req: Request, res: Response) => {
   const status = CookieService.getStatus();
   res.json({ success: true, data: status });
 });
@@ -400,45 +402,49 @@ apiRouter.get("/cookies", (req: Request, res: Response) => {
 /**
  * Auto-fetch YouTube guest session cookies
  */
-apiRouter.post("/cookies/auto-fetch", async (req: Request, res: Response) => {
-  try {
-    const result = await CookieService.autoFetchGuestSession();
-    const status = CookieService.getStatus();
-    const { ...details } = result;
-    res.json({ success: true, ...details, status });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message || "Failed to auto-fetch guest session",
-    });
-  }
-});
+apiRouter.post(
+  '/cookies/auto-fetch',
+  asyncHandler(async (req: Request, res: Response) => {
+    try {
+      const result = await CookieService.autoFetchGuestSession();
+      const status = CookieService.getStatus();
+      const { ...details } = result;
+      res.json({ success: true, ...details, status });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to auto-fetch guest session',
+      });
+    }
+  })
+);
 
 /**
  * Test current YouTube session cookies and challenge solver
  */
-apiRouter.post("/cookies/test", async (req: Request, res: Response) => {
-  try {
-    const result = await CookieService.testSession();
-    res.json({ success: true, data: result });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message || "Failed to test session",
-    });
-  }
-});
+apiRouter.post(
+  '/cookies/test',
+  asyncHandler(async (req: Request, res: Response) => {
+    try {
+      const result = await CookieService.testSession();
+      res.json({ success: true, data: result });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to test session',
+      });
+    }
+  })
+);
 
 /**
  * Save user session cookies
  */
-apiRouter.post("/cookies", (req: Request, res: Response) => {
+apiRouter.post('/cookies', (req: Request, res: Response) => {
   try {
     const { cookies } = req.body;
     if (!cookies) {
-      res
-        .status(400)
-        .json({ success: false, error: "Cookies text is required" });
+      res.status(400).json({ success: false, error: 'Cookies text is required' });
       return;
     }
     const result = CookieService.saveCookies(cookies);
@@ -447,7 +453,7 @@ apiRouter.post("/cookies", (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(400).json({
       success: false,
-      error: error.message || "Failed to save cookies",
+      error: error.message || 'Failed to save cookies',
     });
   }
 });
@@ -455,7 +461,7 @@ apiRouter.post("/cookies", (req: Request, res: Response) => {
 /**
  * Clear session cookies
  */
-apiRouter.delete("/cookies", (req: Request, res: Response) => {
+apiRouter.delete('/cookies', (req: Request, res: Response) => {
   const result = CookieService.clearCookies();
   res.json(result);
 });
@@ -463,30 +469,28 @@ apiRouter.delete("/cookies", (req: Request, res: Response) => {
 /**
  * Pre-verified demo tracks
  */
-apiRouter.get("/demo-tracks", (req: Request, res: Response) => {
+apiRouter.get('/demo-tracks', (req: Request, res: Response) => {
   res.json({ success: true, data: DEFAULT_DEMO_TRACKS });
 });
 
 /**
  * Library settings: where finished files live on disk.
  */
-apiRouter.get("/settings", (req: Request, res: Response) => {
+apiRouter.get('/settings', (req: Request, res: Response) => {
   const settings = SettingsService.getSettings();
   res.json({
     success: true,
     data: {
       ...settings,
       defaultDownloadsDir: DOWNLOADS_DIR,
-      isCustom:
-        path.normalize(settings.downloadsDir) !== path.normalize(DOWNLOADS_DIR),
+      isCustom: path.normalize(settings.downloadsDir) !== path.normalize(DOWNLOADS_DIR),
     },
   });
 });
 
-apiRouter.patch("/settings", (req: Request, res: Response) => {
+apiRouter.patch('/settings', (req: Request, res: Response) => {
   try {
-    const { downloadsDir, filenameTemplate, revealAfterConvert } =
-      req.body ?? {};
+    const { downloadsDir, filenameTemplate, revealAfterConvert } = req.body ?? {};
     const settings = SettingsService.updateSettings({
       downloadsDir,
       filenameTemplate,
@@ -494,13 +498,11 @@ apiRouter.patch("/settings", (req: Request, res: Response) => {
     });
     res.json({ success: true, data: settings });
   } catch (error: any) {
-    res
-      .status(400)
-      .json({ success: false, error: error.message || "Invalid settings" });
+    res.status(400).json({ success: false, error: error.message || 'Invalid settings' });
   }
 });
 
-apiRouter.post("/settings/reset", (req: Request, res: Response) => {
+apiRouter.post('/settings/reset', (req: Request, res: Response) => {
   const settings = SettingsService.resetSettings();
   res.json({ success: true, data: settings });
 });
@@ -508,85 +510,82 @@ apiRouter.post("/settings/reset", (req: Request, res: Response) => {
 /**
  * On-disk library: persistent records plus any unindexed audio files.
  */
-apiRouter.get("/library", async (req: Request, res: Response) => {
-  let records = LibraryStore.list();
-  for (const record of records) {
-    const tags =
-      record.tags ?? (await AudioTagService.readTags(record.filePath));
-    const thumbnail =
-      record.source === "import"
-        ? buildArtworkUrl(record.jobId, record.filePath)
-        : record.thumbnail;
-    if (!record.tags || thumbnail !== record.thumbnail) {
-      LibraryStore.upsert({ ...record, thumbnail, tags });
+apiRouter.get(
+  '/library',
+  asyncHandler(async (req: Request, res: Response) => {
+    let records = LibraryStore.list();
+    for (const record of records) {
+      const tags = record.tags ?? (await AudioTagService.readTags(record.filePath));
+      const thumbnail =
+        record.source === 'import'
+          ? buildArtworkUrl(record.jobId, record.filePath)
+          : record.thumbnail;
+      if (!record.tags || thumbnail !== record.thumbnail) {
+        LibraryStore.upsert({ ...record, thumbnail, tags });
+      }
     }
-  }
-  records = LibraryStore.list();
-  const loose = FileService.scanLibrary().filter(
-    (f) => !records.some((r) => isSameFilePath(r.filePath, f.filePath)),
-  );
-  for (const file of loose) {
-    const tags = await AudioTagService.readTags(file.filePath);
-    LibraryStore.upsert({
-      jobId: `file:${file.fileName}`,
-      source: "import",
-      videoId: "",
-      title:
-        tags.title || path.basename(file.fileName, path.extname(file.fileName)),
-      author: tags.artist || "Local file",
-      thumbnail: buildArtworkUrl(`file:${file.fileName}`, file.filePath),
-      format: file.ext,
-      fileName: file.fileName,
-      filePath: file.filePath,
-      fileSizeBytes: file.sizeBytes,
-      completedAt: file.mtimeMs,
-      tags,
+    records = LibraryStore.list();
+    const loose = FileService.scanLibrary().filter(
+      f => !records.some(r => isSameFilePath(r.filePath, f.filePath))
+    );
+    for (const file of loose) {
+      const tags = await AudioTagService.readTags(file.filePath);
+      LibraryStore.upsert({
+        jobId: `file:${file.fileName}`,
+        source: 'import',
+        videoId: '',
+        title: tags.title || path.basename(file.fileName, path.extname(file.fileName)),
+        author: tags.artist || 'Local file',
+        thumbnail: buildArtworkUrl(`file:${file.fileName}`, file.filePath),
+        format: file.ext,
+        fileName: file.fileName,
+        filePath: file.filePath,
+        fileSizeBytes: file.sizeBytes,
+        completedAt: file.mtimeMs,
+        tags,
+      });
+    }
+    records = LibraryStore.list();
+    const looseFiles = FileService.scanLibrary().filter(
+      f => !records.some(r => isSameFilePath(r.filePath, f.filePath))
+    );
+    const totalSizeBytes =
+      records.reduce((sum, r) => sum + r.fileSizeBytes, 0) +
+      looseFiles.reduce((sum, f) => sum + f.sizeBytes, 0);
+    res.json({
+      success: true,
+      data: {
+        downloadsDir: FileService.getDownloadsDir(),
+        records,
+        looseFiles,
+        totalSizeBytes,
+      },
     });
-  }
-  records = LibraryStore.list();
-  const looseFiles = FileService.scanLibrary().filter(
-    (f) => !records.some((r) => isSameFilePath(r.filePath, f.filePath)),
-  );
-  const totalSizeBytes =
-    records.reduce((sum, r) => sum + r.fileSizeBytes, 0) +
-    looseFiles.reduce((sum, f) => sum + f.sizeBytes, 0);
-  res.json({
-    success: true,
-    data: {
-      downloadsDir: FileService.getDownloadsDir(),
-      records,
-      looseFiles,
-      totalSizeBytes,
-    },
-  });
-});
+  })
+);
 
 apiRouter.post(
-  "/library/import",
-  express.raw({ type: "application/octet-stream", limit: "200mb" }),
-  async (req: Request, res: Response) => {
+  '/library/import',
+  express.raw({ type: 'application/octet-stream', limit: '200mb' }),
+  asyncHandler(async (req: Request, res: Response) => {
     try {
       const fileName =
-        typeof req.headers["x-file-name"] === "string"
-          ? decodeURIComponent(req.headers["x-file-name"])
-          : typeof req.body?.fileName === "string"
+        typeof req.headers['x-file-name'] === 'string'
+          ? decodeURIComponent(req.headers['x-file-name'])
+          : typeof req.body?.fileName === 'string'
             ? req.body.fileName
-            : "";
-      const encoded = typeof req.body?.data === "string" ? req.body.data : "";
+            : '';
+      const encoded = typeof req.body?.data === 'string' ? req.body.data : '';
       const ext = path.extname(fileName).toLowerCase();
       const data = Buffer.isBuffer(req.body)
         ? req.body
         : encoded
-          ? Buffer.from(encoded, "base64")
+          ? Buffer.from(encoded, 'base64')
           : null;
-      if (
-        !fileName ||
-        !AUDIO_EXTENSIONS.has(ext) ||
-        !data?.length
-      ) {
+      if (!fileName || !AUDIO_EXTENSIONS.has(ext) || !data?.length) {
         res.status(400).json({
           success: false,
-          error: "Drop an audio file supported by the library.",
+          error: 'Drop an audio file supported by the library.',
         });
         return;
       }
@@ -594,20 +593,16 @@ apiRouter.post(
       const targetDir = FileService.ensureDownloadsDir();
       const targetName = dedupeFileName(targetDir, safeName);
       const targetPath = path.join(targetDir, targetName);
-      fs.writeFileSync(targetPath, data, { flag: "wx" });
+      fs.writeFileSync(targetPath, data, { flag: 'wx' });
       const stat = fs.statSync(targetPath);
       const tags = await AudioTagService.readTags(targetPath);
       LibraryStore.upsert({
         jobId: `file:${path.basename(targetPath)}`,
-        source: "import",
-        videoId: "",
-        title:
-          tags.title || path.basename(targetPath, path.extname(targetPath)),
-        author: tags.artist || "Local file",
-        thumbnail: buildArtworkUrl(
-          `file:${path.basename(targetPath)}`,
-          targetPath,
-        ),
+        source: 'import',
+        videoId: '',
+        title: tags.title || path.basename(targetPath, path.extname(targetPath)),
+        author: tags.artist || 'Local file',
+        thumbnail: buildArtworkUrl(`file:${path.basename(targetPath)}`, targetPath),
         format: ext.slice(1),
         fileName: path.basename(targetPath),
         filePath: targetPath,
@@ -619,47 +614,43 @@ apiRouter.post(
     } catch (error: any) {
       res.status(400).json({
         success: false,
-        error: error.message || "Could not copy audio into the library.",
+        error: error.message || 'Could not copy audio into the library.',
       });
     }
-  },
+  })
 );
 
-apiRouter.get("/library/:id/artwork", async (req: Request, res: Response) => {
-  const record = LibraryStore.list().find(
-    (item) => item.jobId === req.params.id,
-  );
-  if (!record) {
-    res.status(404).end();
-    return;
-  }
+apiRouter.get(
+  '/library/:id/artwork',
+  asyncHandler(async (req: Request, res: Response) => {
+    const record = LibraryStore.list().find(item => item.jobId === req.params.id);
+    if (!record) {
+      res.status(404).end();
+      return;
+    }
 
-  const artwork = await AudioTagService.extractCoverArt(record.filePath);
-  if (!artwork) {
-    res.status(404).end();
-    return;
-  }
-  res
-    .type(artwork.mimeType)
-    .set("Cache-Control", "no-cache")
-    .send(artwork.data);
-});
+    const artwork = await AudioTagService.extractCoverArt(record.filePath);
+    if (!artwork) {
+      res.status(404).end();
+      return;
+    }
+    res.type(artwork.mimeType).set('Cache-Control', 'no-cache').send(artwork.data);
+  })
+);
 
-apiRouter.delete("/library/:id", (req: Request, res: Response) => {
+apiRouter.delete('/library/:id', (req: Request, res: Response) => {
   const id = req.params.id;
-  const record = LibraryStore.list().find((r) => r.jobId === id);
+  const record = LibraryStore.list().find(r => r.jobId === id);
   const job = JobManager.getJob(id);
   const filePath = record?.filePath ?? job?.outputFilePath;
   if (!filePath || !fs.existsSync(filePath)) {
     LibraryStore.remove(id);
     PreviewService.invalidate(id);
-    res.json({ success: true, message: "Library entry removed." });
+    res.json({ success: true, message: 'Library entry removed.' });
     return;
   }
   if (!FileService.isInsideLibrary(path.resolve(filePath))) {
-    res
-      .status(400)
-      .json({ success: false, error: "File is outside the library folder." });
+    res.status(400).json({ success: false, error: 'File is outside the library folder.' });
     return;
   }
   try {
@@ -667,470 +658,436 @@ apiRouter.delete("/library/:id", (req: Request, res: Response) => {
   } catch (error: any) {
     res.status(500).json({
       success: false,
-      error: error.message || "Could not delete the file.",
+      error: error.message || 'Could not delete the file.',
     });
     return;
   }
   LibraryStore.remove(id);
   PreviewService.invalidate(id);
-  res.json({ success: true, message: "File deleted from your library." });
+  res.json({ success: true, message: 'File deleted from your library.' });
 });
 
 /**
  * Probe a library track (duration/format/size) for the trimmer preview.
  */
-apiRouter.get("/library/:id/probe", async (req: Request, res: Response) => {
-  const target = resolveLibraryTarget(req.params.id);
-  if (!target) {
-    res.status(404).json({ success: false, error: "Audio file not found" });
-    return;
-  }
-  if (!FileService.isInsideLibrary(path.resolve(target.filePath))) {
-    res
-      .status(400)
-      .json({ success: false, error: "File is outside the library folder." });
-    return;
-  }
-  try {
-    const probe = await AudioEditService.probe(target.filePath);
-    res.json({ success: true, data: probe });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message || "Could not probe the audio file",
-    });
-  }
-});
+apiRouter.get(
+  '/library/:id/probe',
+  asyncHandler(async (req: Request, res: Response) => {
+    const target = resolveLibraryTarget(req.params.id);
+    if (!target) {
+      res.status(404).json({ success: false, error: 'Audio file not found' });
+      return;
+    }
+    if (!FileService.isInsideLibrary(path.resolve(target.filePath))) {
+      res.status(400).json({ success: false, error: 'File is outside the library folder.' });
+      return;
+    }
+    try {
+      const probe = await AudioEditService.probe(target.filePath);
+      res.json({ success: true, data: probe });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Could not probe the audio file',
+      });
+    }
+  })
+);
 
 /**
  * Trim a library track in place: cuts [start, end) and overwrites the file.
  * Body: { start: "0:15" | "15", end?: "2:45" | "" } — blank end keeps the tail.
  */
-apiRouter.post("/library/:id/trim", async (req: Request, res: Response) => {
-  const target = resolveLibraryTarget(req.params.id);
-  if (!target) {
-    res.status(404).json({ success: false, error: "Audio file not found" });
-    return;
-  }
-  if (!FileService.isInsideLibrary(path.resolve(target.filePath))) {
-    res
-      .status(400)
-      .json({ success: false, error: "File is outside the library folder." });
-    return;
-  }
-  const { start, end } = (req.body ?? {}) as { start?: string; end?: string };
-  const startSecs =
-    typeof start === "string"
-      ? (parseTimeInput(start) ?? (start.trim() === "" ? 0 : null))
-      : 0;
-  const endSecs =
-    typeof end === "string" && end.trim() !== "" ? parseTimeInput(end) : null;
-  if (
-    startSecs === null ||
-    (typeof end === "string" && end.trim() !== "" && endSecs === null)
-  ) {
-    res.status(400).json({
-      success: false,
-      error: "Invalid trim times. Use seconds or MM:SS (e.g. 15 or 0:15).",
-    });
-    return;
-  }
-  if (startSecs < 0 || (endSecs !== null && endSecs <= (startSecs ?? 0))) {
-    res
-      .status(400)
-      .json({ success: false, error: "Trim start must be before trim end." });
-    return;
-  }
-  try {
-    const probe = await AudioEditService.probe(target.filePath);
-    if (probe.durationSeconds !== null) {
-      if ((startSecs ?? 0) >= probe.durationSeconds) {
-        res.status(400).json({
-          success: false,
-          error: "Trim start is past the end of the track.",
-        });
-        return;
-      }
-      if (endSecs !== null && endSecs > probe.durationSeconds) {
-        res.status(400).json({
-          success: false,
-          error: "Trim end is past the end of the track.",
-        });
-        return;
-      }
+apiRouter.post(
+  '/library/:id/trim',
+  asyncHandler(async (req: Request, res: Response) => {
+    const target = resolveLibraryTarget(req.params.id);
+    if (!target) {
+      res.status(404).json({ success: false, error: 'Audio file not found' });
+      return;
     }
-    const result = await AudioEditService.trim(
-      target.filePath,
-      startSecs ?? 0,
-      endSecs,
-    );
-    syncLibraryIndexes(req.params.id, {
-      filePath: result.filePath,
-      fileName: result.fileName,
-      fileSizeBytes: result.fileSizeBytes,
-      format: result.format,
-      title: target.title,
-      author: target.author,
-      thumbnail: target.thumbnail,
-      videoId: target.videoId,
-      completedAt: target.completedAt,
-    });
-    PreviewService.invalidate(req.params.id);
-    res.json({ success: true, message: "Trim applied.", data: result });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message || "Could not trim the audio file",
-    });
-  }
-});
-
-apiRouter.post("/library/:id/edit", async (req: Request, res: Response) => {
-  const target = resolveLibraryTarget(req.params.id);
-  if (!target) {
-    res.status(404).json({ success: false, error: "Audio file not found" });
-    return;
-  }
-  if (!FileService.isInsideLibrary(path.resolve(target.filePath))) {
-    res
-      .status(400)
-      .json({ success: false, error: "File is outside the library folder." });
-    return;
-  }
-  const {
-    format,
-    bitrate,
-    normalizeAudio,
-    normalizeMode,
-    volumeBoost,
-    title,
-    artist,
-  } = (req.body ?? {}) as {
-    format?: string;
-    bitrate?: string;
-    normalizeAudio?: boolean;
-    normalizeMode?: string;
-    volumeBoost?: number;
-    title?: string;
-    artist?: string;
-  };
-  if (
-    normalizeMode !== undefined &&
-    !isValidNormalizeMode(String(normalizeMode).toLowerCase())
-  ) {
-    res.status(400).json({
-      success: false,
-      error: "Invalid normalizeMode. Choose one of: off, loudness, peak.",
-    });
-    return;
-  }
-  const nextFormat =
-    format !== undefined ? String(format).toLowerCase() : target.format;
-  if (!(EDITABLE_FORMATS as readonly string[]).includes(nextFormat)) {
-    res.status(400).json({
-      success: false,
-      error: `Unsupported format. Choose one of: ${(EDITABLE_FORMATS as readonly string[]).join(", ")}.`,
-    });
-    return;
-  }
-  const nextTitle = title !== undefined ? String(title).trim() : target.title;
-  const nextAuthor =
-    artist !== undefined ? String(artist).trim() : target.author;
-  if (!nextTitle) {
-    res.status(400).json({ success: false, error: "Title cannot be empty." });
-    return;
-  }
-  const gain = volumeBoost === undefined ? 100 : Number(volumeBoost);
-  if (!(AUDIO_DSP.VOLUME.ALLOWED as readonly number[]).includes(gain)) {
-    res.status(400).json({ success: false, error: "Invalid volume gain." });
-    return;
-  }
-  try {
-    const dir = path.dirname(target.filePath);
-    const displayName = buildDisplayFileName(
-      nextAuthor || "Unknown",
-      nextTitle,
-      nextFormat,
-    );
-    const currentBase = path.basename(target.filePath);
-    const finalName =
-      displayName === currentBase
-        ? currentBase
-        : dedupeFileName(dir, displayName);
-    const finalPath = path.join(dir, finalName);
-    const result = await AudioEditService.edit(
-      target.filePath,
-      {
-        format: nextFormat,
-        bitrate,
-        normalizeAudio: Boolean(normalizeAudio),
-        normalizeMode:
-          normalizeMode !== undefined
-            ? String(normalizeMode).toLowerCase()
-            : undefined,
-        volumeBoost: gain,
-        title: title !== undefined ? nextTitle : undefined,
-        artist: artist !== undefined ? nextAuthor : undefined,
-      },
-      { filePath: finalPath, format: nextFormat },
-    );
-    // Re-read tags from the rewritten file so the index reflects what is
-    // actually embedded (instead of masking file-level loss with stale tags).
-    let embeddedTags = target.tags;
+    if (!FileService.isInsideLibrary(path.resolve(target.filePath))) {
+      res.status(400).json({ success: false, error: 'File is outside the library folder.' });
+      return;
+    }
+    const { start, end } = (req.body ?? {}) as { start?: string; end?: string };
+    const startSecs =
+      typeof start === 'string' ? (parseTimeInput(start) ?? (start.trim() === '' ? 0 : null)) : 0;
+    const endSecs = typeof end === 'string' && end.trim() !== '' ? parseTimeInput(end) : null;
+    if (startSecs === null || (typeof end === 'string' && end.trim() !== '' && endSecs === null)) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid trim times. Use seconds or MM:SS (e.g. 15 or 0:15).',
+      });
+      return;
+    }
+    if (startSecs < 0 || (endSecs !== null && endSecs <= (startSecs ?? 0))) {
+      res.status(400).json({ success: false, error: 'Trim start must be before trim end.' });
+      return;
+    }
     try {
-      const probed = await AudioTagService.readTags(result.filePath);
-      if (probed.title || probed.artist) {
-        embeddedTags = {
-          ...(target.tags ?? {}),
-          title: probed.title || nextTitle,
-          artist: probed.artist || nextAuthor,
-          album: probed.album || target.tags?.album,
-          albumArtist: probed.albumArtist || target.tags?.albumArtist,
-          year: probed.year || target.tags?.year,
-          genre: probed.genre || target.tags?.genre,
-          trackNumber: probed.trackNumber || target.tags?.trackNumber,
-          comment: probed.comment ?? target.tags?.comment,
-          coverUrl: target.tags?.coverUrl ?? target.thumbnail,
-          cleanDescription: target.tags?.cleanDescription,
-        };
+      const probe = await AudioEditService.probe(target.filePath);
+      if (probe.durationSeconds !== null) {
+        if ((startSecs ?? 0) >= probe.durationSeconds) {
+          res.status(400).json({
+            success: false,
+            error: 'Trim start is past the end of the track.',
+          });
+          return;
+        }
+        if (endSecs !== null && endSecs > probe.durationSeconds) {
+          res.status(400).json({
+            success: false,
+            error: 'Trim end is past the end of the track.',
+          });
+          return;
+        }
       }
-    } catch {}
-    syncLibraryIndexes(req.params.id, {
-      filePath: result.filePath,
-      fileName: result.fileName,
-      fileSizeBytes: result.fileSizeBytes,
-      format: result.format,
-      title: nextTitle,
-      author: nextAuthor,
-      thumbnail: target.thumbnail,
-      videoId: target.videoId,
-      completedAt: target.completedAt,
-      tags: embeddedTags,
-    });
-    PreviewService.invalidate(req.params.id);
-    const loudnessNote =
-      result.loudness && Number.isFinite(result.loudness.outputI)
-        ? ` Loudness balanced to ${result.loudness.outputI.toFixed(1)} LUFS with a uniform ${result.loudness.gainDb >= 0 ? "+" : ""}${result.loudness.gainDb.toFixed(1)} dB gain (dynamics preserved).`
-        : "";
-    res.json({
-      success: true,
-      message: result.coverDropped
-        ? `Changes applied.${loudnessNote} Note: cover art could not be carried to the new container, audio is intact.`
-        : `Changes applied.${loudnessNote}`,
-      data: result,
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message || "Could not update the audio file",
-    });
-  }
-});
+      const result = await AudioEditService.trim(target.filePath, startSecs ?? 0, endSecs);
+      syncLibraryIndexes(req.params.id, {
+        filePath: result.filePath,
+        fileName: result.fileName,
+        fileSizeBytes: result.fileSizeBytes,
+        format: result.format,
+        title: target.title,
+        author: target.author,
+        thumbnail: target.thumbnail,
+        videoId: target.videoId,
+        completedAt: target.completedAt,
+      });
+      PreviewService.invalidate(req.params.id);
+      res.json({ success: true, message: 'Trim applied.', data: result });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Could not trim the audio file',
+      });
+    }
+  })
+);
 
-apiRouter.post("/files/reveal", async (req: Request, res: Response) => {
-  try {
-    const { jobId } = req.body ?? {};
-    if (!jobId) {
-      res.status(400).json({ success: false, error: "jobId is required" });
+apiRouter.post(
+  '/library/:id/edit',
+  asyncHandler(async (req: Request, res: Response) => {
+    const target = resolveLibraryTarget(req.params.id);
+    if (!target) {
+      res.status(404).json({ success: false, error: 'Audio file not found' });
       return;
     }
-    const resolved = resolveAudioFile(String(jobId));
-    if (!resolved) {
-      res.status(404).json({ success: false, error: "Audio file not found" });
+    if (!FileService.isInsideLibrary(path.resolve(target.filePath))) {
+      res.status(400).json({ success: false, error: 'File is outside the library folder.' });
       return;
     }
-    const absolute = path.resolve(resolved.filePath);
-    if (!FileService.isInsideLibrary(absolute)) {
-      res
-        .status(400)
-        .json({ success: false, error: "File is outside the library folder." });
+    const { format, bitrate, normalizeAudio, normalizeMode, volumeBoost, title, artist } =
+      (req.body ?? {}) as {
+        format?: string;
+        bitrate?: string;
+        normalizeAudio?: boolean;
+        normalizeMode?: string;
+        volumeBoost?: number;
+        title?: string;
+        artist?: string;
+      };
+    if (normalizeMode !== undefined && !isValidNormalizeMode(String(normalizeMode).toLowerCase())) {
+      res.status(400).json({
+        success: false,
+        error: 'Invalid normalizeMode. Choose one of: off, loudness, peak.',
+      });
       return;
     }
-    if (process.platform === "win32") {
-      spawn("explorer", ["/select,", absolute], {
-        detached: true,
-        stdio: "ignore",
-      }).unref();
-    } else if (process.platform === "darwin") {
-      spawn("open", ["-R", absolute], {
-        detached: true,
-        stdio: "ignore",
-      }).unref();
-    } else {
-      spawn("xdg-open", [path.dirname(absolute)], {
-        detached: true,
-        stdio: "ignore",
-      }).unref();
+    const nextFormat = format !== undefined ? String(format).toLowerCase() : target.format;
+    if (!(EDITABLE_FORMATS as readonly string[]).includes(nextFormat)) {
+      res.status(400).json({
+        success: false,
+        error: `Unsupported format. Choose one of: ${(EDITABLE_FORMATS as readonly string[]).join(', ')}.`,
+      });
+      return;
     }
-    res.json({ success: true, path: absolute });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message || "Could not reveal the file.",
-    });
-  }
-});
+    const nextTitle = title !== undefined ? String(title).trim() : target.title;
+    const nextAuthor = artist !== undefined ? String(artist).trim() : target.author;
+    if (!nextTitle) {
+      res.status(400).json({ success: false, error: 'Title cannot be empty.' });
+      return;
+    }
+    const gain = volumeBoost === undefined ? 100 : Number(volumeBoost);
+    if (!(AUDIO_DSP.VOLUME.ALLOWED as readonly number[]).includes(gain)) {
+      res.status(400).json({ success: false, error: 'Invalid volume gain.' });
+      return;
+    }
+    try {
+      const dir = path.dirname(target.filePath);
+      const displayName = buildDisplayFileName(nextAuthor || 'Unknown', nextTitle, nextFormat);
+      const currentBase = path.basename(target.filePath);
+      const finalName =
+        displayName === currentBase ? currentBase : dedupeFileName(dir, displayName);
+      const finalPath = path.join(dir, finalName);
+      const result = await AudioEditService.edit(
+        target.filePath,
+        {
+          format: nextFormat,
+          bitrate,
+          normalizeAudio: Boolean(normalizeAudio),
+          normalizeMode:
+            normalizeMode !== undefined ? String(normalizeMode).toLowerCase() : undefined,
+          volumeBoost: gain,
+          title: title !== undefined ? nextTitle : undefined,
+          artist: artist !== undefined ? nextAuthor : undefined,
+        },
+        { filePath: finalPath, format: nextFormat }
+      );
+      // Re-read tags from the rewritten file so the index reflects what is
+      // actually embedded (instead of masking file-level loss with stale tags).
+      let embeddedTags = target.tags;
+      try {
+        const probed = await AudioTagService.readTags(result.filePath);
+        if (probed.title || probed.artist) {
+          embeddedTags = {
+            ...target.tags,
+            title: probed.title || nextTitle,
+            artist: probed.artist || nextAuthor,
+            album: probed.album || target.tags?.album,
+            albumArtist: probed.albumArtist || target.tags?.albumArtist,
+            year: probed.year || target.tags?.year,
+            genre: probed.genre || target.tags?.genre,
+            trackNumber: probed.trackNumber || target.tags?.trackNumber,
+            comment: probed.comment ?? target.tags?.comment,
+            coverUrl: target.tags?.coverUrl ?? target.thumbnail,
+            cleanDescription: target.tags?.cleanDescription,
+          };
+        }
+      } catch {}
+      syncLibraryIndexes(req.params.id, {
+        filePath: result.filePath,
+        fileName: result.fileName,
+        fileSizeBytes: result.fileSizeBytes,
+        format: result.format,
+        title: nextTitle,
+        author: nextAuthor,
+        thumbnail: target.thumbnail,
+        videoId: target.videoId,
+        completedAt: target.completedAt,
+        tags: embeddedTags,
+      });
+      PreviewService.invalidate(req.params.id);
+      const loudnessNote =
+        result.loudness && Number.isFinite(result.loudness.outputI)
+          ? ` Loudness balanced to ${result.loudness.outputI.toFixed(1)} LUFS with a uniform ${result.loudness.gainDb >= 0 ? '+' : ''}${result.loudness.gainDb.toFixed(1)} dB gain (dynamics preserved).`
+          : '';
+      res.json({
+        success: true,
+        message: result.coverDropped
+          ? `Changes applied.${loudnessNote} Note: cover art could not be carried to the new container, audio is intact.`
+          : `Changes applied.${loudnessNote}`,
+        data: result,
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Could not update the audio file',
+      });
+    }
+  })
+);
+
+apiRouter.post(
+  '/files/reveal',
+  asyncHandler(async (req: Request, res: Response) => {
+    try {
+      const { jobId } = req.body ?? {};
+      if (!jobId) {
+        res.status(400).json({ success: false, error: 'jobId is required' });
+        return;
+      }
+      const resolved = resolveAudioFile(String(jobId));
+      if (!resolved) {
+        res.status(404).json({ success: false, error: 'Audio file not found' });
+        return;
+      }
+      const absolute = path.resolve(resolved.filePath);
+      if (!FileService.isInsideLibrary(absolute)) {
+        res.status(400).json({
+          success: false,
+          error: 'File is outside the library folder.',
+        });
+        return;
+      }
+      if (process.platform === 'win32') {
+        spawn('explorer', ['/select,', absolute], {
+          detached: true,
+          stdio: 'ignore',
+        }).unref();
+      } else if (process.platform === 'darwin') {
+        spawn('open', ['-R', absolute], {
+          detached: true,
+          stdio: 'ignore',
+        }).unref();
+      } else {
+        spawn('xdg-open', [path.dirname(absolute)], {
+          detached: true,
+          stdio: 'ignore',
+        }).unref();
+      }
+      res.json({ success: true, path: absolute });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Could not reveal the file.',
+      });
+    }
+  })
+);
 
 /**
  * Search/detect music tags from external databases (iTunes, Deezer, MusicBrainz)
  * based on the music/track name input in the tag editor
  */
-apiRouter.get("/tags/search", async (req: Request, res: Response) => {
-  try {
-    const q = req.query.q as string;
-    const source =
-      (req.query.source as "all" | "itunes" | "deezer" | "musicbrainz") ||
-      "all";
+apiRouter.get(
+  '/tags/search',
+  asyncHandler(async (req: Request, res: Response) => {
+    try {
+      const q = req.query.q as string;
+      const source = (req.query.source as 'all' | 'itunes' | 'deezer' | 'musicbrainz') || 'all';
 
-    if (!q || !q.trim()) {
-      res.json({ success: true, count: 0, data: [] });
-      return;
+      if (!q || !q.trim()) {
+        res.json({ success: true, count: 0, data: [] });
+        return;
+      }
+
+      const results = await TagFetcherService.searchTags(q.trim(), source);
+      res.json({ success: true, count: results.length, data: results });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to search tags',
+      });
     }
-
-    const results = await TagFetcherService.searchTags(q.trim(), source);
-    res.json({ success: true, count: results.length, data: results });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message || "Failed to search tags",
-    });
-  }
-});
+  })
+);
 
 /**
  * Apply/update custom tags on an existing completed audio file
  */
-apiRouter.post("/tags/apply/:id", async (req: Request, res: Response) => {
-  try {
-    const jobId = req.params.id;
-    const { tags } = req.body as { tags: MusicTags };
-
-    if (!tags || !tags.title) {
-      res.status(400).json({
-        success: false,
-        error: "Valid music tags with at least a title are required",
-      });
-      return;
-    }
-
-    const job = JobManager.getJob(jobId);
-    const target =
-      job?.outputFilePath && fs.existsSync(job.outputFilePath)
-        ? {
-            filePath: job.outputFilePath,
-            format: path
-              .extname(job.outputFilePath)
-              .replace(".", "")
-              .toLowerCase(),
-            title: job.title,
-            author: job.author,
-            thumbnail: job.thumbnail,
-            videoId: job.videoId,
-            completedAt: job.completedAt ?? Date.now(),
-          }
-        : resolveLibraryTarget(jobId);
-    if (!target) {
-      res
-        .status(404)
-        .json({ success: false, error: "Conversion job not found" });
-      return;
-    }
-
-    if (!target.filePath || !fs.existsSync(target.filePath)) {
-      res.status(400).json({
-        success: false,
-        error: "Audio file is not ready or has expired",
-      });
-      return;
-    }
-    if (!FileService.isInsideLibrary(path.resolve(target.filePath))) {
-      res
-        .status(400)
-        .json({ success: false, error: "File is outside the library folder." });
-      return;
-    }
-
-    const result = await AudioTagService.applyTagsToFile(target.filePath, tags);
-
-    // Rename the file on disk to match the new tags (not just metadata).
-    const newFileName = buildDisplayFileName(
-      tags.artist || "Unknown",
-      tags.title,
-      target.format,
-    );
-    const dir = path.dirname(target.filePath);
-    const currentBase = path.basename(target.filePath);
-    const finalName =
-      newFileName === currentBase
-        ? currentBase
-        : dedupeFileName(dir, newFileName);
-    const finalPath = path.join(dir, finalName);
+apiRouter.post(
+  '/tags/apply/:id',
+  asyncHandler(async (req: Request, res: Response) => {
     try {
-      if (finalPath !== target.filePath)
-        fs.renameSync(target.filePath, finalPath);
-    } catch (renameErr: any) {
-      res.status(500).json({
-        success: false,
-        error: `Tags saved, but renaming failed: ${renameErr.message}`,
-      });
-      return;
-    }
+      const jobId = req.params.id;
+      const { tags } = req.body as { tags: MusicTags };
 
-    const nextTitle = tags.title;
-    const nextAuthor = tags.artist || target.author;
-    const nextThumbnail = tags.coverUrl || target.thumbnail;
-    // Preserve the record origin: retagging an imported file must not turn
-    // it into a conversion (which would leak it into History).
-    const existingSource = LibraryStore.list().find(
-      (r) => r.jobId === jobId,
-    )?.source;
-    const updatedJob = job
-      ? JobManager.updateJob(jobId, {
-          title: nextTitle,
-          author: nextAuthor,
-          thumbnail: nextThumbnail,
-          outputFilePath: finalPath,
-          outputFileName: finalName,
-          fileSizeBytes: result.fileSizeBytes,
-          tags,
-        })
-      : undefined;
-    LibraryStore.upsert({
-      jobId,
-      source: existingSource,
-      videoId: target.videoId,
-      title: nextTitle,
-      author: nextAuthor,
-      thumbnail: nextThumbnail,
-      format: target.format,
-      fileName: finalName,
-      filePath: finalPath,
-      fileSizeBytes: result.fileSizeBytes,
-      completedAt: target.completedAt,
-      tags,
-    });
-    PreviewService.invalidate(jobId);
+      if (!tags || !tags.title) {
+        res.status(400).json({
+          success: false,
+          error: 'Valid music tags with at least a title are required',
+        });
+        return;
+      }
 
-    res.json({
-      success: true,
-      message: "Audio tags updated successfully",
-      job: updatedJob ?? {
-        id: jobId,
+      const job = JobManager.getJob(jobId);
+      const target =
+        job?.outputFilePath && fs.existsSync(job.outputFilePath)
+          ? {
+              filePath: job.outputFilePath,
+              format: path.extname(job.outputFilePath).replace('.', '').toLowerCase(),
+              title: job.title,
+              author: job.author,
+              thumbnail: job.thumbnail,
+              videoId: job.videoId,
+              completedAt: job.completedAt ?? Date.now(),
+            }
+          : resolveLibraryTarget(jobId);
+      if (!target) {
+        res.status(404).json({ success: false, error: 'Conversion job not found' });
+        return;
+      }
+
+      if (!target.filePath || !fs.existsSync(target.filePath)) {
+        res.status(400).json({
+          success: false,
+          error: 'Audio file is not ready or has expired',
+        });
+        return;
+      }
+      if (!FileService.isInsideLibrary(path.resolve(target.filePath))) {
+        res.status(400).json({
+          success: false,
+          error: 'File is outside the library folder.',
+        });
+        return;
+      }
+
+      const result = await AudioTagService.applyTagsToFile(target.filePath, tags);
+
+      // Rename the file on disk to match the new tags (not just metadata).
+      const newFileName = buildDisplayFileName(tags.artist || 'Unknown', tags.title, target.format);
+      const dir = path.dirname(target.filePath);
+      const currentBase = path.basename(target.filePath);
+      const finalName =
+        newFileName === currentBase ? currentBase : dedupeFileName(dir, newFileName);
+      const finalPath = path.join(dir, finalName);
+      try {
+        if (finalPath !== target.filePath) fs.renameSync(target.filePath, finalPath);
+      } catch (renameErr: any) {
+        res.status(500).json({
+          success: false,
+          error: `Tags saved, but renaming failed: ${renameErr.message}`,
+        });
+        return;
+      }
+
+      const nextTitle = tags.title;
+      const nextAuthor = tags.artist || target.author;
+      const nextThumbnail = tags.coverUrl || target.thumbnail;
+      // Preserve the record origin: retagging an imported file must not turn
+      // it into a conversion (which would leak it into History).
+      const existingSource = LibraryStore.list().find(r => r.jobId === jobId)?.source;
+      const updatedJob = job
+        ? JobManager.updateJob(jobId, {
+            title: nextTitle,
+            author: nextAuthor,
+            thumbnail: nextThumbnail,
+            outputFilePath: finalPath,
+            outputFileName: finalName,
+            fileSizeBytes: result.fileSizeBytes,
+            tags,
+          })
+        : undefined;
+      LibraryStore.upsert({
+        jobId,
+        source: existingSource,
         videoId: target.videoId,
         title: nextTitle,
         author: nextAuthor,
         thumbnail: nextThumbnail,
         format: target.format,
-        outputFilePath: finalPath,
-        outputFileName: finalName,
+        fileName: finalName,
+        filePath: finalPath,
         fileSizeBytes: result.fileSizeBytes,
+        completedAt: target.completedAt,
         tags,
-      },
-    });
-  } catch (error: any) {
-    res.status(500).json({
-      success: false,
-      error: error.message || "Failed to apply audio tags",
-    });
-  }
-});
+      });
+      PreviewService.invalidate(jobId);
+
+      res.json({
+        success: true,
+        message: 'Audio tags updated successfully',
+        job: updatedJob ?? {
+          id: jobId,
+          videoId: target.videoId,
+          title: nextTitle,
+          author: nextAuthor,
+          thumbnail: nextThumbnail,
+          format: target.format,
+          outputFilePath: finalPath,
+          outputFileName: finalName,
+          fileSizeBytes: result.fileSizeBytes,
+          tags,
+        },
+      });
+    } catch (error: any) {
+      res.status(500).json({
+        success: false,
+        error: error.message || 'Failed to apply audio tags',
+      });
+    }
+  })
+);

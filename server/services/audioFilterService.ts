@@ -1,10 +1,10 @@
-import { execFile } from "child_process";
-import fs from "fs";
-import { FFMPEG_PATH } from "../config.js";
+import { execFile } from 'child_process';
+import fs from 'fs';
+import { FFMPEG_PATH } from '../config.js';
 
 /** Shared audio DSP helpers — single source of truth for loudness handling.*/
 
-export type NormalizeMode = "off" | "loudness" | "peak";
+export type NormalizeMode = 'off' | 'loudness' | 'peak';
 
 export const AUDIO_DSP = {
   LOUDNESS: {
@@ -62,29 +62,29 @@ export interface NormalizeInput {
  */
 export function codecForTarget(
   format: string,
-  bitrate?: string,
+  bitrate?: string
 ): { codec: string; bitrate: string } {
   switch (format) {
-    case "mp3":
+    case 'mp3':
       return {
-        codec: "libmp3lame",
-        bitrate: bitrate && bitrate !== "native" ? bitrate : "160k",
+        codec: 'libmp3lame',
+        bitrate: bitrate && bitrate !== 'native' ? bitrate : '160k',
       };
-    case "m4a":
-      return { codec: "aac", bitrate: "128k" };
-    case "opus":
-      return { codec: "libopus", bitrate: "160k" };
-    case "flac":
-      return { codec: "flac", bitrate: "0" };
-    case "wav":
-      return { codec: "pcm_s16le", bitrate: "" };
+    case 'm4a':
+      return { codec: 'aac', bitrate: '128k' };
+    case 'opus':
+      return { codec: 'libopus', bitrate: '160k' };
+    case 'flac':
+      return { codec: 'flac', bitrate: '0' };
+    case 'wav':
+      return { codec: 'pcm_s16le', bitrate: '' };
     default:
       throw new Error(`Unsupported target format: ${format}`);
   }
 }
 
 function runFfmpeg(args: string[], timeoutMs: number): Promise<void> {
-  const cmd = fs.existsSync(FFMPEG_PATH) ? FFMPEG_PATH : "ffmpeg";
+  const cmd = fs.existsSync(FFMPEG_PATH) ? FFMPEG_PATH : 'ffmpeg';
   return new Promise((resolve, reject) => {
     execFile(cmd, args, { timeout: timeoutMs }, (err, _stdout, stderr) => {
       if (err) {
@@ -113,7 +113,7 @@ export async function transcodeWithLinearLoudness(
     format: string;
     bitrate?: string;
     onPass?: (pass: 1 | 2) => void;
-  },
+  }
 ): Promise<{ gainDb: number; outputI: number; measured: boolean }> {
   const { codec, bitrate } = codecForTarget(opts.format, opts.bitrate);
   opts.onPass?.(1);
@@ -127,17 +127,17 @@ export async function transcodeWithLinearLoudness(
     gainDb = linear.gainDb;
     outputI = linear.outputI;
   } else {
-    af = buildAudioFilters({ normalizeMode: "loudness" }).join(",");
+    af = buildAudioFilters({ normalizeMode: 'loudness' }).join(',');
   }
   opts.onPass?.(2);
-  const coverCapable = new Set(["mp3", "m4a", "flac", "wav"]);
-  const args = ["-y", "-i", inputPath, "-map", "0:a"];
+  const coverCapable = new Set(['mp3', 'm4a', 'flac', 'wav']);
+  const args = ['-y', '-i', inputPath, '-map', '0:a'];
   if (coverCapable.has(opts.format)) {
-    args.push("-map", "0:v?", "-c:v", "copy");
+    args.push('-map', '0:v?', '-c:v', 'copy');
   }
-  args.push("-map_metadata", "0", "-c:a", codec);
-  if (bitrate) args.push("-b:a", bitrate);
-  args.push("-af", af, outputPath);
+  args.push('-map_metadata', '0', '-c:a', codec);
+  if (bitrate) args.push('-b:a', bitrate);
+  args.push('-af', af, outputPath);
   await runFfmpeg(args, 300000);
   return { gainDb, outputI, measured: measured !== null };
 }
@@ -145,16 +145,14 @@ export async function transcodeWithLinearLoudness(
 /** Resolve legacy `normalizeAudio: boolean` + new `normalizeMode` to one mode. */
 export function resolveNormalizeMode(input: NormalizeInput): NormalizeMode {
   const raw =
-    typeof input.normalizeMode === "string"
-      ? input.normalizeMode.toLowerCase()
-      : undefined;
-  if (raw === "loudness" || raw === "peak" || raw === "off") return raw;
-  if (input.normalizeAudio === true) return "loudness";
-  return "off";
+    typeof input.normalizeMode === 'string' ? input.normalizeMode.toLowerCase() : undefined;
+  if (raw === 'loudness' || raw === 'peak' || raw === 'off') return raw;
+  if (input.normalizeAudio === true) return 'loudness';
+  return 'off';
 }
 
 export function isValidNormalizeMode(value: unknown): value is NormalizeMode {
-  return value === "off" || value === "loudness" || value === "peak";
+  return value === 'off' || value === 'loudness' || value === 'peak';
 }
 
 function volumeFactor(volumeBoost?: number): string | null {
@@ -172,27 +170,25 @@ export function buildAudioFilters(input: NormalizeInput): string[] {
   const mode = resolveNormalizeMode(input);
   const vol = volumeFactor(input.volumeBoost);
 
-  if (mode === "loudness") {
+  if (mode === 'loudness') {
     const l = AUDIO_DSP.LOUDNESS;
     // Single-pass FALLBACK (used only when measurement fails). Without
     // measured_* ffmpeg runs dynamic scaling, which can pump quiet sections —
     // prefer linearLoudnessFilter() (two-pass) wherever a file path exists.
     // Volume gain is intentionally ignored in loudness mode — loudnorm sets
     // absolute level; pre-gain would just be undone / risk clipping.
-    return [
-      `loudnorm=I=${l.I}:TP=${l.TP}:LRA=${l.LRA}:linear=true,aresample=${l.RESAMPLE_RATE}`,
-    ];
+    return [`loudnorm=I=${l.I}:TP=${l.TP}:LRA=${l.LRA}:linear=true,aresample=${l.RESAMPLE_RATE}`];
   }
 
-  if (mode === "peak") {
+  if (mode === 'peak') {
     const p = AUDIO_DSP.PEAK;
     const chain: string[] = [];
     if (vol) chain.push(`volume=${vol}`);
     chain.push(`aresample=${p.RESAMPLE_RATE}`);
     chain.push(
-      `alimiter=limit=${p.LIMIT}:attack=${p.ATTACK}:release=${p.RELEASE}:level=disabled:asc=0`,
+      `alimiter=limit=${p.LIMIT}:attack=${p.ATTACK}:release=${p.RELEASE}:level=disabled:asc=0`
     );
-    return [chain.join(",")];
+    return [chain.join(',')];
   }
 
   // off
@@ -218,33 +214,37 @@ export interface LoudnessMeasurement {
  * Fast (~50x realtime — seconds for a full track). Returns null when the
  * file can't be measured (callers fall back to the single-pass chain).
  */
+function num(v: number | string | undefined): number {
+  return typeof v === 'number' ? v : Number(v);
+}
+
 export function measureLoudness(
   filePath: string,
-  timeoutMs = 120000,
+  timeoutMs = 120000
 ): Promise<LoudnessMeasurement | null> {
   const l = AUDIO_DSP.LOUDNESS;
-  const cmd = fs.existsSync(FFMPEG_PATH) ? FFMPEG_PATH : "ffmpeg";
-  return new Promise((resolve) => {
+  const cmd = fs.existsSync(FFMPEG_PATH) ? FFMPEG_PATH : 'ffmpeg';
+  return new Promise(resolve => {
     execFile(
       cmd,
       [
-        "-hide_banner",
-        "-i",
+        '-hide_banner',
+        '-i',
         filePath,
-        "-map",
-        "0:a",
-        "-af",
+        '-map',
+        '0:a',
+        '-af',
         `loudnorm=I=${l.I}:TP=${l.TP}:LRA=${l.LRA}:print_format=json`,
-        "-f",
-        "null",
-        "-",
+        '-f',
+        'null',
+        '-',
       ],
       { timeout: timeoutMs },
       (_err, _stdout, stderr) => {
         try {
-          const raw = String(stderr || "");
-          const start = raw.indexOf("{");
-          const end = raw.lastIndexOf("}");
+          const raw = String(stderr || '');
+          const start = raw.indexOf('{');
+          const end = raw.lastIndexOf('}');
           if (start < 0 || end <= start) return resolve(null);
           const parsed = JSON.parse(raw.slice(start, end + 1)) as Record<
             string,
@@ -252,8 +252,6 @@ export function measureLoudness(
           >;
           // ffmpeg ≥7 prints input_i/input_tp/input_lra/input_thresh +
           // target_offset; older builds print measured_I/measured_TP/...
-          const num = (v: number | string | undefined): number =>
-            typeof v === "number" ? v : Number(v);
           const m: LoudnessMeasurement = {
             measuredI: num(parsed.measured_I ?? parsed.input_i),
             measuredTP: num(parsed.measured_TP ?? parsed.input_tp),
@@ -262,8 +260,8 @@ export function measureLoudness(
             offset: num(parsed.offset ?? parsed.target_offset ?? 0),
           };
           if (
-            ![m.measuredI, m.measuredTP, m.measuredLRA, m.measuredThresh].every(
-              (v) => Number.isFinite(v),
+            ![m.measuredI, m.measuredTP, m.measuredLRA, m.measuredThresh].every(v =>
+              Number.isFinite(v)
             )
           )
             return resolve(null);
@@ -271,7 +269,7 @@ export function measureLoudness(
         } catch {
           resolve(null);
         }
-      },
+      }
     );
   });
 }
@@ -302,7 +300,7 @@ export function linearGainFilter(m: LoudnessMeasurement): {
       `volume=${linear.toFixed(4)}`,
       `aresample=${l.RESAMPLE_RATE}`,
       `alimiter=limit=${p.LIMIT}:attack=${p.ATTACK}:release=${p.RELEASE}:level=disabled:asc=0`,
-    ].join(","),
+    ].join(','),
     gainDb,
     outputI: m.measuredI + gainDb,
   };

@@ -1,6 +1,6 @@
-import { startTransition, useEffect, useRef } from "react";
-import { ApiClient } from "../services/apiClient";
-import type { ConversionJob } from "../types";
+import { startTransition, useEffect, useRef } from 'react';
+import { ApiClient } from '../services/apiClient';
+import type { ConversionJob } from '../types';
 
 const POLL_INTERVAL_MS = 1000;
 const BACKOFF_AFTER_FAILURES = 3;
@@ -19,14 +19,18 @@ interface PollCallbacks {
 export function useJobPolling(
   jobId: string | null,
   status: string | undefined,
-  { onUpdate, onDone }: PollCallbacks,
+  { onUpdate, onDone }: PollCallbacks
 ) {
   const callbacksRef = useRef({ onUpdate, onDone });
-  callbacksRef.current = { onUpdate, onDone };
+  // Assigned in an effect, never during render: reading or writing a ref
+  // while rendering breaks with concurrent features.
+  useEffect(() => {
+    callbacksRef.current = { onUpdate, onDone };
+  }, [onUpdate, onDone]);
 
   useEffect(() => {
     if (!jobId) return;
-    if (status === "completed" || status === "error") return;
+    if (status === 'completed' || status === 'error') return;
 
     let stopped = false;
     let failures = 0;
@@ -38,7 +42,7 @@ export function useJobPolling(
         const updated = await ApiClient.getJobStatus(jobId);
         failures = 0;
         startTransition(() => callbacksRef.current.onUpdate(updated));
-        if (updated.status === "completed" || updated.status === "error") {
+        if (updated.status === 'completed' || updated.status === 'error') {
           startTransition(() => callbacksRef.current.onDone?.(updated));
           return;
         }
@@ -46,10 +50,7 @@ export function useJobPolling(
         failures += 1;
       }
       if (!stopped) {
-        const delay =
-          failures >= BACKOFF_AFTER_FAILURES
-            ? BACKOFF_INTERVAL_MS
-            : POLL_INTERVAL_MS;
+        const delay = failures >= BACKOFF_AFTER_FAILURES ? BACKOFF_INTERVAL_MS : POLL_INTERVAL_MS;
         timer = setTimeout(tick, delay);
       }
     };

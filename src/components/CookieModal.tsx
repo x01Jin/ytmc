@@ -10,10 +10,10 @@ import {
   Trash2,
   Upload,
   X,
-} from "lucide-react";
-import React, { useRef, useState } from "react";
-import { ApiClient } from "../services/apiClient";
-import { CookieStatus } from "../types";
+} from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { ApiClient } from '../services/apiClient';
+import { CookieStatus } from '../types';
 
 interface CookieModalProps {
   isOpen: boolean;
@@ -28,7 +28,7 @@ export const CookieModal: React.FC<CookieModalProps> = ({
   status,
   onStatusUpdated,
 }) => {
-  const [cookieText, setCookieText] = useState("");
+  const [cookieText, setCookieText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [isAutoFetching, setIsAutoFetching] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
@@ -37,12 +37,12 @@ export const CookieModal: React.FC<CookieModalProps> = ({
     message: string;
     title?: string;
     errorDetails?: string;
-    strategy?: "pot" | "fallback";
+    strategy?: 'pot' | 'fallback';
     potReachable?: boolean;
     cookiesUsed?: boolean;
   } | null>(null);
   const [feedback, setFeedback] = useState<{
-    type: "success" | "error";
+    type: 'success' | 'error';
     message: string;
   } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -53,8 +53,8 @@ export const CookieModal: React.FC<CookieModalProps> = ({
   const handleSave = async () => {
     if (!cookieText.trim()) {
       setFeedback({
-        type: "error",
-        message: "Please paste cookies text first.",
+        type: 'error',
+        message: 'Please paste cookies text first.',
       });
       return;
     }
@@ -66,13 +66,12 @@ export const CookieModal: React.FC<CookieModalProps> = ({
       const result = await ApiClient.saveCookies(cookieText);
       const updated = await ApiClient.getCookieStatus();
       onStatusUpdated(updated);
-      setFeedback({ type: "success", message: result.message });
-      setCookieText("");
+      setFeedback({ type: 'success', message: result.message });
+      setCookieText('');
     } catch (err: unknown) {
       setFeedback({
-        type: "error",
-        message:
-          err instanceof Error ? err.message : "Failed to save cookies.",
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to save cookies.',
       });
     } finally {
       setIsSaving(false);
@@ -86,14 +85,11 @@ export const CookieModal: React.FC<CookieModalProps> = ({
     try {
       const result = await ApiClient.autoFetchCookies();
       onStatusUpdated(result.status);
-      setFeedback({ type: "success", message: result.message });
+      setFeedback({ type: 'success', message: result.message });
     } catch (err: unknown) {
       setFeedback({
-        type: "error",
-        message:
-          err instanceof Error
-            ? err.message
-            : "Failed to auto-fetch YouTube guest session.",
+        type: 'error',
+        message: err instanceof Error ? err.message : 'Failed to auto-fetch YouTube guest session.',
       });
     } finally {
       setIsAutoFetching(false);
@@ -109,8 +105,7 @@ export const CookieModal: React.FC<CookieModalProps> = ({
     } catch (err: unknown) {
       setTestResult({
         success: false,
-        message:
-          err instanceof Error ? err.message : "Session verification failed.",
+        message: err instanceof Error ? err.message : 'Session verification failed.',
       });
     } finally {
       setIsTesting(false);
@@ -125,16 +120,16 @@ export const CookieModal: React.FC<CookieModalProps> = ({
 
   const readFile = (file: File) => {
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.addEventListener('load', event => {
       const text = event.target?.result as string;
       if (text) {
         setCookieText(text);
         setFeedback({
-          type: "success",
-          message: `Loaded ${file.name} (${text.split("\n").length} lines). Click "Save Cookies" to apply.`,
+          type: 'success',
+          message: `Loaded ${file.name} (${text.split('\n').length} lines). Click "Save Cookies" to apply.`,
         });
       }
-    };
+    });
     reader.readAsText(file);
   };
 
@@ -154,11 +149,11 @@ export const CookieModal: React.FC<CookieModalProps> = ({
       onStatusUpdated(updated);
       setTestResult(null);
       setFeedback({
-        type: "success",
-        message: "Cookies cleared successfully.",
+        type: 'success',
+        message: 'Cookies cleared successfully.',
       });
     } catch {
-      setFeedback({ type: "error", message: "Failed to clear cookies." });
+      setFeedback({ type: 'error', message: 'Failed to clear cookies.' });
     }
   };
 
@@ -200,8 +195,8 @@ export const CookieModal: React.FC<CookieModalProps> = ({
           <div
             className={`p-3.5 rounded-[2px] border flex items-center justify-between transition-colors ${
               status.configured
-                ? "bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200"
-                : "bg-zinc-50 dark:bg-zinc-950/60 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300"
+                ? 'bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
+                : 'bg-zinc-50 dark:bg-zinc-950/60 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300'
             }`}
           >
             <div className="flex items-start gap-2.5">
@@ -215,22 +210,20 @@ export const CookieModal: React.FC<CookieModalProps> = ({
                   <span className="font-semibold text-sm">
                     {status.configured
                       ? status.isAccountSession
-                        ? "Authenticated Account Session Active"
-                        : "YouTube Guest Session Active"
-                      : "No Active Session"}
+                        ? 'Authenticated Account Session Active'
+                        : 'YouTube Guest Session Active'
+                      : 'No Active Session'}
                   </span>
                   {status.configured && (
                     <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
-                      {status.isAccountSession
-                        ? "Personal Account"
-                        : "Auto Guest"}
+                      {status.isAccountSession ? 'Personal Account' : 'Auto Guest'}
                     </span>
                   )}
                 </div>
                 <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
                   {status.configured
                     ? `${status.lineCount} session entries loaded • Node.js JS challenge solver active`
-                    : "Click Auto-Fetch Guest Session or paste cookies below"}
+                    : 'Click Auto-Fetch Guest Session or paste cookies below'}
                 </p>
               </div>
             </div>
@@ -286,8 +279,8 @@ export const CookieModal: React.FC<CookieModalProps> = ({
             <div
               className={`p-3 rounded-[2px] border text-xs animate-in fade-in duration-150 ${
                 testResult.success
-                  ? "bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300"
-                  : "bg-rose-50/80 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300"
+                  ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                  : 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
               }`}
             >
               <div className="flex items-start gap-2">
@@ -300,7 +293,7 @@ export const CookieModal: React.FC<CookieModalProps> = ({
                   <p className="font-semibold">{testResult.message}</p>
                   {testResult.title && (
                     <p className="text-[11px] text-zinc-600 dark:text-zinc-400">
-                      Successfully verified stream parsing for:{" "}
+                      Successfully verified stream parsing for:{' '}
                       <span className="font-medium text-zinc-800 dark:text-zinc-200">
                         {testResult.title}
                       </span>
@@ -308,15 +301,11 @@ export const CookieModal: React.FC<CookieModalProps> = ({
                   )}
                   {(testResult.strategy || testResult.errorDetails) && (
                     <p className="text-[11px] text-zinc-600 dark:text-zinc-400">
-                      Path:{" "}
+                      Path:{' '}
                       <span className="font-medium" translate="no">
-                        {testResult.strategy === "pot"
-                          ? "PO Token sidecar"
-                          : "no-POT fallback"}
+                        {testResult.strategy === 'pot' ? 'PO Token sidecar' : 'no-POT fallback'}
                       </span>
-                      {testResult.cookiesUsed
-                        ? " • cookies sent"
-                        : " • no cookies sent"}
+                      {testResult.cookiesUsed ? ' • cookies sent' : ' • no cookies sent'}
                     </p>
                   )}
                   {testResult.errorDetails && (
@@ -338,12 +327,12 @@ export const CookieModal: React.FC<CookieModalProps> = ({
           {feedback && (
             <div
               className={`p-3 rounded-[2px] border text-xs flex items-center gap-2 ${
-                feedback.type === "success"
-                  ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300"
-                  : "bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300"
+                feedback.type === 'success'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                  : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
               }`}
             >
-              {feedback.type === "success" ? (
+              {feedback.type === 'success' ? (
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
               ) : (
                 <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
@@ -377,19 +366,19 @@ export const CookieModal: React.FC<CookieModalProps> = ({
             </div>
 
             <div
-              onDragOver={(e) => {
+              onDragOver={e => {
                 e.preventDefault();
                 setIsDragging(true);
               }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}
-              className={`relative rounded-[2px] transition-colors ${isDragging ? "ring-2 ring-rose-500 bg-rose-50/30 dark:bg-rose-950/30" : ""}`}
+              className={`relative rounded-[2px] transition-colors ${isDragging ? 'ring-2 ring-rose-500 bg-rose-50/30 dark:bg-rose-950/30' : ''}`}
             >
               <textarea
                 id="cookie-textarea"
                 rows={4}
                 value={cookieText}
-                onChange={(e) => setCookieText(e.target.value)}
+                onChange={e => setCookieText(e.target.value)}
                 placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;1789325080&#9;VISITOR_INFO1_LIVE&#9;...&#10;or paste exported JSON from Cookie-Editor / drop cookies.txt here"
                 className="w-full p-3 font-mono text-[11px] rounded-[2px] border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60 focus:bg-white dark:focus:bg-zinc-950 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 text-zinc-800 dark:text-zinc-200 resize-none leading-relaxed"
               />
@@ -411,24 +400,22 @@ export const CookieModal: React.FC<CookieModalProps> = ({
             </div>
             <ul className="space-y-1 text-[11px] leading-relaxed list-disc list-inside text-zinc-600 dark:text-zinc-400">
               <li>
-                <strong>Auto-Fetch Guest Session:</strong> Requests fresh
-                visitor cookies from YouTube's homepage. These identify your
-                session but do not unlock streams by themselves.
+                <strong>Auto-Fetch Guest Session:</strong> Requests fresh visitor cookies from
+                YouTube's homepage. These identify your session but do not unlock streams by
+                themselves.
               </li>
               <li>
-                <strong>Node.js Challenge Engine:</strong> Automatically
-                executes YouTube's JavaScript player challenges to decode audio
-                streams.
+                <strong>Node.js Challenge Engine:</strong> Automatically executes YouTube's
+                JavaScript player challenges to decode audio streams.
               </li>
               <li>
-                <strong>PO Token sidecar:</strong> Strictly-checked uploads need
-                a Proof-of-Origin token from the optional sidecar (see docs).
-                Without it the app uses a no-POT player fallback that covers
-                embeddable videos.
+                <strong>PO Token sidecar:</strong> Strictly-checked uploads need a Proof-of-Origin
+                token from the optional sidecar (see docs). Without it the app uses a no-POT player
+                fallback that covers embeddable videos.
               </li>
               <li>
-                <strong>Personal Account Cookies:</strong> Only required for
-                private or age-restricted tracks that require 18+ sign-in.
+                <strong>Personal Account Cookies:</strong> Only required for private or
+                age-restricted tracks that require 18+ sign-in.
               </li>
             </ul>
           </div>

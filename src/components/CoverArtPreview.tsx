@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { createPortal } from "react-dom";
+import React, { useEffect } from 'react';
+import { createPortal } from 'react-dom';
 
 interface CoverArtPreviewProps {
   src: string;
@@ -12,18 +12,13 @@ interface CoverArtPreviewProps {
  * App-level cover-art lightbox. Portaled to document.body so it centers on
  * the viewport no matter where it opens from (library rows, edit drawer).
  */
-export function CoverArtPreview({
-  src,
-  title,
-  subtitle,
-  onClose,
-}: CoverArtPreviewProps) {
+export function CoverArtPreview({ src, title, subtitle, onClose }: CoverArtPreviewProps) {
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === 'Escape') onClose();
     };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
   }, [onClose]);
 
   return createPortal(
@@ -36,7 +31,7 @@ export function CoverArtPreview({
         aria-modal="true"
         aria-label={`Cover art preview: ${title}`}
         className="px-panel w-full max-w-md p-3"
-        onClick={(event) => event.stopPropagation()}
+        onClick={event => event.stopPropagation()}
       >
         <img
           src={src}
@@ -47,9 +42,7 @@ export function CoverArtPreview({
         <figcaption className="mt-2 flex items-center justify-between gap-2">
           <div className="min-w-0">
             <p className="truncate text-sm font-semibold">{title}</p>
-            {subtitle && (
-              <p className="truncate text-xs text-px-dim">{subtitle}</p>
-            )}
+            {subtitle && <p className="truncate text-xs text-px-dim">{subtitle}</p>}
           </div>
           <button
             type="button"
@@ -63,6 +56,6 @@ export function CoverArtPreview({
         </figcaption>
       </figure>
     </div>,
-    document.body,
+    document.body
   );
 }

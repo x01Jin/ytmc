@@ -1,21 +1,15 @@
-import { Pause, Play, Repeat, Volume2, VolumeX } from "lucide-react";
-import React, { useEffect, useRef, useState } from "react";
-import { ConversionJob } from "../types";
-import {
-  needsPreviewPlayback,
-  withPreviewForFormat,
-} from "../utils/audioSupport";
-import { formatSeconds } from "../utils/time";
+import { Pause, Play, Repeat, Volume2, VolumeX } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ConversionJob } from '../types';
+import { needsPreviewPlayback, withPreviewForFormat } from '../utils/audioSupport';
+import { formatSeconds } from '../utils/time';
 
 interface AudioPlayerProps {
   job?: ConversionJob;
   autoPlayNonce?: number;
 }
 
-export const AudioPlayer: React.FC<AudioPlayerProps> = ({
-  job,
-  autoPlayNonce = 0,
-}) => {
+export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0 }) => {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -26,16 +20,28 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [previewFallback, setPreviewFallback] = useState(false);
 
-  useEffect(() => {
-    const audio = audioRef.current;
-    audio?.pause();
+  // Reset playback state when the track (or its media version) changes.
+  // Done during render, not in an effect: synchronous updates do not belong
+  // in effects. The imperative audio sync lives in the effect below.
+  const jobKey = `${job?.id ?? ''}|${job?.streamUrl ?? ''}`;
+  const [prevJobKey, setPrevJobKey] = useState(jobKey);
+  const syncedKeyRef = useRef(jobKey);
+  if (jobKey !== prevJobKey) {
+    setPrevJobKey(jobKey);
     setIsPlaying(false);
     setCurrentTime(0);
     setDuration(0);
     setLoadError(null);
     setPreviewFallback(false);
+  }
+
+  useEffect(() => {
+    if (syncedKeyRef.current === jobKey) return;
+    syncedKeyRef.current = jobKey;
+    const audio = audioRef.current;
+    audio?.pause();
     audio?.load();
-  }, [job?.id, job?.streamUrl]);
+  }, [jobKey]);
 
   useEffect(() => {
     if (autoPlayNonce === 0) return;
@@ -128,7 +134,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
       ? `/api/stream/${encodeURIComponent(job.id)}?preview=mp3`
       : job.streamUrl || `/api/stream/${encodeURIComponent(job.id)}`,
     job.id,
-    job.format,
+    job.format
   );
 
   return (
@@ -141,13 +147,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         ref={audioRef}
         src={streamSrc}
         preload="metadata"
-        onDurationChange={(event) => {
+        onDurationChange={event => {
           const nextDuration = event.currentTarget.duration;
           if (Number.isFinite(nextDuration)) setDuration(nextDuration);
         }}
-        onTimeUpdate={(event) =>
-          setCurrentTime(event.currentTarget.currentTime)
-        }
+        onTimeUpdate={event => setCurrentTime(event.currentTarget.currentTime)}
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onError={() => {
@@ -157,7 +161,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           }
           setIsPlaying(false);
           setLoadError(
-            "This track could not be played. The file may be missing or still processing.",
+            'This track could not be played. The file may be missing or still processing.'
           );
         }}
         onEnded={() => {
@@ -182,9 +186,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
 
         {/* Track Title and Artist */}
         <div className="min-w-0 flex-1">
-          <h4 className="truncate text-sm font-semibold text-px-text">
-            {job.title}
-          </h4>
+          <h4 className="truncate text-sm font-semibold text-px-text">{job.title}</h4>
           <p className="px-tabular truncate text-xs text-px-dim" translate="no">
             {job.author} • {job.format.toUpperCase()} ({job.bitrate})
           </p>
@@ -197,7 +199,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
         type="button"
         onClick={togglePlay}
         className="px-btn px-btn-primary flex h-10 w-10 shrink-0 items-center justify-center !p-0"
-        title={isPlaying ? "Pause" : "Play"}
+        title={isPlaying ? 'Pause' : 'Play'}
         aria-label={isPlaying ? `Pause ${job.title}` : `Play ${job.title}`}
       >
         {isPlaying ? (
@@ -240,11 +242,9 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
           type="button"
           onClick={toggleLoop}
           aria-pressed={isLooping}
-          className={`px-btn !border-0 !p-1.5 ${
-            isLooping ? "!text-px-acc" : "!text-px-dim"
-          }`}
-          title={isLooping ? "Repeat on" : "Repeat off"}
-          aria-label={isLooping ? "Repeat on" : "Repeat off"}
+          className={`px-btn !border-0 !p-1.5 ${isLooping ? '!text-px-acc' : '!text-px-dim'}`}
+          title={isLooping ? 'Repeat on' : 'Repeat off'}
+          aria-label={isLooping ? 'Repeat on' : 'Repeat off'}
         >
           <Repeat className="h-4 w-4" aria-hidden="true" />
         </button>
@@ -255,8 +255,8 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({
             type="button"
             onClick={toggleMute}
             className="px-btn !border-0 !p-1 !text-px-dim"
-            title={isMuted ? "Unmute" : "Mute"}
-            aria-label={isMuted ? "Unmute" : "Mute"}
+            title={isMuted ? 'Unmute' : 'Mute'}
+            aria-label={isMuted ? 'Unmute' : 'Mute'}
             aria-pressed={isMuted}
           >
             {isMuted || volume === 0 ? (

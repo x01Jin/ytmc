@@ -17,13 +17,13 @@ export interface MusicTagCandidate {
   previewUrl?: string;
 }
 
-export class TagFetcherService {
-  private static readonly REQUEST_TIMEOUT_MS = 5000;
+export namespace TagFetcherService {
+  const REQUEST_TIMEOUT_MS = 5000;
 
   /**
    * Search for music tags across all sources or a specific source.
    */
-  public static async searchTags(
+  export async function searchTags(
     query: string,
     source: 'all' | 'itunes' | 'deezer' | 'musicbrainz' = 'all'
   ): Promise<MusicTagCandidate[]> {
@@ -35,13 +35,13 @@ export class TagFetcherService {
     const tasks: Promise<MusicTagCandidate[]>[] = [];
 
     if (source === 'all' || source === 'itunes') {
-      tasks.push(this.fetchFromItunes(trimmed));
+      tasks.push(fetchFromItunes(trimmed));
     }
     if (source === 'all' || source === 'deezer') {
-      tasks.push(this.fetchFromDeezer(trimmed));
+      tasks.push(fetchFromDeezer(trimmed));
     }
     if (source === 'all' || source === 'musicbrainz') {
-      tasks.push(this.fetchFromMusicBrainz(trimmed));
+      tasks.push(fetchFromMusicBrainz(trimmed));
     }
 
     const results = await Promise.allSettled(tasks);
@@ -53,22 +53,22 @@ export class TagFetcherService {
       }
     }
 
-    return this.deduplicateAndRank(allCandidates, trimmed);
+    return deduplicateAndRank(allCandidates, trimmed);
   }
 
   /**
    * Fetch candidates from Apple / iTunes Search API.
    */
-  private static async fetchFromItunes(query: string): Promise<MusicTagCandidate[]> {
+  async function fetchFromItunes(query: string): Promise<MusicTagCandidate[]> {
     try {
       const endpoint = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=10`;
       const res = await fetch(endpoint, {
-        signal: AbortSignal.timeout(this.REQUEST_TIMEOUT_MS),
-        headers: { 'Accept': 'application/json' }
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        headers: { Accept: 'application/json' },
       });
 
       if (!res.ok) return [];
-      const json = await res.json() as any;
+      const json = (await res.json()) as any;
 
       if (!json.results || !Array.isArray(json.results)) return [];
 
@@ -92,7 +92,7 @@ export class TagFetcherService {
           genre: r.primaryGenreName || '',
           trackNumber: r.trackNumber ? String(r.trackNumber) : '',
           coverUrl: cover,
-          previewUrl: r.previewUrl || ''
+          previewUrl: r.previewUrl || '',
         };
       });
     } catch {
@@ -103,16 +103,16 @@ export class TagFetcherService {
   /**
    * Fetch candidates from Deezer Public Search API.
    */
-  private static async fetchFromDeezer(query: string): Promise<MusicTagCandidate[]> {
+  async function fetchFromDeezer(query: string): Promise<MusicTagCandidate[]> {
     try {
       const endpoint = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=10`;
       const res = await fetch(endpoint, {
-        signal: AbortSignal.timeout(this.REQUEST_TIMEOUT_MS),
-        headers: { 'Accept': 'application/json' }
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+        headers: { Accept: 'application/json' },
       });
 
       if (!res.ok) return [];
-      const json = await res.json() as any;
+      const json = (await res.json()) as any;
 
       if (!json.data || !Array.isArray(json.data)) return [];
 
@@ -128,7 +128,7 @@ export class TagFetcherService {
           year: '',
           genre: '',
           coverUrl: cover,
-          previewUrl: d.preview || ''
+          previewUrl: d.preview || '',
         };
       });
     } catch {
@@ -139,21 +139,21 @@ export class TagFetcherService {
   /**
    * Fetch candidates from MusicBrainz Open Database.
    */
-  private static async fetchFromMusicBrainz(query: string): Promise<MusicTagCandidate[]> {
+  async function fetchFromMusicBrainz(query: string): Promise<MusicTagCandidate[]> {
     try {
       // Clean query for MusicBrainz lucene syntax
       const cleanQ = query.replace(/[^\w\s]/gi, ' ').trim();
       const endpoint = `https://musicbrainz.org/ws/2/recording?query=${encodeURIComponent(cleanQ)}&fmt=json&limit=10`;
       const res = await fetch(endpoint, {
-        signal: AbortSignal.timeout(this.REQUEST_TIMEOUT_MS),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
         headers: {
           'User-Agent': 'YouTubeToMusicConverter/1.0.0 ( music-converter-tagger@app.local )',
-          'Accept': 'application/json'
-        }
+          Accept: 'application/json',
+        },
       });
 
       if (!res.ok) return [];
-      const json = await res.json() as any;
+      const json = (await res.json()) as any;
 
       if (!json.recordings || !Array.isArray(json.recordings)) return [];
 
@@ -168,9 +168,13 @@ export class TagFetcherService {
           year = rec['first-release-date'].substring(0, 4);
         }
 
-        const genre = rec.tags?.[0]?.name ? rec.tags[0].name.charAt(0).toUpperCase() + rec.tags[0].name.slice(1) : '';
+        const genre = rec.tags?.[0]?.name
+          ? rec.tags[0].name.charAt(0).toUpperCase() + rec.tags[0].name.slice(1)
+          : '';
         const releaseId = primaryRelease?.id;
-        const coverUrl = releaseId ? `https://coverartarchive.org/release/${releaseId}/front-500` : '';
+        const coverUrl = releaseId
+          ? `https://coverartarchive.org/release/${releaseId}/front-500`
+          : '';
 
         return {
           id: `mb_${rec.id || idx}`,
@@ -181,7 +185,7 @@ export class TagFetcherService {
           albumArtist: artist,
           year,
           genre,
-          coverUrl
+          coverUrl,
         };
       });
     } catch {
@@ -192,7 +196,7 @@ export class TagFetcherService {
   /**
    * Deduplicate candidates and order them so complete, high-quality results appear first.
    */
-  private static deduplicateAndRank(candidates: MusicTagCandidate[], query: string): MusicTagCandidate[] {
+  function deduplicateAndRank(candidates: MusicTagCandidate[], query: string): MusicTagCandidate[] {
     const seen = new Set<string>();
     const normalizedQuery = query.toLowerCase();
 

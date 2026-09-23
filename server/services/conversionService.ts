@@ -1,34 +1,26 @@
-import { spawn } from "child_process";
-import crypto from "crypto";
-import fs from "fs";
-import path from "path";
-import {
-  SUPPORTED_BITRATES,
-  SUPPORTED_FORMATS,
-  FFMPEG_PATH,
-} from "../config.js";
-import { buildDisplayFileName, dedupeFileName } from "../utils/filename.js";
-import { FileService } from "./fileService.js";
-import { HistoryStore } from "./historyStore.js";
-import { LibraryStore } from "./libraryStore.js";
-import { AudioTagService, MusicTags } from "./audioTagService.js";
-import { CookieService } from "./cookieService.js";
-import { ConversionJob, JobManager } from "./jobManager.js";
-import { PreviewService } from "./previewService.js";
-import { MetadataService } from "./metadataService.js";
-import {
-  cookiesAllowed,
-  extractorArgsFor,
-  resolveStrategy,
-} from "./potService.js";
-import { parseYouTubeInput } from "./urlService.js";
-import { ytdlpEnv, ytdlpLaunch } from "./ytdlpRunner.js";
+import { spawn } from 'child_process';
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { SUPPORTED_BITRATES, SUPPORTED_FORMATS, FFMPEG_PATH } from '../config.js';
+import { buildDisplayFileName, dedupeFileName } from '../utils/filename.js';
+import { FileService } from './fileService.js';
+import { HistoryStore } from './historyStore.js';
+import { LibraryStore } from './libraryStore.js';
+import { AudioTagService, MusicTags } from './audioTagService.js';
+import { CookieService } from './cookieService.js';
+import { ConversionJob, JobManager } from './jobManager.js';
+import { PreviewService } from './previewService.js';
+import { MetadataService } from './metadataService.js';
+import { cookiesAllowed, extractorArgsFor, resolveStrategy } from './potService.js';
+import { parseYouTubeInput } from './urlService.js';
+import { ytdlpEnv, ytdlpLaunch } from './ytdlpRunner.js';
 import {
   buildAudioFilters,
   resolveNormalizeMode,
   transcodeWithLinearLoudness,
   type NormalizeMode,
-} from "./audioFilterService.js";
+} from './audioFilterService.js';
 
 export interface ConvertRequestOptions {
   url: string;
@@ -43,41 +35,36 @@ export interface ConvertRequestOptions {
   embedThumbnail?: boolean;
 }
 
-export class ConversionService {
-  public static async startConversion(
-    options: ConvertRequestOptions,
-  ): Promise<ConversionJob> {
+export namespace ConversionService {
+  export async function startConversion(options: ConvertRequestOptions): Promise<ConversionJob> {
     FileService.ensureDownloadsDir();
 
     const parsed = parseYouTubeInput(options.url);
     if (!parsed.isValid || !parsed.videoId || !parsed.canonicalUrl) {
-      throw new Error("Invalid YouTube URL or Video ID provided");
+      throw new Error('Invalid YouTube URL or Video ID provided');
     }
 
     const videoId = parsed.videoId;
     const canonicalUrl = parsed.canonicalUrl;
     const format =
-      options.format &&
-      (SUPPORTED_FORMATS as readonly string[]).includes(options.format)
+      options.format && (SUPPORTED_FORMATS as readonly string[]).includes(options.format)
         ? options.format
-        : "best";
+        : 'best';
     const bitrate =
-      options.bitrate &&
-      (SUPPORTED_BITRATES as readonly string[]).includes(options.bitrate)
+      options.bitrate && (SUPPORTED_BITRATES as readonly string[]).includes(options.bitrate)
         ? options.bitrate
-        : "native";
+        : 'native';
 
     // Fetch quick oEmbed info to immediately initialize job and output filename.
     // Job identity is always the YouTube title/uploader/thumbnail — the
     // convert flow carries no autotagger tags.
     const oembed = await MetadataService.fetchOEmbed(canonicalUrl);
     const rawTitle = oembed?.title || `Track_${videoId}`;
-    const rawAuthor = oembed?.author || "YouTube";
-    const thumbnail =
-      oembed?.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+    const rawAuthor = oembed?.author || 'YouTube';
+    const thumbnail = oembed?.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
     const jobId = crypto.randomUUID();
-    const extLabel = format === "best" ? "opus" : format;
+    const extLabel = format === 'best' ? 'opus' : format;
     const displayFileName = buildDisplayFileName(rawAuthor, rawTitle, extLabel);
 
     const job = JobManager.createJob(
@@ -87,20 +74,20 @@ export class ConversionService {
       rawAuthor,
       thumbnail,
       format,
-      bitrate,
+      bitrate
     );
     // Asynchronously execute yt-dlp conversion pipeline
-    void this.executeYtDlp(
+    void executeYtDlp(
       jobId,
       canonicalUrl,
       videoId,
       format,
       bitrate,
       displayFileName,
-      options,
+      options
     ).catch((err: any) => {
       JobManager.updateJob(jobId, {
-        status: "error",
+        status: 'error',
         error: `Conversion setup failed: ${err?.message || err}`,
       });
     });
@@ -108,19 +95,16 @@ export class ConversionService {
     return job;
   }
 
-  private static async executeYtDlp(
+  async function executeYtDlp(
     jobId: string,
     canonicalUrl: string,
     videoId: string,
     format: string,
     bitrate: string,
     displayFileName: string,
-    options: ConvertRequestOptions,
+    options: ConvertRequestOptions
   ): Promise<void> {
-    const outputTemplate = path.join(
-      FileService.getDownloadsDir(),
-      `${jobId}.%(ext)s`,
-    );
+    const outputTemplate = path.join(FileService.getDownloadsDir(), `${jobId}.%(ext)s`);
     const cookiesPath = CookieService.getCookiesPath();
     const launch = ytdlpLaunch();
     const { strategy } = await resolveStrategy();
@@ -134,7 +118,7 @@ export class ConversionService {
       resolveNormalizeMode({
         normalizeMode: options.normalizeMode,
         normalizeAudio: options.normalizeAudio,
-      }) === "loudness";
+      }) === 'loudness';
     const ffmpegFilters: string[] = loudnessPostPass
       ? []
       : buildAudioFilters({
@@ -146,83 +130,80 @@ export class ConversionService {
 
     const args: string[] = [
       ...launch.prefixArgs,
-      "--js-runtimes",
+      '--js-runtimes',
       `node:${process.execPath}`,
       ...extractorArgsFor(strategy),
-      "--ffmpeg-location",
+      '--ffmpeg-location',
       path.dirname(FFMPEG_PATH),
-      "--no-playlist",
-      "--newline",
-      "-f",
-      "ba/b",
-      "-o",
+      '--no-playlist',
+      '--newline',
+      '-f',
+      'ba/b',
+      '-o',
       outputTemplate,
     ];
 
     if (useCookies && cookiesPath) {
-      args.push("--cookies", cookiesPath);
+      args.push('--cookies', cookiesPath);
     }
 
     if (options.trimStart || options.trimEnd) {
-      const start = options.trimStart?.trim() || "00:00";
-      const end = options.trimEnd?.trim() || "inf";
-      args.push("--download-sections", `*${start}-${end}`);
-      args.push("--force-keyframes-at-cuts");
+      const start = options.trimStart?.trim() || '00:00';
+      const end = options.trimEnd?.trim() || 'inf';
+      args.push('--download-sections', `*${start}-${end}`);
+      args.push('--force-keyframes-at-cuts');
     }
 
     if (loudnessPostPass) {
       // Native streamcopy download; the two-pass linear post-pass below
       // transcodes to the requested target afterwards. (Single transcode
       // total — same cost class as the old in-yt-dlp filter.)
-      args.push("--extract-audio");
-      args.push("--audio-format", "best");
-    } else if (format === "best" || format === "opus" || format === "m4a") {
+      args.push('--extract-audio');
+      args.push('--audio-format', 'best');
+    } else if (format === 'best' || format === 'opus' || format === 'm4a') {
       if (!hasFilters) {
-        args.push("--extract-audio");
-        args.push("--audio-format", format === "best" ? "best" : format);
+        args.push('--extract-audio');
+        args.push('--audio-format', format === 'best' ? 'best' : format);
       } else {
-        const targetFormat = format === "m4a" ? "m4a" : "opus";
-        const targetCodec = format === "m4a" ? "aac" : "libopus";
-        const targetBitrate = format === "m4a" ? "128k" : "160k";
+        const targetFormat = format === 'm4a' ? 'm4a' : 'opus';
+        const targetCodec = format === 'm4a' ? 'aac' : 'libopus';
+        const targetBitrate = format === 'm4a' ? '128k' : '160k';
 
-        args.push("--extract-audio");
-        args.push("--audio-format", targetFormat);
+        args.push('--extract-audio');
+        args.push('--audio-format', targetFormat);
         args.push(
-          "--postprocessor-args",
-          `ExtractAudio:-c:a ${targetCodec} -b:a ${targetBitrate} -af ${ffmpegFilters.join(",")}`,
+          '--postprocessor-args',
+          `ExtractAudio:-c:a ${targetCodec} -b:a ${targetBitrate} -af ${ffmpegFilters.join(',')}`
         );
       }
-    } else if (format === "mp3") {
-      const mp3Quality = bitrate === "native" || !bitrate ? "160k" : bitrate;
-      args.push("--extract-audio");
-      args.push("--audio-format", "mp3");
-      args.push("--audio-quality", mp3Quality);
+    } else if (format === 'mp3') {
+      const mp3Quality = bitrate === 'native' || !bitrate ? '160k' : bitrate;
+      args.push('--extract-audio');
+      args.push('--audio-format', 'mp3');
+      args.push('--audio-quality', mp3Quality);
 
       if (hasFilters) {
         args.push(
-          "--postprocessor-args",
-          `ExtractAudio:-c:a libmp3lame -af ${ffmpegFilters.join(",")}`,
+          '--postprocessor-args',
+          `ExtractAudio:-c:a libmp3lame -af ${ffmpegFilters.join(',')}`
         );
       }
-    } else if (format === "flac") {
-      args.push("--extract-audio");
-      args.push("--audio-format", "flac");
-      args.push("--audio-quality", "0");
+    } else if (format === 'flac') {
+      args.push('--extract-audio');
+      args.push('--audio-format', 'flac');
+      args.push('--audio-quality', '0');
+
+      if (hasFilters) {
+        args.push('--postprocessor-args', `ExtractAudio:-c:a flac -af ${ffmpegFilters.join(',')}`);
+      }
+    } else if (format === 'wav') {
+      args.push('--extract-audio');
+      args.push('--audio-format', 'wav');
 
       if (hasFilters) {
         args.push(
-          "--postprocessor-args",
-          `ExtractAudio:-c:a flac -af ${ffmpegFilters.join(",")}`,
-        );
-      }
-    } else if (format === "wav") {
-      args.push("--extract-audio");
-      args.push("--audio-format", "wav");
-
-      if (hasFilters) {
-        args.push(
-          "--postprocessor-args",
-          `ExtractAudio:-c:a pcm_s16le -af ${ffmpegFilters.join(",")}`,
+          '--postprocessor-args',
+          `ExtractAudio:-c:a pcm_s16le -af ${ffmpegFilters.join(',')}`
         );
       }
     }
@@ -236,20 +217,20 @@ export class ConversionService {
     if (
       options.embedThumbnail &&
       !loudnessPostPass &&
-      (format === "mp3" || format === "m4a" || format === "flac")
+      (format === 'mp3' || format === 'm4a' || format === 'flac')
     ) {
-      args.push("--embed-thumbnail");
+      args.push('--embed-thumbnail');
     }
 
     args.push(canonicalUrl);
 
     JobManager.updateJob(jobId, {
-      status: "downloading",
+      status: 'downloading',
       progress: 5,
       stageMessage: loudnessPostPass
-        ? "Fetching native audio stream (loudness balanced afterwards, dynamics preserved)..."
-        : format === "best" || format === "opus" || format === "m4a"
-          ? "Fetching highest native audio stream directly from YouTube..."
+        ? 'Fetching native audio stream (loudness balanced afterwards, dynamics preserved)...'
+        : format === 'best' || format === 'opus' || format === 'm4a'
+          ? 'Fetching highest native audio stream directly from YouTube...'
           : `Connecting to YouTube audio stream for ${format.toUpperCase()} conversion...`,
     });
 
@@ -257,71 +238,63 @@ export class ConversionService {
       env: ytdlpEnv(),
     });
 
-    let stderrBuffer = "";
+    let stderrBuffer = '';
     let spawnFailed = false;
 
-    child.stdout.on("data", (chunk: Buffer) => {
+    child.stdout.on('data', (chunk: Buffer) => {
       const line = chunk.toString();
 
-      const downloadMatch = line.match(/\[download\]\s+([\d\.]+)%/);
+      const downloadMatch = line.match(/\[download\]\s+([\d.]+)%/);
       if (downloadMatch) {
         const percent = parseFloat(downloadMatch[1]);
         const calculated = Math.min(75, Math.floor(percent * 0.75));
         JobManager.updateJob(jobId, {
-          status: "downloading",
+          status: 'downloading',
           progress: calculated,
           stageMessage: `Downloading audio stream (${Math.floor(percent)}%)...`,
         });
       }
 
-      if (line.includes("[ExtractAudio]") || line.includes("Destination:")) {
+      if (line.includes('[ExtractAudio]') || line.includes('Destination:')) {
         JobManager.updateJob(jobId, {
-          status: "converting",
+          status: 'converting',
           progress: 80,
           stageMessage: `Converting to ${format.toUpperCase()} (${bitrate})...`,
         });
       }
 
-      if (
-        line.includes("[Metadata]") ||
-        line.includes("[ThumbnailsConvertor]")
-      ) {
+      if (line.includes('[Metadata]') || line.includes('[ThumbnailsConvertor]')) {
         JobManager.updateJob(jobId, {
-          status: "converting",
+          status: 'converting',
           progress: 90,
-          stageMessage: "Embedding ID3 metadata & album artwork...",
+          stageMessage: 'Embedding ID3 metadata & album artwork...',
         });
       }
     });
 
-    child.stderr.on("data", (chunk: Buffer) => {
+    child.stderr.on('data', (chunk: Buffer) => {
       stderrBuffer += chunk.toString();
     });
 
-    child.on("close", async (code) => {
+    child.on('close', async code => {
       if (spawnFailed) return;
       if (code !== 0) {
         const isBot =
           /sign in to confirm|not a bot|bot|login_required|cookies-from-browser|403/i.test(
-            stderrBuffer,
+            stderrBuffer
           );
-        const potDown = /bgutil|po_token|pot[^a-z]|4416|TransportError/i.test(
-          stderrBuffer,
-        );
-        const firstError = stderrBuffer
-          .split("\n")
-          .filter((l) => l.includes("ERROR:"))[0];
+        const potDown = /bgutil|po_token|pot[^a-z]|4416|TransportError/i.test(stderrBuffer);
+        const firstError = stderrBuffer.split('\n').filter(l => l.includes('ERROR:'))[0];
 
         JobManager.updateJob(jobId, {
-          status: "error",
+          status: 'error',
           exitCode: code,
           isBotBlocked: isBot,
           error: isBot
-            ? "YouTube requires user session cookies or verification for this track in cloud environments. Please open Session & Cookie Settings to import browser cookies or auto-fetch a fresh session."
-            : potDown && strategy === "pot"
-              ? "PO Token sidecar unreachable mid-conversion. Restart the app so the sidecar re-spawns, or see Session settings for the no-POT fallback."
-              : firstError ||
-                "Audio conversion failed. Please try another track or format.",
+            ? 'YouTube requires user session cookies or verification for this track in cloud environments. Please open Session & Cookie Settings to import browser cookies or auto-fetch a fresh session.'
+            : potDown && strategy === 'pot'
+              ? 'PO Token sidecar unreachable mid-conversion. Restart the app so the sidecar re-spawns, or see Session settings for the no-POT fallback.'
+              : firstError || 'Audio conversion failed. Please try another track or format.',
           errorDetails: stderrBuffer.slice(-2000) || undefined,
         });
         return;
@@ -330,55 +303,47 @@ export class ConversionService {
       const downloadsDir = FileService.getDownloadsDir();
       const files = fs.readdirSync(downloadsDir);
       const matchedFile = files.find(
-        (f) =>
-          f.startsWith(jobId) && !f.endsWith(".part") && !f.endsWith(".ytdl"),
+        f => f.startsWith(jobId) && !f.endsWith('.part') && !f.endsWith('.ytdl')
       );
 
       if (!matchedFile) {
         JobManager.updateJob(jobId, {
-          status: "error",
-          error: "Converted audio file was not found on disk.",
+          status: 'error',
+          error: 'Converted audio file was not found on disk.',
         });
         return;
       }
 
       let stagedFile = path.join(downloadsDir, matchedFile);
-      let actualExt = path.extname(stagedFile).replace(".", "").toLowerCase();
+      let actualExt = path.extname(stagedFile).replace('.', '').toLowerCase();
 
       let loudnessInfo: { gainDb: number; outputI: number } | null = null;
       if (loudnessPostPass) {
         // Two-pass linear loudnorm to the REQUESTED target ("best" keeps the
         // native container). Uniform gain — dynamics preserved, silence
         // untouched. Runs after the native download, before naming/tagging.
-        const SUPPORTED_TARGETS = ["opus", "m4a", "mp3", "flac", "wav"];
+        const SUPPORTED_TARGETS = ['opus', 'm4a', 'mp3', 'flac', 'wav'];
         const finalTarget =
-          format === "best"
-            ? SUPPORTED_TARGETS.includes(actualExt)
-              ? actualExt
-              : "opus"
-            : format;
-        const postPath = path.join(
-          downloadsDir,
-          `${jobId}.loudness.${finalTarget}`,
-        );
+          format === 'best' ? (SUPPORTED_TARGETS.includes(actualExt) ? actualExt : 'opus') : format;
+        const postPath = path.join(downloadsDir, `${jobId}.loudness.${finalTarget}`);
         try {
           const res = await transcodeWithLinearLoudness(stagedFile, postPath, {
             format: finalTarget,
             bitrate,
-            onPass: (pass) =>
+            onPass: pass =>
               JobManager.updateJob(jobId, {
-                status: "converting",
+                status: 'converting',
                 progress: pass === 1 ? 86 : 92,
                 stageMessage:
                   pass === 1
-                    ? "Measuring loudness (pass 1/2) — audio untouched..."
-                    : "Applying uniform loudness gain (pass 2/2)...",
+                    ? 'Measuring loudness (pass 1/2) — audio untouched...'
+                    : 'Applying uniform loudness gain (pass 2/2)...',
               }),
           });
           loudnessInfo = { gainDb: res.gainDb, outputI: res.outputI };
         } catch (postErr: any) {
           JobManager.updateJob(jobId, {
-            status: "error",
+            status: 'error',
             exitCode: code,
             error: `Loudness pass failed: ${postErr?.message || postErr}`,
           });
@@ -391,17 +356,14 @@ export class ConversionService {
         actualExt = finalTarget;
       }
 
-      const resolvedDisplayFileName = displayFileName.replace(
-        /\.[a-z0-9]+$/i,
-        `.${actualExt}`,
-      );
+      const resolvedDisplayFileName = displayFileName.replace(/\.[a-z0-9]+$/i, `.${actualExt}`);
       const finalName = dedupeFileName(downloadsDir, resolvedDisplayFileName);
       const finalFile = path.join(downloadsDir, finalName);
       try {
         if (stagedFile !== finalFile) fs.renameSync(stagedFile, finalFile);
       } catch (renameErr: any) {
         JobManager.updateJob(jobId, {
-          status: "error",
+          status: 'error',
           error: `Could not name the finished file: ${renameErr.message}`,
         });
         return;
@@ -410,12 +372,12 @@ export class ConversionService {
       if (options.embedThumbnail) {
         try {
           JobManager.updateJob(jobId, {
-            stageMessage: "Writing title, artist and album artwork...",
+            stageMessage: 'Writing title, artist and album artwork...',
           });
           const current = JobManager.getJob(jobId);
           const minimalTags: MusicTags = {
             title: current?.title ?? `Track_${videoId}`,
-            artist: current?.author ?? "YouTube",
+            artist: current?.author ?? 'YouTube',
             album: undefined,
             coverUrl: current?.thumbnail,
             cleanDescription: true,
@@ -424,7 +386,7 @@ export class ConversionService {
         } catch (tagErr: unknown) {
           console.warn(
             `Tagging warning for job ${jobId}:`,
-            tagErr instanceof Error ? tagErr.message : tagErr,
+            tagErr instanceof Error ? tagErr.message : tagErr
           );
         }
       }
@@ -432,15 +394,15 @@ export class ConversionService {
       const fileStat = fs.statSync(finalFile);
 
       const updated = JobManager.updateJob(jobId, {
-        status: "completed",
+        status: 'completed',
         progress: 100,
         stageMessage: loudnessPostPass
           ? loudnessInfo && Number.isFinite(loudnessInfo.outputI)
-            ? `Loudness balanced to ${loudnessInfo.outputI.toFixed(1)} LUFS with a uniform ${loudnessInfo.gainDb >= 0 ? "+" : ""}${loudnessInfo.gainDb.toFixed(1)} dB gain — dynamics fully preserved!`
-            : "Loudness balanced with a uniform gain — dynamics fully preserved!"
-          : format === "best" || format === "opus" || format === "m4a"
-            ? `Highest native audio stream extracted bit-for-bit (~${actualExt === "opus" ? "160k Opus" : "128k AAC"})!`
-            : "Audio converted successfully!",
+            ? `Loudness balanced to ${loudnessInfo.outputI.toFixed(1)} LUFS with a uniform ${loudnessInfo.gainDb >= 0 ? '+' : ''}${loudnessInfo.gainDb.toFixed(1)} dB gain — dynamics fully preserved!`
+            : 'Loudness balanced with a uniform gain — dynamics fully preserved!'
+          : format === 'best' || format === 'opus' || format === 'm4a'
+            ? `Highest native audio stream extracted bit-for-bit (~${actualExt === 'opus' ? '160k Opus' : '128k AAC'})!`
+            : 'Audio converted successfully!',
         format: actualExt,
         outputFilePath: finalFile,
         outputFileName: finalName,
@@ -454,7 +416,7 @@ export class ConversionService {
       if (updated?.outputFilePath) {
         LibraryStore.upsert({
           jobId,
-          source: "conversion",
+          source: 'conversion',
           videoId,
           title: updated.title,
           author: updated.author,
@@ -483,10 +445,10 @@ export class ConversionService {
       }
     });
 
-    child.on("error", (err) => {
+    child.on('error', err => {
       spawnFailed = true;
       JobManager.updateJob(jobId, {
-        status: "error",
+        status: 'error',
         exitCode: null,
         error: `yt-dlp failed to start: ${err.message}. Check that Python is installed (Windows "py" launcher) or set YTDLP_PATH to a working yt-dlp.exe.`,
         errorDetails: String(err.stack || err.message).slice(0, 1000),

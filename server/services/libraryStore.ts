@@ -1,11 +1,11 @@
-import fs from "fs";
-import path from "path";
-import { DATA_DIR } from "../config.js";
-import type { MusicTags } from "./audioTagService.js";
+import fs from 'fs';
+import path from 'path';
+import { DATA_DIR } from '../config.js';
+import type { MusicTags } from './audioTagService.js';
 
 export interface LibraryRecord {
   jobId: string;
-  source?: "conversion" | "import";
+  source?: 'conversion' | 'import';
   videoId: string;
   title: string;
   author: string;
@@ -18,22 +18,23 @@ export interface LibraryRecord {
   tags?: MusicTags;
 }
 
-const LIBRARY_FILE = path.join(DATA_DIR, "library.json");
+const LIBRARY_FILE = path.join(DATA_DIR, 'library.json');
 const MAX_RECORDS = 500;
 
 /** Identity of a file on disk. Case-insensitive on Windows. */
+function norm(p: string): string {
+  return path.normalize(p);
+}
+
 export function isSameFilePath(a: string, b: string): boolean {
-  const norm = (p: string) => path.normalize(p);
-  if (process.platform === "win32") return norm(a).toLowerCase() === norm(b).toLowerCase();
+  if (process.platform === 'win32') return norm(a).toLowerCase() === norm(b).toLowerCase();
   return norm(a) === norm(b);
 }
 
 function readAll(): LibraryRecord[] {
   try {
     if (!fs.existsSync(LIBRARY_FILE)) return [];
-    const parsed = JSON.parse(
-      fs.readFileSync(LIBRARY_FILE, "utf8"),
-    ) as LibraryRecord[];
+    const parsed = JSON.parse(fs.readFileSync(LIBRARY_FILE, 'utf8')) as LibraryRecord[];
     return Array.isArray(parsed) ? parsed : [];
   } catch {
     return [];
@@ -43,20 +44,20 @@ function readAll(): LibraryRecord[] {
 function writeAll(records: LibraryRecord[]): void {
   fs.mkdirSync(path.dirname(LIBRARY_FILE), { recursive: true });
   const tmp = `${LIBRARY_FILE}.${process.pid}.part`;
-  fs.writeFileSync(
-    tmp,
-    JSON.stringify(records.slice(0, MAX_RECORDS), null, 2),
-    "utf8",
-  );
+  fs.writeFileSync(tmp, JSON.stringify(records.slice(0, MAX_RECORDS), null, 2), 'utf8');
   fs.renameSync(tmp, LIBRARY_FILE);
 }
 
-export class LibraryStore {
-  public static upsert(record: LibraryRecord): void {
+function keyOf(p: string): string {
+  return process.platform === 'win32' ? path.normalize(p).toLowerCase() : path.normalize(p);
+}
+
+export namespace LibraryStore {
+  export function upsert(record: LibraryRecord): void {
     // One row per file: drop any row with the same id OR the same path so
     // a rescan/rename can never stack two rows over one file on disk.
     const records = readAll().filter(
-      (r) => r.jobId !== record.jobId && !isSameFilePath(r.filePath, record.filePath),
+      r => r.jobId !== record.jobId && !isSameFilePath(r.filePath, record.filePath)
     );
     records.unshift(record);
     writeAll(records);
@@ -67,13 +68,9 @@ export class LibraryStore {
    * and persist-drop rows whose file no longer exists. Runs at boot so
    * stale accumulation from older builds heals itself.
    */
-  public static reconcile(): { removed: number } {
+  export function reconcile(): { removed: number } {
     const seen = new Set<string>();
-    const keyOf = (p: string) =>
-      process.platform === "win32"
-        ? path.normalize(p).toLowerCase()
-        : path.normalize(p);
-    const sorted = readAll().sort((a, b) => b.completedAt - a.completedAt);
+    const sorted = readAll().toSorted((a, b) => b.completedAt - a.completedAt);
     const kept: LibraryRecord[] = [];
     for (const record of sorted) {
       const key = keyOf(record.filePath);
@@ -91,19 +88,19 @@ export class LibraryStore {
     return { removed };
   }
 
-  public static list(): LibraryRecord[] {
+  export function list(): LibraryRecord[] {
     return readAll()
-      .filter((r) => {
+      .filter(r => {
         try {
           return !!r.filePath && fs.existsSync(r.filePath);
         } catch {
           return false;
         }
       })
-      .sort((a, b) => b.completedAt - a.completedAt);
+      .toSorted((a, b) => b.completedAt - a.completedAt);
   }
 
-  public static remove(jobId: string): void {
-    writeAll(readAll().filter((r) => r.jobId !== jobId));
+  export function remove(jobId: string): void {
+    writeAll(readAll().filter(r => r.jobId !== jobId));
   }
 }

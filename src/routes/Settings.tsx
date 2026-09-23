@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from "react";
-import { CookieModal } from "../components/CookieModal";
-import { useSession, useSettings } from "../store/appStore";
+import React, { useRef, useState } from 'react';
+import { CookieModal } from '../components/CookieModal';
+import { useSession, useSettings } from '../store/appStore';
 
 export function SettingsRoute() {
   const { state, actions } = useSettings();
   const { settings, isLoading, error } = state;
   const { state: session, actions: sessionActions } = useSession();
 
-  const [folder, setFolder] = useState("");
+  const [folder, setFolder] = useState('');
   const [revealAfterConvert, setRevealAfterConvert] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -15,12 +15,15 @@ export function SettingsRoute() {
   const [isCookieModalOpen, setIsCookieModalOpen] = useState(false);
   const errorRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (settings) {
-      setFolder(settings.downloadsDir);
-      setRevealAfterConvert(settings.revealAfterConvert);
-    }
-  }, [settings]);
+  // Sync the form drafts when freshly loaded (or reloaded) settings arrive.
+  // Done during render, not in an effect: synchronous updates do not belong
+  // in effects.
+  const [prevSettings, setPrevSettings] = useState(settings);
+  if (settings !== prevSettings) {
+    setPrevSettings(settings);
+    setFolder(settings?.downloadsDir ?? '');
+    setRevealAfterConvert(settings?.revealAfterConvert ?? false);
+  }
 
   const pickFolder = async () => {
     setSaveError(null);
@@ -29,7 +32,7 @@ export function SettingsRoute() {
       if (picked) setFolder(picked);
       return;
     }
-    const input = window.prompt("Library folder (absolute path):", folder);
+    const input = window.prompt('Library folder (absolute path):', folder);
     if (input !== null) setFolder(input);
   };
 
@@ -41,9 +44,7 @@ export function SettingsRoute() {
       await actions.save({ downloadsDir: folder, revealAfterConvert });
       setSavedTick(true);
     } catch (err) {
-      setSaveError(
-        err instanceof Error ? err.message : "Could not save settings.",
-      );
+      setSaveError(err instanceof Error ? err.message : 'Could not save settings.');
       requestAnimationFrame(() => errorRef.current?.focus());
     } finally {
       setIsSaving(false);
@@ -56,9 +57,7 @@ export function SettingsRoute() {
     try {
       await actions.reset();
     } catch (err) {
-      setSaveError(
-        err instanceof Error ? err.message : "Could not reset settings.",
-      );
+      setSaveError(err instanceof Error ? err.message : 'Could not reset settings.');
     } finally {
       setIsSaving(false);
     }
@@ -74,11 +73,7 @@ export function SettingsRoute() {
 
   if (error && !settings) {
     return (
-      <section
-        className="px-panel border-px-err p-4"
-        role="alert"
-        aria-label="Settings"
-      >
+      <section className="px-panel border-px-err p-4" role="alert" aria-label="Settings">
         <p className="text-sm font-semibold">Settings did not load</p>
         <p className="mt-1 text-sm text-px-dim">{error}</p>
       </section>
@@ -94,10 +89,7 @@ export function SettingsRoute() {
         </p>
 
         <div>
-          <label
-            htmlFor="settings-folder"
-            className="mb-1 block text-xs text-px-dim"
-          >
+          <label htmlFor="settings-folder" className="mb-1 block text-xs text-px-dim">
             Folder path
           </label>
           <div className="flex flex-col gap-2 sm:flex-row">
@@ -108,15 +100,11 @@ export function SettingsRoute() {
               autoComplete="off"
               spellCheck={false}
               value={folder}
-              onChange={(e) => setFolder(e.target.value)}
+              onChange={e => setFolder(e.target.value)}
               placeholder="C:\Users\you\Downloads\YT Music…"
               className="px-input min-w-0 flex-1 text-sm"
             />
-            <button
-              type="button"
-              className="px-btn text-sm"
-              onClick={() => void pickFolder()}
-            >
+            <button type="button" className="px-btn text-sm" onClick={() => void pickFolder()}>
               Browse…
             </button>
           </div>
@@ -124,8 +112,7 @@ export function SettingsRoute() {
 
         {settings?.isCustom === false && (
           <p className="text-xs text-px-dim">
-            Using the default:{" "}
-            <span className="px-tabular">{settings.defaultDownloadsDir}</span>
+            Using the default: <span className="px-tabular">{settings.defaultDownloadsDir}</span>
           </p>
         )}
 
@@ -133,7 +120,7 @@ export function SettingsRoute() {
           <input
             type="checkbox"
             checked={revealAfterConvert}
-            onChange={(e) => setRevealAfterConvert(e.target.checked)}
+            onChange={e => setRevealAfterConvert(e.target.checked)}
             className="h-4 w-4 accent-[#7c5cff]"
           />
           Show each finished file in Explorer
@@ -163,7 +150,7 @@ export function SettingsRoute() {
             disabled={isSaving}
             onClick={() => void handleSave()}
           >
-            {isSaving ? "Saving…" : "Save Library Folder"}
+            {isSaving ? 'Saving…' : 'Save Library Folder'}
           </button>
           <button
             type="button"
@@ -180,14 +167,10 @@ export function SettingsRoute() {
         <h2 className="font-display text-[11px]">YOUTUBE SESSION</h2>
         <p className="text-sm text-px-dim" aria-live="polite">
           {session.status.configured
-            ? "Session cookies are set. Age-restricted and protected tracks work."
-            : "No session set. Some tracks may ask for verification."}
+            ? 'Session cookies are set. Age-restricted and protected tracks work.'
+            : 'No session set. Some tracks may ask for verification.'}
         </p>
-        <button
-          type="button"
-          className="px-btn text-sm"
-          onClick={() => setIsCookieModalOpen(true)}
-        >
+        <button type="button" className="px-btn text-sm" onClick={() => setIsCookieModalOpen(true)}>
           Manage Session Cookies
         </button>
       </section>
@@ -199,7 +182,7 @@ export function SettingsRoute() {
           void sessionActions.refresh();
         }}
         status={session.status}
-        onStatusUpdated={(next) => sessionActions.update(next)}
+        onStatusUpdated={next => sessionActions.update(next)}
       />
     </div>
   );

@@ -56,10 +56,9 @@ venv/
 .DS_Store
 Thumbs.db
 
-# Editors / IDEs — share only the secret-free workspace settings
-.vscode/*
-!.vscode/extensions.json
-!.vscode/settings.json
+# Editors / IDEs — local editor state stays untracked
+.vscode/
+.codegraph/
 .idea/
 *.suo
 *.ntvs*
@@ -77,6 +76,7 @@ coverage/
 AGENTS.md
 context/
 .ignore
+opencode.json
 
 # Electron desktop outputs (icon source files are committed)
 dist-electron/

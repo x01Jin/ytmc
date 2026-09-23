@@ -1,16 +1,16 @@
-import { Upload } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
-import { AudioPlayer } from "../components/AudioPlayer";
-import { CoverArtPreview } from "../components/CoverArtPreview";
-import { LibraryEditPanel } from "../components/library/LibraryEditPanel";
-import { useLibrary } from "../store/appStore";
-import type { ConversionJob, LibraryRecord } from "../types";
-import { previewStreamUrl } from "../utils/audioSupport";
+import { Upload } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { AudioPlayer } from '../components/AudioPlayer';
+import { CoverArtPreview } from '../components/CoverArtPreview';
+import { LibraryEditPanel } from '../components/library/LibraryEditPanel';
+import { useLibrary } from '../store/appStore';
+import type { ConversionJob, LibraryRecord } from '../types';
+import { previewStreamUrl } from '../utils/audioSupport';
 
-type SortKey = "recent" | "name" | "size";
+type SortKey = 'recent' | 'name' | 'size';
 
 function formatBytes(bytes: number): string {
-  if (!bytes) return "0 MB";
+  if (!bytes) return '0 MB';
   const mb = bytes / (1024 * 1024);
   if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`;
   return `${mb.toFixed(1)} MB`;
@@ -25,17 +25,17 @@ function recordToJob(record: LibraryRecord, mediaVersion = 0): ConversionJob {
     author: record.author,
     thumbnail: record.thumbnail,
     format: record.format,
-    bitrate: "native",
-    status: "completed",
+    bitrate: 'native',
+    status: 'completed',
     progress: 100,
-    stageMessage: "Finished",
+    stageMessage: 'Finished',
     outputFileName: record.fileName,
     outputFilePath: record.filePath,
     fileSizeBytes: record.fileSizeBytes,
     downloadUrl: `/api/download/${encodeURIComponent(record.jobId)}`,
     // Cache-buster so trims/retags reload the rewritten file instead of a
     // stale buffered stream. The server ignores the extra query param.
-    streamUrl: `${base}${base.includes("?") ? "&" : "?"}v=${mediaVersion}`,
+    streamUrl: `${base}${base.includes('?') ? '&' : '?'}v=${mediaVersion}`,
     createdAt: record.completedAt,
     completedAt: record.completedAt,
   };
@@ -44,8 +44,8 @@ function recordToJob(record: LibraryRecord, mediaVersion = 0): ConversionJob {
 export function LibraryRoute() {
   const { state, actions } = useLibrary();
   const { library, isLoading, error } = state;
-  const [query, setQuery] = useState("");
-  const [sort, setSort] = useState<SortKey>("recent");
+  const [query, setQuery] = useState('');
+  const [sort, setSort] = useState<SortKey>('recent');
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [playNonce, setPlayNonce] = useState(0);
   const [artPreviewId, setArtPreviewId] = useState<string | null>(null);
@@ -57,9 +57,7 @@ export function LibraryRoute() {
   // Per-track media version: bumped on edit so the player and trim preview
   // reload the rewritten file. Keyed by track so editing one row never
   // interrupts playback of another.
-  const [mediaVersions, setMediaVersions] = useState<Record<string, number>>(
-    {},
-  );
+  const [mediaVersions, setMediaVersions] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const records = useMemo(() => {
@@ -67,19 +65,19 @@ export function LibraryRoute() {
     const q = query.trim().toLowerCase();
     const filtered = q
       ? list.filter(
-          (r) =>
+          r =>
             r.title.toLowerCase().includes(q) ||
             r.author.toLowerCase().includes(q) ||
-            r.fileName.toLowerCase().includes(q),
+            r.fileName.toLowerCase().includes(q)
         )
       : [...list];
     switch (sort) {
-      case "name":
-        return [...filtered].sort((a, b) => a.title.localeCompare(b.title));
-      case "size":
-        return [...filtered].sort((a, b) => b.fileSizeBytes - a.fileSizeBytes);
+      case 'name':
+        return filtered.toSorted((a, b) => a.title.localeCompare(b.title));
+      case 'size':
+        return filtered.toSorted((a, b) => b.fileSizeBytes - a.fileSizeBytes);
       default:
-        return [...filtered].sort((a, b) => b.completedAt - a.completedAt);
+        return filtered.toSorted((a, b) => b.completedAt - a.completedAt);
     }
   }, [library, query, sort]);
 
@@ -88,9 +86,7 @@ export function LibraryRoute() {
     try {
       await actions.revealFile(jobId);
     } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : "Could not reveal the file.",
-      );
+      setActionError(err instanceof Error ? err.message : 'Could not reveal the file.');
     }
   };
 
@@ -103,9 +99,7 @@ export function LibraryRoute() {
       if (artPreviewId === jobId) setArtPreviewId(null);
       if (editingId === jobId) setEditingId(null);
     } catch (err) {
-      setActionError(
-        err instanceof Error ? err.message : "Could not delete the file.",
-      );
+      setActionError(err instanceof Error ? err.message : 'Could not delete the file.');
     }
   };
 
@@ -114,21 +108,17 @@ export function LibraryRoute() {
     setActionError(null);
     setIsImporting(true);
     try {
-      await Promise.all(files.map((file) => actions.importFile(file)));
+      await Promise.all(files.map(file => actions.importFile(file)));
       await actions.refresh();
     } catch (err) {
-      setActionError(
-        err instanceof Error
-          ? err.message
-          : "Could not copy audio into the library.",
-      );
+      setActionError(err instanceof Error ? err.message : 'Could not copy audio into the library.');
     } finally {
       setIsImporting(false);
     }
   };
 
   const handleEdited = (jobId: string) => {
-    setMediaVersions((prev) => ({ ...prev, [jobId]: (prev[jobId] ?? 0) + 1 }));
+    setMediaVersions(prev => ({ ...prev, [jobId]: (prev[jobId] ?? 0) + 1 }));
     void actions.refresh();
   };
 
@@ -142,11 +132,7 @@ export function LibraryRoute() {
 
   if (error && !library) {
     return (
-      <section
-        className="px-panel border-px-err p-4"
-        role="alert"
-        aria-label="Library"
-      >
+      <section className="px-panel border-px-err p-4" role="alert" aria-label="Library">
         <p className="text-sm font-semibold">Library did not load</p>
         <p className="mt-1 text-sm text-px-dim">{error}</p>
         <button
@@ -160,23 +146,22 @@ export function LibraryRoute() {
     );
   }
 
-  const playingRecord = playingId
-    ? (records.find((r) => r.jobId === playingId) ?? null)
-    : null;  const artPreviewRecord = artPreviewId
-    ? (records.find((r) => r.jobId === artPreviewId) ?? null)
+  const playingRecord = playingId ? (records.find(r => r.jobId === playingId) ?? null) : null;
+  const artPreviewRecord = artPreviewId
+    ? (records.find(r => r.jobId === artPreviewId) ?? null)
     : null;
 
   return (
     <div
       className="flex min-h-full flex-col gap-3"
-      onDragOver={(event) => {
+      onDragOver={event => {
         event.preventDefault();
         setIsDragging(true);
       }}
-      onDragLeave={(event) => {
+      onDragLeave={event => {
         if (event.currentTarget === event.target) setIsDragging(false);
       }}
-      onDrop={(event) => {
+      onDrop={event => {
         event.preventDefault();
         setIsDragging(false);
         void importFiles(Array.from(event.dataTransfer.files));
@@ -184,15 +169,12 @@ export function LibraryRoute() {
     >
       <section
         className={`px-panel flex flex-col gap-3 p-3 sm:flex-row sm:items-end ${
-          isDragging ? "border-px-acc" : ""
+          isDragging ? 'border-px-acc' : ''
         }`}
         aria-label="Library controls"
       >
         <div className="min-w-0 flex-1">
-          <label
-            htmlFor="library-search"
-            className="mb-1 block text-xs text-px-dim"
-          >
+          <label htmlFor="library-search" className="mb-1 block text-xs text-px-dim">
             Search your library
           </label>
           <input
@@ -202,7 +184,7 @@ export function LibraryRoute() {
             autoComplete="off"
             spellCheck={false}
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={e => setQuery(e.target.value)}
             placeholder="Artist, title, filename…"
             className="px-input h-11 w-full text-sm"
           />
@@ -210,17 +192,14 @@ export function LibraryRoute() {
 
         <div className="flex flex-wrap items-end justify-end gap-2 sm:justify-start">
           <div className="flex min-w-0 flex-col">
-            <label
-              htmlFor="library-sort"
-              className="mb-1 block text-xs text-px-dim"
-            >
+            <label htmlFor="library-sort" className="mb-1 block text-xs text-px-dim">
               Sort
             </label>
             <select
               id="library-sort"
               name="library-sort"
               value={sort}
-              onChange={(e) => setSort(e.target.value as SortKey)}
+              onChange={e => setSort(e.target.value as SortKey)}
               className="px-select h-11 min-w-[9rem] text-sm"
             >
               <option value="recent">Most recent</option>
@@ -235,9 +214,9 @@ export function LibraryRoute() {
             accept=".mp3,.m4a,.flac,.wav,.opus,.ogg,.aac,audio/*"
             multiple
             className="sr-only"
-            onChange={(event) => {
+            onChange={event => {
               void importFiles(Array.from(event.target.files ?? []));
-              event.target.value = "";
+              event.target.value = '';
             }}
           />
           <button
@@ -248,7 +227,7 @@ export function LibraryRoute() {
             title="Copy audio into the library"
           >
             <Upload className="h-3.5 w-3.5" aria-hidden="true" />
-            {isImporting ? "Copying…" : "Add audio"}
+            {isImporting ? 'Copying…' : 'Add audio'}
           </button>
         </div>
       </section>
@@ -271,16 +250,13 @@ export function LibraryRoute() {
           <p className="font-display text-xs">EMPTY SHELF</p>
           <p className="mx-auto mt-2 max-w-sm text-sm text-px-dim">
             {query
-              ? "Nothing matches that search. Clear the search to see everything."
-              : "Finished tracks land here. Convert your first track to fill the shelf."}
+              ? 'Nothing matches that search. Clear the search to see everything.'
+              : 'Finished tracks land here. Convert your first track to fill the shelf.'}
           </p>
         </section>
       ) : (
-        <section
-          className="px-panel divide-y divide-px-line"
-          aria-label="Library files"
-        >
-          {records.map((record) => {
+        <section className="px-panel divide-y divide-px-line" aria-label="Library files">
+          {records.map(record => {
             const isEditing = editingId === record.jobId;
             return (
               <div key={record.jobId} className="px-row min-w-0">
@@ -303,11 +279,9 @@ export function LibraryRoute() {
                     />
                   </button>
                   <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold">
-                      {record.title}
-                    </p>
+                    <p className="truncate text-sm font-semibold">{record.title}</p>
                     <p className="px-tabular truncate text-xs text-px-dim">
-                      {record.author} • {record.format.toUpperCase()} •{" "}
+                      {record.author} • {record.format.toUpperCase()} •{' '}
                       {formatBytes(record.fileSizeBytes)}
                     </p>
                   </div>
@@ -317,7 +291,7 @@ export function LibraryRoute() {
                       className="px-btn !px-2 !py-1 text-xs"
                       onClick={() => {
                         setPlayingId(record.jobId);
-                        setPlayNonce((n) => n + 1);
+                        setPlayNonce(n => n + 1);
                       }}
                       aria-label={`Play ${record.title}`}
                       title="Play in player"
@@ -337,9 +311,7 @@ export function LibraryRoute() {
                       type="button"
                       className="px-btn !px-2 !py-1 text-xs"
                       onClick={() =>
-                        setEditingId((cur) =>
-                          cur === record.jobId ? null : record.jobId,
-                        )
+                        setEditingId(cur => (cur === record.jobId ? null : record.jobId))
                       }
                       aria-expanded={editingId === record.jobId}
                       aria-controls={`library-edit-${record.jobId}`}
@@ -350,7 +322,7 @@ export function LibraryRoute() {
                       }
                       title="Edit trim, tags and advanced options"
                     >
-                      {editingId === record.jobId ? "▾ Edit" : "▸ Edit"}
+                      {editingId === record.jobId ? '▾ Edit' : '▸ Edit'}
                     </button>
                     <button
                       type="button"
@@ -378,17 +350,11 @@ export function LibraryRoute() {
         </section>
       )}
 
-      <section
-        className="sticky bottom-0 z-10 mt-auto"
-        aria-label="Preview player"
-      >
+      <section className="sticky bottom-0 z-10 mt-auto" aria-label="Preview player">
         <AudioPlayer
           job={
             playingRecord
-              ? recordToJob(
-                  playingRecord,
-                  mediaVersions[playingRecord.jobId] ?? 0,
-                )
+              ? recordToJob(playingRecord, mediaVersions[playingRecord.jobId] ?? 0)
               : undefined
           }
           autoPlayNonce={playNonce}
@@ -413,8 +379,7 @@ export function LibraryRoute() {
         >
           <p className="text-sm font-semibold">Delete this file?</p>
           <p className="mt-1 text-sm text-px-dim">
-            The audio file leaves your library folder for good. You cannot undo
-            this.
+            The audio file leaves your library folder for good. You cannot undo this.
           </p>
           <div className="mt-3 flex gap-2">
             <button

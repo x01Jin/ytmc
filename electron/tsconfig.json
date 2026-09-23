@@ -6,6 +6,7 @@
     "target": "ES2022",
     "lib": ["ES2022"],
     "noEmit": false,
+    "allowImportingTsExtensions": false,
     "outDir": "../dist-electron",
     "rootDir": ".",
     "sourceMap": true

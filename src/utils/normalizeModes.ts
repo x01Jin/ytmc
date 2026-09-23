@@ -1,4 +1,4 @@
-import type { NormalizeMode } from "../types";
+import type { NormalizeMode } from '../types';
 
 /**
  * Frontend mirror of server/services/audioFilterService.ts AUDIO_DSP.
@@ -11,24 +11,24 @@ export const NORMALIZE_MODES: {
   hint: string;
 }[] = [
   {
-    id: "off",
-    label: "Off",
-    hint: "Original dynamics, no processing",
+    id: 'off',
+    label: 'Off',
+    hint: 'Original dynamics, no processing',
   },
   {
-    id: "loudness",
-    label: "Loudness · −14 LUFS",
-    hint: "Uniform gain, dynamics + silence preserved (two-pass)",
+    id: 'loudness',
+    label: 'Loudness · −14 LUFS',
+    hint: 'Uniform gain, dynamics + silence preserved (two-pass)',
   },
   {
-    id: "peak",
-    label: "Peak-safe · −1 dBTP",
-    hint: "Never boosts silence",
+    id: 'peak',
+    label: 'Peak-safe · −1 dBTP',
+    hint: 'Never boosts silence',
   },
 ];
 
 export function normalizeModeLabel(mode: NormalizeMode): string {
-  return NORMALIZE_MODES.find((m) => m.id === mode)?.label ?? mode;
+  return NORMALIZE_MODES.find(m => m.id === mode)?.label ?? mode;
 }
 
 /** Migrate legacy drafts: normalizeAudio:true → "loudness". */
@@ -37,10 +37,8 @@ export function migrateNormalizeMode(options: {
   normalizeAudio?: boolean;
 }): NormalizeMode {
   const raw =
-    typeof options.normalizeMode === "string"
-      ? options.normalizeMode.toLowerCase()
-      : undefined;
-  if (raw === "loudness" || raw === "peak" || raw === "off") return raw;
-  if (options.normalizeAudio === true) return "loudness";
-  return "off";
+    typeof options.normalizeMode === 'string' ? options.normalizeMode.toLowerCase() : undefined;
+  if (raw === 'loudness' || raw === 'peak' || raw === 'off') return raw;
+  if (options.normalizeAudio === true) return 'loudness';
+  return 'off';
 }

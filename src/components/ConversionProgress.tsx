@@ -1,12 +1,6 @@
-import {
-  AlertCircle,
-  CheckCircle2,
-  Cookie,
-  Loader2,
-  RotateCw,
-} from "lucide-react";
-import React from "react";
-import { ConversionJob } from "../types";
+import { AlertCircle, CheckCircle2, Cookie, Loader2, RotateCw } from 'lucide-react';
+import React from 'react';
+import { ConversionJob } from '../types';
 
 interface ConversionProgressProps {
   job: ConversionJob;
@@ -21,12 +15,12 @@ export const ConversionProgress: React.FC<ConversionProgressProps> = ({
   onRetry,
   onOpenCookiesModal,
 }) => {
-  const isError = job.status === "error";
-  const isCompleted = job.status === "completed";
+  const isError = job.status === 'error';
+  const isCompleted = job.status === 'completed';
   const isBotBlocked =
     job.isBotBlocked ||
     /sign in to confirm|not a bot|bot|login_required|cookies-from-browser|403/i.test(
-      job.error || "",
+      job.error || ''
     );
 
   return (
@@ -42,17 +36,14 @@ export const ConversionProgress: React.FC<ConversionProgressProps> = ({
           ) : isCompleted ? (
             <CheckCircle2 className="h-5 w-5 text-px-ok" aria-hidden="true" />
           ) : (
-            <Loader2
-              className="h-5 w-5 animate-spin text-px-acc"
-              aria-hidden="true"
-            />
+            <Loader2 className="h-5 w-5 animate-spin text-px-acc" aria-hidden="true" />
           )}
           <h3 className="text-sm font-semibold">
             {isError
-              ? "Conversion Halted"
+              ? 'Conversion Halted'
               : isCompleted
-                ? "Conversion Ready!"
-                : "Converting Audio…"}
+                ? 'Conversion Ready!'
+                : 'Converting Audio…'}
           </h3>
         </div>
         <span className="px-tabular text-xs font-bold" aria-hidden="true">
@@ -71,7 +62,7 @@ export const ConversionProgress: React.FC<ConversionProgressProps> = ({
         <div
           id="conversion-progress-bar"
           className={`px-progress-fill h-full ${
-            isError ? "bg-px-err" : isCompleted ? "bg-px-ok" : "bg-px-acc"
+            isError ? 'bg-px-err' : isCompleted ? 'bg-px-ok' : 'bg-px-acc'
           }`}
           style={{ width: `${Math.max(MIN_BAR_PCT, job.progress)}%` }}
         />
@@ -79,35 +70,25 @@ export const ConversionProgress: React.FC<ConversionProgressProps> = ({
 
       <div className="flex items-center justify-between text-xs">
         <span className="font-medium text-px-dim" aria-live="polite">
-          {job.stageMessage || "Processing track…"}
+          {job.stageMessage || 'Processing track…'}
         </span>
-        <span
-          className="px-tabular font-semibold uppercase text-px-dim"
-          translate="no"
-        >
+        <span className="px-tabular font-semibold uppercase text-px-dim" translate="no">
           {job.format.toUpperCase()} • {job.bitrate}
         </span>
       </div>
 
       {isError && (
-        <div
-          className="space-y-3 border-2 border-px-err bg-px-bg p-4 text-xs"
-          role="alert"
-        >
+        <div className="space-y-3 border-2 border-px-err bg-px-bg p-4 text-xs" role="alert">
           <div className="flex items-start gap-2.5">
-            <AlertCircle
-              className="mt-0.5 h-5 w-5 shrink-0 text-px-err"
-              aria-hidden="true"
-            />
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-px-err" aria-hidden="true" />
             <div className="space-y-1">
               <p className="text-sm font-semibold">
                 {isBotBlocked
-                  ? "YouTube Sign-in Verification Required"
-                  : "Conversion Could Not Complete"}
+                  ? 'YouTube Sign-in Verification Required'
+                  : 'Conversion Could Not Complete'}
               </p>
               <p className="leading-relaxed text-px-dim">
-                {job.error ||
-                  "Audio conversion failed. Try another track or format."}
+                {job.error || 'Audio conversion failed. Try another track or format.'}
               </p>
               {job.errorDetails && (
                 <details className="mt-1 border border-px-line bg-px-panel p-2">
@@ -125,8 +106,8 @@ export const ConversionProgress: React.FC<ConversionProgressProps> = ({
           {isBotBlocked ? (
             <div className="px-panel-raised space-y-2.5 p-3">
               <p className="leading-relaxed text-px-dim">
-                YouTube requires user session authentication or browser cookies
-                for this track in cloud environments.
+                YouTube requires user session authentication or browser cookies for this track in
+                cloud environments.
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <button

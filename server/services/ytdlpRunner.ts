@@ -51,10 +51,15 @@ export async function ensureYtDlp(): Promise<YtDlpLaunch> {
   for (const c of candidates) {
     try {
       const version = await new Promise<string>((resolve, reject) => {
-        execFile(c.command, [...c.prefixArgs, '--version'], { timeout: YTDLP_VERSION_TIMEOUT_MS, env: ytdlpEnv() }, (err, stdout) => {
-          if (err) reject(err);
-          else resolve(String(stdout).trim().split('\n')[0]);
-        });
+        execFile(
+          c.command,
+          [...c.prefixArgs, '--version'],
+          { timeout: YTDLP_VERSION_TIMEOUT_MS, env: ytdlpEnv() },
+          (err, stdout) => {
+            if (err) reject(err);
+            else resolve(String(stdout).trim().split('\n')[0]);
+          }
+        );
       });
       cached = { ...c, version };
       console.log(`yt-dlp ready: ${version} via "${c.command}"`);
@@ -65,7 +70,7 @@ export async function ensureYtDlp(): Promise<YtDlpLaunch> {
   }
 
   console.warn(
-    `WARNING: yt-dlp is not launchable (tried ${candidates.map((c) => c.command).join(', ')}; last error: ${lastError}). ` +
+    `WARNING: yt-dlp is not launchable (tried ${candidates.map(c => c.command).join(', ')}; last error: ${lastError}). ` +
       `Session tests, inspection, and conversion will fail until a working Python launcher or yt-dlp.exe is available.`
   );
   cached = { command: YTDLP_PATH, prefixArgs: [], version: null };

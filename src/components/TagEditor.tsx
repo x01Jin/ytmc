@@ -8,11 +8,11 @@ import {
   Sparkles,
   Trash2,
   Undo2,
-} from "lucide-react";
-import React, { useEffect, useRef, useState } from "react";
-import { ApiClient } from "../services/apiClient";
-import { MusicTagCandidate, MusicTags, TagSource } from "../types";
-import { CoverArtPreview } from "./CoverArtPreview";
+} from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ApiClient } from '../services/apiClient';
+import { MusicTagCandidate, MusicTags, TagSource } from '../types';
+import { CoverArtPreview } from './CoverArtPreview';
 
 interface TagEditorProps {
   initialTags?: MusicTags;
@@ -22,48 +22,42 @@ interface TagEditorProps {
   onChange: (tags: MusicTags) => void;
   onSaveToFile?: (tags: MusicTags) => Promise<void>;
   isSavingToFile?: boolean;
-  mode?: "pre-convert" | "post-convert";
+  mode?: 'pre-convert' | 'post-convert';
 }
 
-function buildDefaultTags(
-  title: string,
-  artist: string,
-  thumbnail: string,
-): MusicTags {
+function buildDefaultTags(title: string, artist: string, thumbnail: string): MusicTags {
   return {
     title,
     artist,
     album: title,
     albumArtist: artist,
-    year: "",
-    genre: "Music",
-    trackNumber: "1",
+    year: '',
+    genre: 'Music',
+    trackNumber: '1',
     coverUrl: thumbnail,
     cleanDescription: true,
-    comment: "YouTube to Music Converter",
+    comment: 'YouTube to Music Converter',
   };
 }
 
 export const TagEditor: React.FC<TagEditorProps> = ({
   initialTags,
-  defaultVideoTitle = "",
-  defaultArtist = "",
-  defaultThumbnail = "",
+  defaultVideoTitle = '',
+  defaultArtist = '',
+  defaultThumbnail = '',
   onChange,
   onSaveToFile,
   isSavingToFile = false,
-  mode = "pre-convert",
+  mode = 'pre-convert',
 }) => {
   const [tags, setTags] = useState<MusicTags>(
-    () =>
-      initialTags ||
-      buildDefaultTags(defaultVideoTitle, defaultArtist, defaultThumbnail),
+    () => initialTags || buildDefaultTags(defaultVideoTitle, defaultArtist, defaultThumbnail)
   );
 
-  const [selectedSource, setSelectedSource] = useState<TagSource>("all");
+  const [selectedSource, setSelectedSource] = useState<TagSource>('all');
   const [candidates, setCandidates] = useState<MusicTagCandidate[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [lastSearchedQuery, setLastSearchedQuery] = useState("");
+  const [lastSearchedQuery, setLastSearchedQuery] = useState('');
   const [appliedSource, setAppliedSource] = useState<string | null>(null);
   const [hasUserEdited, setHasUserEdited] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -74,11 +68,13 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    if (initialTags && !hasUserEdited) {
-      setTags(initialTags);
-    }
-  }, [initialTags]);
+  // Adopt refreshed initial tags until the user edits anything. Done during
+  // render, not in an effect: synchronous updates do not belong in effects.
+  const [prevInitialTags, setPrevInitialTags] = useState(initialTags);
+  if (initialTags && initialTags !== prevInitialTags) {
+    setPrevInitialTags(initialTags);
+    if (!hasUserEdited) setTags(initialTags);
+  }
 
   const performSearch = async (query: string, source: TagSource) => {
     const trimmed = query.trim();
@@ -116,16 +112,52 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     }, 400);
   };
 
+  // Automatic first search for a pre-filled title. The request is staged as
+  // state during render; the effect below performs only the fetch, so its
+  // body stays free of synchronous updates. Typed searches and source
+  // switches call performSearch directly from their event handlers.
+  const [autoSearch, setAutoSearch] = useState<{
+    query: string;
+    source: TagSource;
+  } | null>(null);
+  if (
+    tags.title &&
+    tags.title.trim().length >= 2 &&
+    !lastSearchedQuery &&
+    autoSearch?.query !== tags.title
+  ) {
+    setAutoSearch({ query: tags.title, source: selectedSource });
+    setIsSearching(true);
+  }
+
   useEffect(() => {
-    if (tags.title && tags.title.trim().length >= 2 && !lastSearchedQuery) {
-      performSearch(tags.title, selectedSource);
-    }
+    if (!autoSearch) return;
+    let cancelled = false;
+    ApiClient.searchTags(autoSearch.query.trim(), autoSearch.source)
+      .then(results => {
+        if (cancelled) return;
+        setCandidates(results);
+        setLastSearchedQuery(autoSearch.query.trim());
+        setIsSearching(false);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setCandidates([]);
+        setIsSearching(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [autoSearch]);
+
+  // Debounce timer belongs to typing, not to any fetch: clear it on unmount.
+  useEffect(() => {
     return () => {
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
     };
-  }, [tags.title]);
+  }, []);
 
   const handleSourceChange = (newSource: TagSource) => {
     setSelectedSource(newSource);
@@ -144,7 +176,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
       albumArtist: candidate.albumArtist || candidate.artist,
       year: candidate.year || tags.year,
       genre: candidate.genre || tags.genre,
-      trackNumber: candidate.trackNumber || tags.trackNumber || "1",
+      trackNumber: candidate.trackNumber || tags.trackNumber || '1',
       coverUrl: candidate.coverUrl || tags.coverUrl,
       coverData: undefined,
     };
@@ -152,38 +184,31 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     setTags(updated);
     onChange(updated);
     setAppliedSource(
-      `${candidate.source.toUpperCase()} (${candidate.artist} - ${candidate.title})`,
+      `${candidate.source.toUpperCase()} (${candidate.artist} - ${candidate.title})`
     );
     setTimeout(() => setAppliedSource(null), 4000);
   };
 
   const handleApplyCandidateCover = (candidate: MusicTagCandidate) => {
     if (!candidate.coverUrl) return;
-    handleFieldChange("coverUrl", candidate.coverUrl);
+    handleFieldChange('coverUrl', candidate.coverUrl);
     setAppliedSource(`${candidate.source.toUpperCase()} artwork selected`);
     setTimeout(() => setAppliedSource(null), 4000);
   };
 
-  const handleFieldChange = (
-    field: keyof MusicTags,
-    value: MusicTags[keyof MusicTags],
-  ) => {
+  const handleFieldChange = (field: keyof MusicTags, value: MusicTags[keyof MusicTags]) => {
     setHasUserEdited(true);
     const updated = {
       ...tags,
       [field]: value,
-      ...(field === "coverUrl" ? { coverData: undefined } : {}),
+      ...(field === 'coverUrl' ? { coverData: undefined } : {}),
     };
     setTags(updated);
     onChange(updated);
   };
 
   const handleResetToDefaults = () => {
-    const reset = buildDefaultTags(
-      defaultVideoTitle,
-      defaultArtist,
-      defaultThumbnail,
-    );
+    const reset = buildDefaultTags(defaultVideoTitle, defaultArtist, defaultThumbnail);
     setTags(reset);
     onChange(reset);
     setHasUserEdited(false);
@@ -222,7 +247,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
             id="tag-track-name"
             type="text"
             value={tags.title}
-            onChange={(e) => handleNameInputChange(e.target.value)}
+            onChange={e => handleNameInputChange(e.target.value)}
             placeholder="Type song title (e.g. Never Gonna Give You Up)..."
             className="px-input w-full pr-24 text-sm"
           />
@@ -263,22 +288,20 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           {/* Sources Filter */}
           <div className="flex flex-wrap items-center gap-1 text-[11px]">
             <span className="mr-1 text-px-dim">Source:</span>
-            {(["all", "itunes", "deezer", "musicbrainz"] as TagSource[]).map(
-              (src) => (
-                <button
-                  key={src}
-                  type="button"
-                  onClick={() => handleSourceChange(src)}
-                  className={`border border-transparent px-2 py-0.5 capitalize transition-colors ${
-                    selectedSource === src
-                      ? "bg-px-acc text-[#0b0b12] font-medium"
-                      : "border border-px-line bg-px-panel-2 text-px-dim hover:border-px-acc hover:text-px-text"
-                  }`}
-                >
-                  {src === "musicbrainz" ? "MusicBrainz" : src}
-                </button>
-              ),
-            )}
+            {(['all', 'itunes', 'deezer', 'musicbrainz'] as TagSource[]).map(src => (
+              <button
+                key={src}
+                type="button"
+                onClick={() => handleSourceChange(src)}
+                className={`border border-transparent px-2 py-0.5 capitalize transition-colors ${
+                  selectedSource === src
+                    ? 'bg-px-acc text-[#0b0b12] font-medium'
+                    : 'border border-px-line bg-px-panel-2 text-px-dim hover:border-px-acc hover:text-px-text'
+                }`}
+              >
+                {src === 'musicbrainz' ? 'MusicBrainz' : src}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -298,7 +321,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           </div>
         ) : candidates.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-52 overflow-y-auto pr-1">
-            {candidates.map((c) => (
+            {candidates.map(c => (
               <div
                 key={c.id}
                 onClick={() => handleApplyCandidate(c)}
@@ -308,10 +331,10 @@ export const TagEditor: React.FC<TagEditorProps> = ({
                 {c.coverUrl ? (
                   <button
                     type="button"
-                    onClick={(event) => {
+                    onClick={event => {
                       event.stopPropagation();
                       setArtPreview({
-                        src: c.coverUrl ?? "",
+                        src: c.coverUrl ?? '',
                         title: `${c.title} • ${c.artist}`,
                       });
                     }}
@@ -338,11 +361,11 @@ export const TagEditor: React.FC<TagEditorProps> = ({
                     </p>
                     <span
                       className={`border px-1 text-[9px] font-bold uppercase tracking-wider ${
-                        c.source === "itunes"
-                          ? "border border-px-line bg-px-panel-2 text-px-acc"
-                          : c.source === "deezer"
-                            ? "border border-px-line bg-px-panel-2 text-px-acc"
-                            : "border border-px-line bg-px-panel-2 text-px-warn"
+                        c.source === 'itunes'
+                          ? 'border border-px-line bg-px-panel-2 text-px-acc'
+                          : c.source === 'deezer'
+                            ? 'border border-px-line bg-px-panel-2 text-px-acc'
+                            : 'border border-px-line bg-px-panel-2 text-px-warn'
                       }`}
                     >
                       {c.source}
@@ -350,13 +373,13 @@ export const TagEditor: React.FC<TagEditorProps> = ({
                   </div>
                   <p className="truncate text-[11px] text-px-dim">{c.artist}</p>
                   <p className="truncate text-[10px] text-px-dim">
-                    {c.album || "Single"} {c.year ? `• ${c.year}` : ""}{" "}
-                    {c.genre ? `• ${c.genre}` : ""}
+                    {c.album || 'Single'} {c.year ? `• ${c.year}` : ''}{' '}
+                    {c.genre ? `• ${c.genre}` : ''}
                   </p>
                   {c.coverUrl && (
                     <button
                       type="button"
-                      onClick={(event) => {
+                      onClick={event => {
                         event.stopPropagation();
                         handleApplyCandidateCover(c);
                       }}
@@ -374,7 +397,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           <div className="py-2.5 text-center text-xs text-px-dim">
             {tags.title.trim()
               ? `No exact matches found for "${tags.title}". You can refine the title above or fill out the tags manually below.`
-              : "Enter a track title above to detect tags from iTunes, Deezer, and MusicBrainz."}
+              : 'Enter a track title above to detect tags from iTunes, Deezer, and MusicBrainz.'}
           </div>
         )}
       </div>
@@ -383,17 +406,14 @@ export const TagEditor: React.FC<TagEditorProps> = ({
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
         {/* Artist Field */}
         <div className="space-y-1">
-          <label
-            htmlFor="tag-artist"
-            className="text-xs font-semibold text-px-text"
-          >
+          <label htmlFor="tag-artist" className="text-xs font-semibold text-px-text">
             Artist / Performer
           </label>
           <input
             id="tag-artist"
             type="text"
             value={tags.artist}
-            onChange={(e) => handleFieldChange("artist", e.target.value)}
+            onChange={e => handleFieldChange('artist', e.target.value)}
             placeholder="Artist name..."
             className="px-input w-full py-1.5 text-xs"
           />
@@ -401,17 +421,14 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
         {/* Album Field */}
         <div className="space-y-1">
-          <label
-            htmlFor="tag-album"
-            className="text-xs font-semibold text-px-text"
-          >
+          <label htmlFor="tag-album" className="text-xs font-semibold text-px-text">
             Album
           </label>
           <input
             id="tag-album"
             type="text"
             value={tags.album}
-            onChange={(e) => handleFieldChange("album", e.target.value)}
+            onChange={e => handleFieldChange('album', e.target.value)}
             placeholder="Album title..."
             className="px-input w-full py-1.5 text-xs"
           />
@@ -419,17 +436,14 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
         {/* Year / Release Date */}
         <div className="space-y-1">
-          <label
-            htmlFor="tag-year"
-            className="text-xs font-semibold text-px-text"
-          >
+          <label htmlFor="tag-year" className="text-xs font-semibold text-px-text">
             Release Year
           </label>
           <input
             id="tag-year"
             type="text"
-            value={tags.year || ""}
-            onChange={(e) => handleFieldChange("year", e.target.value)}
+            value={tags.year || ''}
+            onChange={e => handleFieldChange('year', e.target.value)}
             placeholder="e.g. 1987, 2024"
             className="px-input w-full py-1.5 text-xs"
           />
@@ -437,17 +451,14 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
         {/* Genre */}
         <div className="space-y-1">
-          <label
-            htmlFor="tag-genre"
-            className="text-xs font-semibold text-px-text"
-          >
+          <label htmlFor="tag-genre" className="text-xs font-semibold text-px-text">
             Genre
           </label>
           <input
             id="tag-genre"
             type="text"
-            value={tags.genre || ""}
-            onChange={(e) => handleFieldChange("genre", e.target.value)}
+            value={tags.genre || ''}
+            onChange={e => handleFieldChange('genre', e.target.value)}
             placeholder="e.g. Pop, Synthwave, Rock"
             className="px-input w-full py-1.5 text-xs"
           />
@@ -455,17 +466,14 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
         {/* Track Number */}
         <div className="space-y-1">
-          <label
-            htmlFor="tag-track-number"
-            className="text-xs font-semibold text-px-text"
-          >
+          <label htmlFor="tag-track-number" className="text-xs font-semibold text-px-text">
             Track #
           </label>
           <input
             id="tag-track-number"
             type="text"
-            value={tags.trackNumber || ""}
-            onChange={(e) => handleFieldChange("trackNumber", e.target.value)}
+            value={tags.trackNumber || ''}
+            onChange={e => handleFieldChange('trackNumber', e.target.value)}
             placeholder="e.g. 1 or 1/12"
             className="px-input w-full py-1.5 text-xs"
           />
@@ -473,17 +481,14 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
         {/* Album Artist */}
         <div className="space-y-1">
-          <label
-            htmlFor="tag-album-artist"
-            className="text-xs font-semibold text-px-text"
-          >
+          <label htmlFor="tag-album-artist" className="text-xs font-semibold text-px-text">
             Album Artist (Optional)
           </label>
           <input
             id="tag-album-artist"
             type="text"
-            value={tags.albumArtist || ""}
-            onChange={(e) => handleFieldChange("albumArtist", e.target.value)}
+            value={tags.albumArtist || ''}
+            onChange={e => handleFieldChange('albumArtist', e.target.value)}
             placeholder="Defaults to Artist..."
             className="px-input w-full py-1.5 text-xs"
           />
@@ -497,7 +502,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           {tags.coverUrl && (
             <button
               type="button"
-              onClick={() => handleFieldChange("coverUrl", "")}
+              onClick={() => handleFieldChange('coverUrl', '')}
               className="flex items-center gap-1 text-[11px] text-px-acc hover:text-px-text"
             >
               <Trash2 className="w-3 h-3" /> Remove Cover
@@ -511,7 +516,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
               type="button"
               onClick={() =>
                 setArtPreview({
-                  src: tags.coverUrl ?? "",
+                  src: tags.coverUrl ?? '',
                   title: tags.album || tags.title,
                 })
               }
@@ -538,13 +543,13 @@ export const TagEditor: React.FC<TagEditorProps> = ({
               type="file"
               accept="image/*"
               className="sr-only"
-              onChange={(event) => {
+              onChange={event => {
                 const file = event.target.files?.[0];
-                event.target.value = "";
+                event.target.value = '';
                 if (!file || file.size > 8 * 1024 * 1024) return;
                 const reader = new FileReader();
-                reader.onload = () => {
-                  if (typeof reader.result !== "string") return;
+                reader.addEventListener('load', () => {
+                  if (typeof reader.result !== 'string') return;
                   setHasUserEdited(true);
                   const updated = {
                     ...tags,
@@ -553,7 +558,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
                   };
                   setTags(updated);
                   onChange(updated);
-                };
+                });
                 reader.readAsDataURL(file);
               }}
             />
@@ -567,15 +572,15 @@ export const TagEditor: React.FC<TagEditorProps> = ({
             </button>
             <input
               type="text"
-              value={tags.coverUrl || ""}
-              onChange={(e) => handleFieldChange("coverUrl", e.target.value)}
+              value={tags.coverUrl || ''}
+              onChange={e => handleFieldChange('coverUrl', e.target.value)}
               placeholder="Cover Art URL (paste image link or use autotagger above)..."
               className="px-input w-full py-1.5 text-xs"
             />
             {defaultThumbnail && tags.coverUrl !== defaultThumbnail && (
               <button
                 type="button"
-                onClick={() => handleFieldChange("coverUrl", defaultThumbnail)}
+                onClick={() => handleFieldChange('coverUrl', defaultThumbnail)}
                 className="text-[11px] text-px-dim underline hover:text-px-text"
               >
                 Use original YouTube thumbnail
@@ -591,16 +596,14 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           <input
             type="checkbox"
             checked={tags.cleanDescription !== false}
-            onChange={(e) =>
-              handleFieldChange("cleanDescription", e.target.checked)
-            }
+            onChange={e => handleFieldChange('cleanDescription', e.target.checked)}
             className="h-3.5 w-3.5 accent-[#7c5cff]"
           />
           <span>Strip lengthy YouTube video descriptions from audio tags</span>
         </label>
 
         {/* If in post-convert mode, offer explicit "Apply Tags to Audio File" action */}
-        {mode === "post-convert" && onSaveToFile && (
+        {mode === 'post-convert' && onSaveToFile && (
           <button
             type="button"
             disabled={isSavingToFile}

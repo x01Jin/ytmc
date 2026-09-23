@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme {
   --color-px-bg: #0b0b12;
@@ -12,8 +12,8 @@
   --color-px-warn: #ffb020;
   --color-px-err: #ff5470;
 
-  --font-display: "Press Start 2P", "IBM Plex Mono", ui-monospace, monospace;
-  --font-body: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-display: 'Press Start 2P', 'IBM Plex Mono', ui-monospace, monospace;
+  --font-body: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 html {

@@ -1,36 +1,30 @@
-import { useCallback, useEffect, useState } from "react";
-import type { ReactNode } from "react";
-import { Github } from "lucide-react";
+import React, { useCallback, useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
+import { Github } from 'lucide-react';
 
-export type AppRoute = "convert" | "library" | "history" | "queue" | "settings";
+export type AppRoute = 'convert' | 'library' | 'history' | 'queue' | 'settings';
 
-const ROUTES: AppRoute[] = [
-  "convert",
-  "library",
-  "history",
-  "queue",
-  "settings",
-];
+const ROUTES: AppRoute[] = ['convert', 'library', 'history', 'queue', 'settings'];
 
 const ROUTE_LABELS: Record<AppRoute, string> = {
-  convert: "Convert",
-  library: "Library",
-  history: "History",
-  queue: "Queue",
-  settings: "Settings",
+  convert: 'Convert',
+  library: 'Library',
+  history: 'History',
+  queue: 'Queue',
+  settings: 'Settings',
 };
 
 const ROUTE_GLYPHS: Record<AppRoute, string> = {
-  convert: "▶",
-  library: "♫",
-  history: "↺",
-  queue: "☰",
-  settings: "⚙",
+  convert: '▶',
+  library: '♫',
+  history: '↺',
+  queue: '☰',
+  settings: '⚙',
 };
 
 function routeFromHash(): AppRoute {
-  const hash = window.location.hash.replace(/^#\/?/, "");
-  return (ROUTES as string[]).includes(hash) ? (hash as AppRoute) : "convert";
+  const hash = window.location.hash.replace(/^#\/?/, '');
+  return (ROUTES as string[]).includes(hash) ? (hash as AppRoute) : 'convert';
 }
 
 export function useHashRoute(): {
@@ -41,8 +35,8 @@ export function useHashRoute(): {
 
   useEffect(() => {
     const onChange = () => setRoute(routeFromHash());
-    window.addEventListener("hashchange", onChange);
-    return () => window.removeEventListener("hashchange", onChange);
+    window.addEventListener('hashchange', onChange);
+    return () => window.removeEventListener('hashchange', onChange);
   }, []);
 
   const navigate = useCallback((next: AppRoute) => {
@@ -63,10 +57,7 @@ export function TitleBar() {
         height={24}
         className="px-pixelated h-6 w-6 shrink-0"
       />
-      <h1
-        className="font-display text-[11px] leading-none tracking-wide"
-        translate="no"
-      >
+      <h1 className="font-display text-[11px] leading-none tracking-wide" translate="no">
         YT<span className="text-px-acc">★</span>MUSIC
       </h1>
       <span className="text-[11px] text-px-dim">Converter</span>
@@ -99,25 +90,22 @@ export function SideNav({
       aria-label="Primary"
       className="px-panel flex shrink-0 flex-row gap-1 p-2 sm:w-40 sm:min-h-0 sm:flex-col sm:overflow-y-auto"
     >
-      {ROUTES.map((r) => {
+      {ROUTES.map(r => {
         const active = r === route;
         return (
           <button
             key={r}
             type="button"
             onClick={() => onNavigate(r)}
-            aria-current={active ? "page" : undefined}
+            aria-current={active ? 'page' : undefined}
             className={`px-btn flex flex-1 items-center gap-2 !border-0 text-left text-sm sm:flex-none ${
-              active ? "!bg-px-acc !text-[#0b0b12]" : ""
+              active ? '!bg-px-acc !text-[#0b0b12]' : ''
             }`}
           >
             <span aria-hidden="true">{ROUTE_GLYPHS[r]}</span>
             {ROUTE_LABELS[r]}
-            {r === "queue" && queueCount > 0 && (
-              <span
-                className="px-tabular ml-auto text-xs"
-                aria-label={`${queueCount} active jobs`}
-              >
+            {r === 'queue' && queueCount > 0 && (
+              <span className="px-tabular ml-auto text-xs" aria-label={`${queueCount} active jobs`}>
                 {queueCount}
               </span>
             )}
@@ -150,19 +138,13 @@ export function StatusBar({
     >
       <span title="Conversion engine">
         ENG
-        <span
-          aria-hidden="true"
-          className={engineOk ? "text-px-ok" : "text-px-err"}
-        >
+        <span aria-hidden="true" className={engineOk ? 'text-px-ok' : 'text-px-err'}>
           ●
         </span>
       </span>
       <span title="YouTube session">
         SES
-        <span
-          aria-hidden="true"
-          className={sessionOk ? "text-px-ok" : "text-px-warn"}
-        >
+        <span aria-hidden="true" className={sessionOk ? 'text-px-ok' : 'text-px-warn'}>
           ●
         </span>
       </span>
@@ -174,9 +156,7 @@ export function StatusBar({
       >
         ♫ <span className="underline decoration-dotted">{folderLabel}</span>
       </button>
-      {fileCount !== null && (
-        <span className="px-tabular">{fileCount} files</span>
-      )}
+      {fileCount !== null && <span className="px-tabular">{fileCount} files</span>}
       {totalSize !== null && <span className="px-tabular">{totalSize}</span>}
     </footer>
   );
@@ -185,10 +165,7 @@ export function StatusBar({
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-dvh flex-col gap-2 overflow-hidden bg-px-bg p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] font-body text-px-text">
-      <a
-        href="#main"
-        className="sr-only focus:not-sr-only focus:px-2 focus:py-1 focus:outline-2"
-      >
+      <a href="#main" className="sr-only focus:not-sr-only focus:px-2 focus:py-1 focus:outline-2">
         Skip to main content
       </a>
       {children}
@@ -197,11 +174,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 }
 
 export function ShellMain({ children }: { children: ReactNode }) {
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-2 sm:flex-row">
-      {children}
-    </div>
-  );
+  return <div className="flex min-h-0 flex-1 flex-col gap-2 sm:flex-row">{children}</div>;
 }
 
 export function ShellContent({ children }: { children: ReactNode }) {

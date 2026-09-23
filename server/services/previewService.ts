@@ -1,8 +1,8 @@
-import { execFile } from "child_process";
-import crypto from "crypto";
-import fs from "fs";
-import path from "path";
-import { DATA_DIR, FFMPEG_PATH } from "../config.js";
+import { execFile } from 'child_process';
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import { DATA_DIR, FFMPEG_PATH } from '../config.js';
 
 /**
  * Cached MP3 previews for in-app playback.
@@ -13,25 +13,25 @@ import { DATA_DIR, FFMPEG_PATH } from "../config.js";
  * Previews are listening copies only. Downloads, tags, and trims always use
  * the original.
  */
-export const PREVIEW_ELIGIBLE_FORMATS = new Set(["opus", "m4a"]);
+export const PREVIEW_ELIGIBLE_FORMATS = new Set(['opus', 'm4a']);
 
-const PREVIEW_SUFFIX = ".preview.mp3";
+const PREVIEW_SUFFIX = '.preview.mp3';
 const PREVIEW_TIMEOUT_MS = 120000;
 const FFMPEG_ERROR_TAIL = 800;
 
 function ffmpegCmd(): string {
-  return fs.existsSync(FFMPEG_PATH) ? FFMPEG_PATH : "ffmpeg";
+  return fs.existsSync(FFMPEG_PATH) ? FFMPEG_PATH : 'ffmpeg';
 }
 
 function previewsDir(): string {
-  const dir = path.join(DATA_DIR, "previews");
+  const dir = path.join(DATA_DIR, 'previews');
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
 /** Job ids can contain characters illegal in file names (`:` on Windows), so cache files use a hash. */
 function cacheKey(jobId: string): string {
-  return crypto.createHash("sha1").update(jobId, "utf8").digest("hex");
+  return crypto.createHash('sha1').update(jobId, 'utf8').digest('hex');
 }
 
 function previewPath(jobId: string): string {
@@ -55,25 +55,22 @@ function runFfmpeg(args: string[]): Promise<void> {
 /** Single-flight transcodes so concurrent range requests share one FFmpeg run. */
 const pending = new Map<string, Promise<string>>();
 
-export class PreviewService {
-  public static isEligible(ext: string): boolean {
-    return PREVIEW_ELIGIBLE_FORMATS.has(ext.replace(/^\./, "").toLowerCase());
+export namespace PreviewService {
+  export function isEligible(ext: string): boolean {
+    return PREVIEW_ELIGIBLE_FORMATS.has(ext.replace(/^\./, '').toLowerCase());
   }
 
   /**
    * Return the cached MP3 preview, transcoding on first request. The cache
    * validates against source mtime/size, so trims and retags regenerate it.
    */
-  public static async getOrCreate(
-    jobId: string,
-    sourcePath: string,
-  ): Promise<string> {
-    const ext = path.extname(sourcePath).replace(".", "").toLowerCase();
-    if (!this.isEligible(ext)) {
+  export async function getOrCreate(jobId: string, sourcePath: string): Promise<string> {
+    const ext = path.extname(sourcePath).replace('.', '').toLowerCase();
+    if (!isEligible(ext)) {
       throw new Error(`Preview not supported for .${ext} files.`);
     }
     if (!fs.existsSync(sourcePath)) {
-      throw new Error("Audio file not found on disk.");
+      throw new Error('Audio file not found on disk.');
     }
     const out = previewPath(jobId);
     try {
@@ -95,15 +92,15 @@ export class PreviewService {
         // Raw audio only. No filters, no loudness, no volume. LAME VBR 0 is
         // the encoder's highest quality mode.
         await runFfmpeg([
-          "-y",
-          "-i",
+          '-y',
+          '-i',
           sourcePath,
-          "-map",
-          "0:a",
-          "-c:a",
-          "libmp3lame",
-          "-q:a",
-          "0",
+          '-map',
+          '0:a',
+          '-c:a',
+          'libmp3lame',
+          '-q:a',
+          '0',
           tmp,
         ]);
         fs.renameSync(tmp, out);
@@ -122,7 +119,7 @@ export class PreviewService {
   }
 
   /** Drop the cached preview (trim, retag, format change, delete). */
-  public static invalidate(jobId: string): void {
+  export function invalidate(jobId: string): void {
     pending.delete(jobId);
     try {
       const out = previewPath(jobId);
@@ -131,8 +128,8 @@ export class PreviewService {
   }
 
   /** Remove previews whose job id is no longer in the library/job index. */
-  public static sweepOrphans(validIds: Set<string>): number {
-    const validKeys = new Set([...validIds].map((id) => cacheKey(id)));
+  export function sweepOrphans(validIds: Set<string>): number {
+    const validKeys = new Set([...validIds].map(id => cacheKey(id)));
     let removed = 0;
     let entries: string[] = [];
     try {

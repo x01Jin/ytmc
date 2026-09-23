@@ -1,13 +1,7 @@
-export type AudioFormat = "best" | "opus" | "m4a" | "mp3" | "flac" | "wav";
-export type AudioBitrate =
-  | "native"
-  | "160k"
-  | "128k"
-  | "192k"
-  | "256k"
-  | "320k";
+export type AudioFormat = 'best' | 'opus' | 'm4a' | 'mp3' | 'flac' | 'wav';
+export type AudioBitrate = 'native' | '160k' | '128k' | '192k' | '256k' | '320k';
 
-export type TagSource = "all" | "itunes" | "deezer" | "musicbrainz";
+export type TagSource = 'all' | 'itunes' | 'deezer' | 'musicbrainz';
 
 export interface NativeAudioStreamInfo {
   formatId: string;
@@ -35,7 +29,7 @@ export interface MusicTags {
 
 export interface MusicTagCandidate {
   id: string;
-  source: "itunes" | "deezer" | "musicbrainz";
+  source: 'itunes' | 'deezer' | 'musicbrainz';
   title: string;
   artist: string;
   album: string;
@@ -80,14 +74,9 @@ export interface ConversionOptions {
   embedThumbnail: boolean;
 }
 
-export type NormalizeMode = "off" | "loudness" | "peak";
+export type NormalizeMode = 'off' | 'loudness' | 'peak';
 
-export type JobStatus =
-  | "queued"
-  | "downloading"
-  | "converting"
-  | "completed"
-  | "error";
+export type JobStatus = 'queued' | 'downloading' | 'converting' | 'completed' | 'error';
 
 export interface ConversionJob {
   id: string;
@@ -144,7 +133,7 @@ export interface AppSettings {
 
 export interface LibraryRecord {
   jobId: string;
-  source?: "conversion" | "import";
+  source?: 'conversion' | 'import';
   videoId: string;
   title: string;
   author: string;

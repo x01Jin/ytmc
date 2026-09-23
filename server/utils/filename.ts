@@ -1,11 +1,51 @@
 import fs from 'fs';
 import path from 'path';
 
-const ILLEGAL_CHARS = /[<>:"/\\|?*\x00-\x1F]/g;
+function stripIllegalChars(name: string): string {
+  let out = '';
+  for (const ch of name) {
+    const code = ch.charCodeAt(0);
+    if (
+      ch === '<' ||
+      ch === '>' ||
+      ch === ':' ||
+      ch === '"' ||
+      ch === '/' ||
+      ch === '\\' ||
+      ch === '|' ||
+      ch === '?' ||
+      ch === '*' ||
+      code <= 0x1f
+    ) {
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
 const RESERVED_NAMES = new Set([
-  'CON', 'PRN', 'AUX', 'NUL',
-  'COM1', 'COM2', 'COM3', 'COM4', 'COM5', 'COM6', 'COM7', 'COM8', 'COM9',
-  'LPT1', 'LPT2', 'LPT3', 'LPT4', 'LPT5', 'LPT6', 'LPT7', 'LPT8', 'LPT9',
+  'CON',
+  'PRN',
+  'AUX',
+  'NUL',
+  'COM1',
+  'COM2',
+  'COM3',
+  'COM4',
+  'COM5',
+  'COM6',
+  'COM7',
+  'COM8',
+  'COM9',
+  'LPT1',
+  'LPT2',
+  'LPT3',
+  'LPT4',
+  'LPT5',
+  'LPT6',
+  'LPT7',
+  'LPT8',
+  'LPT9',
 ]);
 
 const MAX_SEGMENT_LENGTH = 100;
@@ -13,8 +53,7 @@ const DEFAULT_EXT = 'opus';
 const DEDUPE_COUNTER_WIDTH = 2;
 
 export function sanitizeSegment(name: string, maxLength = MAX_SEGMENT_LENGTH): string {
-  let clean = name
-    .replace(ILLEGAL_CHARS, '')
+  let clean = stripIllegalChars(name)
     .replace(/\s+/g, ' ')
     .trim()
     .replace(/[. ]+$/, '');
