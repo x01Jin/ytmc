@@ -20,4 +20,4 @@ Rows come from the history endpoint (`GET /api/history`), backed by the persiste
 
 ## Re-convert handoff
 
-Re-convert uses a one-shot `pendingInspectUrl` field on the convert draft (`ConvertDraftProvider` in `src/store/appStore.tsx`). The History tab sets the draft URL, queues the inspect URL, and navigates to `#/convert`. The Convert route consumes the queued URL exactly once — pasting it into the input and running inspection — then clears it. The queued URL lives in memory only and is never written to `localStorage`.
+Re-convert uses a one-shot `pendingInspectUrl` field on the convert draft (`ConvertDraftProvider` in `src/store/appStore.tsx`). The History tab and YouTube search results set the draft URL, queue the inspect URL, and navigate to `#/convert`. The Convert route consumes the queued URL exactly once — pasting it into the input and running inspection — then clears it. The queued URL lives in memory only and is never written to `localStorage`.

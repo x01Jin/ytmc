@@ -1,6 +1,6 @@
 # YouTube to Music Converter Documentation
 
-Welcome to the technical documentation for **YouTube to Music Converter**, an application designed to extract and convert YouTube audio into high-fidelity music formats (MP3, M4A, FLAC, WAV, and Opus) with custom bitrates, trimming, volume normalization, and ID3 tag embedding.
+Welcome to the technical documentation for **YouTube to Music Converter**, an application designed to search YouTube in-app and extract and convert YouTube audio into high-fidelity music formats (MP3, M4A, FLAC, WAV, and Opus) with custom bitrates, trimming, volume normalization, and ID3 tag embedding.
 
 ---
 
@@ -12,7 +12,7 @@ Explore the documentation guides below:
    Detailed breakdown of the full-stack architecture, modular service design, single-purpose scripting patterns, and lifecycle management.
 
 2. **[API Reference](api-reference.md)**  
-   Complete specifications for all REST API endpoints (`/api/info`, `/api/convert`, `/api/status`, `/api/stream`, `/api/download`, `/api/cookies`, `/api/demo-tracks`).
+   Complete specifications for all REST API endpoints (`/api/info`, `/api/youtube/search`, `/api/convert`, `/api/status`, `/api/jobs`, `/api/stream`, `/api/download`, `/api/cookies`, `/api/demo-tracks`, `/api/library`, `/api/history`).
 
 3. **[Audio Conversion Engine](audio-engine.md)**  
    How the audio pipeline processes streams, executes FFmpeg encoding, manages variable/constant bitrates, cuts segments, and injects ID3 tags and album cover art.
@@ -25,3 +25,6 @@ Explore the documentation guides below:
 
 6. **[Conversion History](history.md)**  
    How finished conversions are recorded with cover art and source links, and how the one-click re-convert handoff to the Convert tab works.
+
+7. **[YouTube Search & Preview](youtube-search.md)**  
+   How in-app YouTube search, embed preview, link copy, Convert handoff, and open-in-browser work.

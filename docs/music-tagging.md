@@ -80,9 +80,4 @@ The audio tag service (`server/services/audioTagService.ts`) handles format-spec
 
 ## 7. Dark Theme
 
-The application includes full native dark mode:
-
-- Controlled via the `dark` class on the root HTML element.
-- Tailwind CSS `dark:` variant utilities throughout all components.
-- Persistent state saved to `localStorage` under `theme` (`'light'` or `'dark'`).
-- System color scheme detection on initial visit with seamless manual toggling in the header.
+The application uses a dark-only pixel-art theme (`color-scheme: dark` in `src/index.css`, pixel tokens plus `Press Start 2P` + `IBM Plex Mono`). There is no light mode or theme toggle.

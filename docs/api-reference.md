@@ -48,7 +48,43 @@ Fetches video metadata and inspects available YouTube native audio streams for a
 
 ---
 
-## 2. Audio Conversion & Direct Stream Extraction
+## 2. YouTube Search
+
+### `GET /api/youtube/search`
+
+Searches YouTube and returns lightweight result rows for the YouTube tab. Results power preview playback, link copy, the Send-to-Convert handoff, and open-in-browser.
+
+#### Query Parameters
+
+| Parameter | Type     | Required | Description                                        |
+| --------- | -------- | -------- | -------------------------------------------------- |
+| `q`       | `string` | Yes      | Search text, trimmed and capped at 120 characters. |
+| `limit`   | `number` | No       | Max results, clamped to 1–25 (default `12`).       |
+
+#### Response (`200 OK`)
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "dQw4w9WgXcQ",
+      "title": "Rick Astley - Never Gonna Give You Up (Official Video)",
+      "author": "Rick Astley",
+      "thumbnail": "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg",
+      "duration": "3:33",
+      "durationSeconds": 213,
+      "viewCount": 1600000000
+    }
+  ]
+}
+```
+
+`duration`, `durationSeconds`, and `viewCount` appear only when the search entry reports them. Entries without a valid 11-character video id are dropped. Errors: `400` when `q` is missing, `502` when YouTube demands session verification, `500` on other search failures.
+
+---
+
+## 3. Audio Conversion & Direct Stream Extraction
 
 ### `POST /api/convert`
 
@@ -64,21 +100,22 @@ Initiates an asynchronous audio extraction or conversion job. When `format` is `
   "trimStart": "00:00",
   "trimEnd": "00:30",
   "volumeBoost": 100,
-  "normalizeAudio": false,
+  "normalizeMode": "off",
   "embedThumbnail": true
 }
 ```
 
-| Field            | Type      | Default    | Description                                                                      |
-| ---------------- | --------- | ---------- | -------------------------------------------------------------------------------- |
-| `url`            | `string`  | Required   | YouTube video URL or ID.                                                         |
-| `format`         | `string`  | `"best"`   | One of: `"best"`, `"opus"`, `"m4a"`, `"mp3"`, `"flac"`, `"wav"`.                 |
-| `bitrate`        | `string`  | `"native"` | One of: `"native"` (~160k source match), `"128k"`, `"192k"`, `"256k"`, `"320k"`. |
-| `trimStart`      | `string`  | Optional   | Start timestamp (`"MM:SS"` or seconds integer).                                  |
-| `trimEnd`        | `string`  | Optional   | End timestamp (`"MM:SS"` or seconds integer).                                    |
-| `volumeBoost`    | `number`  | `100`      | Volume percentage (`100`, `125`, `150`).                                         |
-| `normalizeAudio` | `boolean` | `false`    | Apply EBU R128 loudness normalization (`loudnorm`).                              |
-| `embedThumbnail` | `boolean` | `true`     | Embed the YouTube thumbnail as cover art with title/artist tags.                 |
+| Field            | Type      | Default    | Description                                                                                                       |
+| ---------------- | --------- | ---------- | ----------------------------------------------------------------------------------------------------------------- |
+| `url`            | `string`  | Required   | YouTube video URL or ID.                                                                                          |
+| `format`         | `string`  | `"best"`   | One of: `"best"`, `"opus"`, `"m4a"`, `"mp3"`, `"flac"`, `"wav"`.                                                  |
+| `bitrate`        | `string`  | `"native"` | One of: `"native"`, `"160k"`, `"128k"`, `"192k"`, `"256k"`, `"320k"`.                                             |
+| `trimStart`      | `string`  | Optional   | Start timestamp (`"MM:SS"` or seconds integer).                                                                   |
+| `trimEnd`        | `string`  | Optional   | End timestamp (`"MM:SS"` or seconds integer).                                                                     |
+| `volumeBoost`    | `number`  | `100`      | Volume percentage. One of `100`, `125`, `150`. Ignored in `loudness` mode.                                        |
+| `normalizeMode`  | `string`  | `"off"`    | One of: `"off"`, `"loudness"` (−14 LUFS uniform gain), `"peak"` (−1 dBTP peak-safe). Invalid values return `400`. |
+| `normalizeAudio` | `boolean` | `false`    | Legacy flag: `true` maps to `"loudness"` when `normalizeMode` is absent.                                          |
+| `embedThumbnail` | `boolean` | `true`     | Embed the YouTube thumbnail as cover art with title/artist tags.                                                  |
 
 #### Response (`200 OK`)
 
@@ -103,7 +140,7 @@ Initiates an asynchronous audio extraction or conversion job. When `format` is `
 
 ---
 
-## 3. Job Status Polling
+## 4. Job Status Polling
 
 ### `GET /api/status/:id`
 
@@ -135,9 +172,17 @@ Retrieves current progress and status for a specific conversion job.
 }
 ```
 
+### `GET /api/jobs`
+
+Lists recent live conversion jobs (the Queue view). Finished jobs clear out to Library + History.
+
+### `GET /api/demo-tracks`
+
+Returns the pre-verified demo track list shown as quick-pick buttons next to the URL input.
+
 ---
 
-## 4. Audio Streaming & Downloading
+## 5. Audio Streaming & Downloading
 
 ### `GET /api/stream/:id`
 
@@ -157,7 +202,7 @@ Downloads the audio file directly to the client's file system with clean `Conten
 
 ---
 
-## 5. Session Authentication & Verification
+## 6. Session Authentication & Verification
 
 ### `GET /api/cookies`
 
@@ -198,7 +243,7 @@ Purges existing session and guest cookies from the server.
 
 ---
 
-## 6. Music Tagging & Autotagger
+## 7. Music Tagging & Autotagger
 
 ### `GET /api/tags/search`
 
@@ -259,7 +304,7 @@ Clears all history entries. The library is untouched.
 
 ---
 
-## 7. Library Settings & On-Disk Library
+## 9. Library Settings & On-Disk Library
 
 All mutating calls below must send the per-process `x-loopback-token` header published by `GET /api/health`. The backend also rejects any request whose `Host` header is not loopback.
 
@@ -282,6 +327,26 @@ Lists persistent conversion records (`data/library.json`) plus unindexed audio f
 ### `DELETE /api/library/:id`
 
 Deletes the file from the library folder (behind a confirm step in the UI) and drops its index entry.
+
+### `POST /api/library/import`
+
+Copies a local audio file (MP3, M4A, FLAC, WAV, Opus) into the library folder without transcoding. Reads embedded tags with `ffprobe` for the new record.
+
+### `GET /api/library/:id/artwork`
+
+Serves the embedded cover art of a library track (`Cache-Control: no-cache`). Used for imported-file thumbnails.
+
+### `GET /api/library/:id/probe`
+
+Probes a library track for the trimmer preview. Returns `{ durationSeconds, format, sizeBytes }`.
+
+### `POST /api/library/:id/trim`
+
+Trims a library track in place, cutting `[start, end)` and overwriting the file. Body: `{ start: "0:15" | "15", end?: "2:45" | "" }` — blank `end` keeps the tail. Rejects invalid times, ranges past the track end, and files outside the library folder.
+
+### `POST /api/library/:id/edit`
+
+Edits a library track in place: format conversion (`mp3`, `m4a`, `opus`, `flac`, `wav`), DSP options (`normalizeMode`, `volumeBoost`), and identity fields (`title`, `artist`). Title cannot be empty; invalid `normalizeMode` or gain returns `400`.
 
 ### `POST /api/files/reveal`
 

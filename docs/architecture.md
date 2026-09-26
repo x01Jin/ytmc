@@ -19,14 +19,8 @@ The YouTube to Music Converter is a Windows desktop app: an Electron shell aroun
                            ▼
 ┌────────────────────────────────────────────────────────┐
 │              React 19 Frontend (AppShell)              │
-│  Convert / Library / History / Queue / Settings (hash routes)    │
+│  Convert / YouTube / Library / History / Queue / Settings (hash routes)    │
 │  Jobs + Library + Settings + Session providers         │
-└──────────────────────────┬─────────────────────────────┘
-                           │ HTTP / JSON / Range Streams
-                           ▼
-┌────────────────────────────────────────────────────────┐
-│                   React 18 Frontend                    │
-│   (Vite + Tailwind CSS + Lucide Icons + HTML5 Audio)   │
 └──────────────────────────┬─────────────────────────────┘
                            │ HTTP / JSON / Range Streams
                            ▼
@@ -35,6 +29,7 @@ The YouTube to Music Converter is a Windows desktop app: an Electron shell aroun
 │                    (server.ts:3000)                    │
 ├────────────────────────────────────────────────────────┤
 │  /api/info        - Metadata extraction & oEmbed       │
+│  /api/youtube/search - In-app YouTube search           │
 │  /api/convert     - Audio extraction & FFmpeg queue    │
 │  /api/status/:id  - Real-time job polling & progress   │
 │  /api/stream/:id  - Partial Content (HTTP 206) audio   │
@@ -63,6 +58,7 @@ The backend codebase adheres strictly to the single-purpose pattern:
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `server/config.ts`                     | Centralized constants, binary paths, output directories, and supported formats.                                                |
 | `server/services/urlService.ts`        | Pure URL and ID parsing, extraction, and canonicalization.                                                                     |
+| `server/services/youtubeService.ts`    | In-app YouTube search via `yt-dlp` flat-playlist JSON (`ytsearch<N>`), query sanitize/limit clamp, bot-block detection.        |
 | `server/services/metadataService.ts`   | Video metadata retrieval combining YouTube oEmbed and yt-dlp inspection.                                                       |
 | `server/services/tagFetcherService.ts` | Multi-source music autotagging querying iTunes, Deezer, and MusicBrainz.                                                       |
 | `server/services/audioTagService.ts`   | ID3, Vorbis, MP4 atom, and RIFF metadata injection with cover artwork using FFmpeg.                                            |
@@ -93,9 +89,10 @@ The backend codebase adheres strictly to the single-purpose pattern:
 
 Pixel-art dark-only UI (`src/index.css` `@theme` tokens, `Press Start 2P` + `IBM Plex Mono`):
 
-- **`components/AppShell.tsx`**: TitleBar, SideNav, StatusBar + hash routing (`#/convert`, `#/library`, `#/history`, `#/queue`, `#/settings`).
+- **`components/AppShell.tsx`**: TitleBar, SideNav, StatusBar + hash routing (`#/convert`, `#/youtube`, `#/library`, `#/history`, `#/queue`, `#/settings`).
 - **`store/appStore.tsx`**: `JobsProvider` (owns `useJobPolling` with `startTransition` + backoff), `ConvertDraftProvider` (inspect state, options, and one-shot re-convert URLs), `LibraryProvider` (sequence-guarded refresh), `HistoryProvider` (persistent log with optimistic delete/clear), `SettingsProvider`, `SessionProvider`.
 - **`routes/Convert.tsx`**: inspect → options → convert flow. When a job completes, the route refreshes history and the library, clears the active job and draft, and reports success through a floating bottom-right notification.
+- **`routes/YouTube.tsx`**: in-app search results with per-row preview toggle, link copy, Send-to-Convert handoff (queues a one-shot inspect URL on the convert draft), and open-in-browser. `components/YouTubePreviewModal.tsx` plays the selected result as a sandboxed `youtube-nocookie.com` embed.
 - **`routes/Library.tsx`**: searchable on-disk library with a docked bottom preview player, drag-and-drop/file-picker import, reveal-in-Explorer, edit panels, and delete-behind-confirm. Refreshes automatically when a conversion finishes. Per-track media versions cache-bust the player and trim preview after an edit.
 - **`routes/History.tsx`**: finished conversions with frozen original cover art and title, YouTube link copy, one-click re-convert, per-row remove, and clear-all behind confirm.
 - **`routes/Queue.tsx`**: live view of the in-progress conversion only; finished jobs clear out to Library + History.

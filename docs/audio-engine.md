@@ -107,3 +107,5 @@ Browsers and the Electron shell cannot decode those containers, so those two for
 Preview encoding runs raw: `libmp3lame -q:a 0` (VBR, highest quality mode), audio stream only. No cover art, no filters, no resampling. A listening copy that keeps second-generation loss minimal.
 
 The cache lives at `data/previews/<sha1(jobId)>.preview.mp3`, built on first playback. Mtime/size validation against the source regenerates it after trims, retags, format changes, and reconversion. Deleting a track removes its preview.
+
+This section covers playback of converted library files only. Previewing remote YouTube videos before conversion is a separate embed player described in [YouTube Search & Preview](youtube-search.md).
