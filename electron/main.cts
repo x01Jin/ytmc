@@ -22,13 +22,6 @@ function devPort(): number {
   }
 }
 
-// Strict renderer CSP, set as a response header (Electron security baseline).
-// script-src stays 'self' in both envs: no inline scripts, no remote scripts.
-// style-src keeps 'unsafe-inline' everywhere because React sets style
-// *attributes* (e.g. the progress-bar width in ConversionProgress.tsx).
-// Dev additionally allows the Vite client socket and Google Fonts;
-// the filter scopes the header to our loopback origins so third-party
-// responses (fonts.googleapis.com) keep their own headers untouched.
 function cspPolicy(): string {
   const ws = isDev ? ' ws://127.0.0.1:* ws://localhost:*' : '';
   return [
@@ -39,6 +32,7 @@ function cspPolicy(): string {
     "img-src 'self' data: https:",
     "media-src 'self' blob:",
     `connect-src 'self' http://127.0.0.1:* http://localhost:*${ws} https://fonts.googleapis.com https://fonts.gstatic.com`,
+    'frame-src https://www.youtube-nocookie.com https://www.youtube.com',
     "object-src 'none'",
     "base-uri 'self'",
     "frame-ancestors 'none'",

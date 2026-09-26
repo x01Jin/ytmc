@@ -10,6 +10,7 @@ import type {
   MusicTags,
   TagSource,
   VideoMetadata,
+  YouTubeSearchResult,
 } from '../types';
 
 let loopbackTokenPromise: Promise<string> | null = null;
@@ -57,7 +58,6 @@ export namespace ApiClient {
         trimEnd: options.trimEnd.trim() || undefined,
         volumeBoost: options.volumeBoost,
         normalizeMode: options.normalizeMode,
-        // Legacy compat for older servers.
         normalizeAudio: options.normalizeMode === 'loudness',
         embedThumbnail: options.embedThumbnail,
       }),
@@ -126,6 +126,46 @@ export namespace ApiClient {
       return [];
     }
     return json.data || [];
+  }
+
+  export async function searchYouTube(
+    query: string,
+    limit = 12,
+    signal?: AbortSignal
+  ): Promise<YouTubeSearchResult[]> {
+    let res: Response;
+    try {
+      res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&limit=${limit}`, {
+        signal,
+      });
+    } catch (err: unknown) {
+      if (err instanceof DOMException && err.name === 'AbortError') throw err;
+      throw new Error('Cannot reach the local server. Start it with `npm run dev` and reload.', {
+        cause: err,
+      });
+    }
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || 'YouTube search failed');
+    }
+    return json.data || [];
+  }
+
+  export function youTubeWatchUrl(videoId: string): string {
+    return `https://www.youtube.com/watch?v=${videoId}`;
+  }
+
+  export function openExternalLink(url: string): void {
+    const desktop = (
+      window as unknown as {
+        desktop?: { openExternal?: (target: string) => void };
+      }
+    ).desktop;
+    if (desktop?.openExternal) {
+      desktop.openExternal(url);
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
   }
 
   export async function deleteHistoryItem(jobId: string): Promise<void> {

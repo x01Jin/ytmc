@@ -1,10 +1,10 @@
 import { Check, FileAudio, Link2, RotateCcw, Trash2 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
+import { ApiClient } from '../services/apiClient';
 import { useConvertDraft, useHistory } from '../store/appStore';
 
-export function canonicalWatchUrl(videoId: string): string {
-  return `https://www.youtube.com/watch?v=${videoId}`;
-}
+// Single implementation lives in ApiClient; Convert and Queue import this alias.
+export const canonicalWatchUrl = ApiClient.youTubeWatchUrl;
 
 const COPY_CONFIRM_TIMEOUT_MS = 2000;
 

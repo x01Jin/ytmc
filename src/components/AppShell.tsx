@@ -1,25 +1,37 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import { Github } from 'lucide-react';
+import {
+  ArrowDownToLine,
+  Github,
+  History,
+  LibraryBig,
+  ListMusic,
+  Music,
+  Settings,
+  Youtube,
+} from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
-export type AppRoute = 'convert' | 'library' | 'history' | 'queue' | 'settings';
+export type AppRoute = 'convert' | 'youtube' | 'library' | 'history' | 'queue' | 'settings';
 
-const ROUTES: AppRoute[] = ['convert', 'library', 'history', 'queue', 'settings'];
+const ROUTES: AppRoute[] = ['convert', 'youtube', 'library', 'history', 'queue', 'settings'];
 
 const ROUTE_LABELS: Record<AppRoute, string> = {
   convert: 'Convert',
+  youtube: 'YouTube',
   library: 'Library',
   history: 'History',
   queue: 'Queue',
   settings: 'Settings',
 };
 
-const ROUTE_GLYPHS: Record<AppRoute, string> = {
-  convert: '▶',
-  library: '♫',
-  history: '↺',
-  queue: '☰',
-  settings: '⚙',
+const ROUTE_ICONS: Record<AppRoute, LucideIcon> = {
+  convert: ArrowDownToLine,
+  youtube: Youtube,
+  library: LibraryBig,
+  history: History,
+  queue: ListMusic,
+  settings: Settings,
 };
 
 function routeFromHash(): AppRoute {
@@ -92,6 +104,7 @@ export function SideNav({
     >
       {ROUTES.map(r => {
         const active = r === route;
+        const Icon = ROUTE_ICONS[r];
         return (
           <button
             key={r}
@@ -102,7 +115,7 @@ export function SideNav({
               active ? '!bg-px-acc !text-[#0b0b12]' : ''
             }`}
           >
-            <span aria-hidden="true">{ROUTE_GLYPHS[r]}</span>
+            <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
             {ROUTE_LABELS[r]}
             {r === 'queue' && queueCount > 0 && (
               <span className="px-tabular ml-auto text-xs" aria-label={`${queueCount} active jobs`}>
@@ -154,7 +167,8 @@ export function StatusBar({
         className="min-w-0 flex-1 truncate text-left hover:text-px-text"
         title="Show library folder in Explorer"
       >
-        ♫ <span className="underline decoration-dotted">{folderLabel}</span>
+        <Music className="mr-1 inline h-3 w-3" aria-hidden="true" />
+        <span className="underline decoration-dotted">{folderLabel}</span>
       </button>
       {fileCount !== null && <span className="px-tabular">{fileCount} files</span>}
       {totalSize !== null && <span className="px-tabular">{totalSize}</span>}
@@ -165,9 +179,6 @@ export function StatusBar({
 export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="flex h-dvh flex-col gap-2 overflow-hidden bg-px-bg p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] font-body text-px-text">
-      <a href="#main" className="sr-only focus:not-sr-only focus:px-2 focus:py-1 focus:outline-2">
-        Skip to main content
-      </a>
       {children}
     </div>
   );

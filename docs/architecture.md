@@ -86,7 +86,7 @@ The backend codebase adheres strictly to the single-purpose pattern:
 - The backend binds `127.0.0.1` only and rejects non-loopback `Host` headers (DNS-rebinding defense).
 - Mutating `/api` calls must echo the per-process `x-loopback-token` published by `/api/health`.
 - Renderer has no Node access (`contextIsolation`, `sandbox`); `preload.cjs` exposes only `window.desktop` (`pickFolder`, `revealInExplorer`, `openFile`, `getBackendPort`).
-- Strict Content-Security-Policy set as a response header via `session.defaultSession.webRequest.onHeadersReceived` (`electron/main.cts`), scoped to loopback origins: `script-src 'self'` everywhere (no inline or remote scripts); `style-src` keeps `'unsafe-inline'` because React sets style attributes (progress-bar width); images/media open to `https:`/`data:`/`blob:` for thumbnails, autotagger covers, and same-origin streams.
+- Strict Content-Security-Policy set as a response header via `session.defaultSession.webRequest.onHeadersReceived` (`electron/main.cts`), scoped to loopback origins: `script-src 'self'` everywhere (no inline or remote scripts); `style-src` keeps `'unsafe-inline'` because React sets style attributes (progress-bar width); images/media open to `https:`/`data:`/`blob:` for thumbnails, autotagger covers, and same-origin streams; `frame-src` allows `youtube-nocookie.com` and `youtube.com` for the YouTube preview modal.
 - Quit kills the whole backend tree via `taskkill /T /F` so no `yt-dlp`/FFmpeg orphans linger.
 
 ## Frontend Architecture

@@ -172,3 +172,13 @@ export interface HistoryEntry {
   createdAt: number;
   completedAt: number;
 }
+
+export interface YouTubeSearchResult {
+  id: string;
+  title: string;
+  author: string;
+  thumbnail: string;
+  duration?: string;
+  durationSeconds?: number;
+  viewCount?: number;
+}

@@ -21,6 +21,7 @@ import { TagFetcherService } from '../services/tagFetcherService.js';
 import { buildDisplayFileName, dedupeFileName } from '../utils/filename.js';
 import { getAudioMimeType } from '../utils/mime.js';
 import { PreviewService } from '../services/previewService.js';
+import { YouTubeService } from '../services/youtubeService.js';
 import { AUDIO_DSP, isValidNormalizeMode } from '../services/audioFilterService.js';
 
 export const apiRouter: Router = express.Router();
@@ -161,6 +162,28 @@ apiRouter.get(
         success: false,
         error: error.message || 'Failed to fetch video information',
       });
+    }
+  })
+);
+
+apiRouter.get(
+  '/youtube/search',
+  asyncHandler(async (req: Request, res: Response) => {
+    try {
+      const query = YouTubeService.sanitizeQuery(req.query.q);
+      if (!query) {
+        res.status(400).json({ success: false, error: 'Search text is required' });
+        return;
+      }
+      const data = await YouTubeService.searchVideos(
+        query,
+        YouTubeService.clampLimit(req.query.limit)
+      );
+      res.json({ success: true, data });
+    } catch (error: any) {
+      const message = error?.message || 'YouTube search failed';
+      const botBlocked = YouTubeService.isBotBlockedMessage(message);
+      res.status(botBlocked ? 502 : 500).json({ success: false, error: message });
     }
   })
 );

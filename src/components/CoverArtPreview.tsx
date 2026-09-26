@@ -8,10 +8,6 @@ interface CoverArtPreviewProps {
   onClose: () => void;
 }
 
-/**
- * App-level cover-art lightbox. Portaled to document.body so it centers on
- * the viewport no matter where it opens from (library rows, edit drawer).
- */
 export function CoverArtPreview({ src, title, subtitle, onClose }: CoverArtPreviewProps) {
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => {

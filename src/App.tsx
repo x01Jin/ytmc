@@ -13,6 +13,7 @@ import { HistoryRoute } from './routes/History';
 import { LibraryRoute } from './routes/Library';
 import { QueueRoute } from './routes/Queue';
 import { SettingsRoute } from './routes/Settings';
+import { YouTubeRoute } from './routes/YouTube';
 import {
   ConvertDraftProvider,
   HistoryProvider,
@@ -67,6 +68,9 @@ function ShellChrome() {
         <SideNav route={route} onNavigate={navigate} queueCount={activeCount} />
         <ShellContent>
           {route === 'convert' && <ConvertRoute />}
+          <div className={route === 'youtube' ? 'contents' : 'hidden'}>
+            <YouTubeRoute onDownload={() => navigate('convert')} active={route === 'youtube'} />
+          </div>
           {route === 'library' && <LibraryRoute />}
           {route === 'history' && <HistoryRoute onReconvert={() => navigate('convert')} />}
           {route === 'queue' && <QueueRoute />}

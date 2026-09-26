@@ -1,20 +1,11 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["eslint", "typescript", "unicorn", "oxc", "react", "import"],
-  "categories": {
-    "correctness": "error",
-    "suspicious": "warn"
-  },
-  "rules": {
-    "no-debugger": "error"
-  },
   "overrides": [
     {
-      "files": ["src/main.tsx"],
+      "files": ["src/components/YouTubePreviewModal.tsx"],
       "rules": {
-        "import/no-unassigned-import": "off"
+        "react/iframe-missing-sandbox": "off"
       }
     }
-  ],
-  "ignorePatterns": ["dist/**", "node_modules/**"]
+  ]
 }
