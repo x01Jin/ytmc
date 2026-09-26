@@ -351,3 +351,25 @@ Edits a library track in place: format conversion (`mp3`, `m4a`, `opus`, `flac`,
 ### `POST /api/files/reveal`
 
 Opens Explorer with the finished file selected. The path must resolve inside the library folder.
+
+---
+
+## 10. Health & Readiness
+
+### `GET /api/health`
+
+Open to same-origin GET without a token. Returns server time, the per-process `x-loopback-token` for mutating calls, and boot readiness. The three probe flags are `null` while still running.
+
+```json
+{
+  "status": "ok",
+  "time": "2026-09-27T00:00:00.000Z",
+  "loopbackToken": "<per-process uuid>",
+  "readiness": {
+    "ytDlp": true,
+    "ffmpeg": true,
+    "pot": false,
+    "library": true
+  }
+}
+```

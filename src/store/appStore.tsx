@@ -14,8 +14,6 @@ import type {
 import { useJobPolling } from '../hooks/useJobPolling';
 import { migrateNormalizeMode } from '../utils/normalizeModes';
 
-// --- Jobs ---
-
 interface JobsContextValue {
   state: {
     activeJob: ConversionJob | null;
@@ -41,19 +39,7 @@ export function JobsProvider({ children }: { children: ReactNode }) {
   const refreshRecent = useCallback(async () => {
     try {
       setRecentJobs(await ApiClient.getRecentJobs());
-    } catch {
-      // Library view has its own on-disk fallback.
-    }
-  }, []);
-
-  // Mount fetch mirrors refreshRecent but keeps every state update inside
-  // async continuations: synchronous updates do not belong in effects.
-  useEffect(() => {
-    ApiClient.getRecentJobs()
-      .then(setRecentJobs)
-      .catch(() => {
-        // Library view has its own on-disk fallback.
-      });
+    } catch {}
   }, []);
 
   useJobPolling(activeJob?.id ?? null, activeJob?.status, {
@@ -117,8 +103,6 @@ export function useJobs(): JobsContextValue {
   return ctx;
 }
 
-// --- History (persistent convert-tab log; untouched by library edits) ---
-
 interface HistoryContextValue {
   state: {
     entries: HistoryEntry[];
@@ -142,28 +126,43 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
     try {
       setEntries(await ApiClient.getHistory());
     } catch {
-      // History stays as-is on network failure; never blanked optimistically.
     } finally {
       setIsLoading(false);
     }
   }, []);
 
-  // Mount fetch mirrors refresh but keeps every state update inside async
-  // continuations: synchronous updates do not belong in effects. isLoading
-  // already starts true, so no sync reset is needed.
   useEffect(() => {
-    ApiClient.getHistory()
-      .then(loaded => {
-        setEntries(loaded);
-        setIsLoading(false);
-      })
-      .catch(() => {
-        // History stays as-is on network failure; never blanked optimistically.
-        setIsLoading(false);
-      });
+    let cancelled = false;
+    const load = () => {
+      ApiClient.getHistory()
+        .then(loaded => {
+          if (cancelled) return;
+          setEntries(loaded);
+          setIsLoading(false);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setIsLoading(false);
+        });
+    };
+    const idle = (window as unknown as { requestIdleCallback?: (cb: () => void) => number })
+      .requestIdleCallback;
+    if (typeof idle === 'function') {
+      const id = idle(load);
+      return () => {
+        cancelled = true;
+        (window as unknown as { cancelIdleCallback?: (id: number) => void }).cancelIdleCallback?.(
+          id
+        );
+      };
+    }
+    const timer = window.setTimeout(load, 1200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
   }, []);
 
-  // Optimistic removal with rollback (per frontend-api-integration-patterns).
   const removeEntry = useCallback(
     async (jobId: string) => {
       const previous = entries;
@@ -172,7 +171,6 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       try {
         await ApiClient.deleteHistoryItem(jobId);
       } catch {
-        // Roll back on failure so the entry is not silently lost.
         setEntries(previous);
       }
     },
@@ -207,8 +205,6 @@ export function useHistory(): HistoryContextValue {
   return ctx;
 }
 
-// --- Library ---
-
 interface LibraryContextValue {
   state: {
     library: LibraryData | null;
@@ -229,8 +225,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   const [library, setLibrary] = useState<LibraryData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // Sequence guard: overlapping refreshes (edit + import + poll) resolve in
-  // any order, so only the newest response may write state (race-safe fetch).
   const refreshSeq = useRef(0);
 
   const refresh = useCallback(async () => {
@@ -249,10 +243,6 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Mount fetch mirrors refresh (including its sequence guard) but keeps
-  // every state update inside async continuations: synchronous updates do
-  // not belong in effects. isLoading/error already start loading, so no
-  // sync reset is needed.
   useEffect(() => {
     const seq = (refreshSeq.current += 1);
     ApiClient.getLibrary()
@@ -300,8 +290,6 @@ export function useLibrary(): LibraryContextValue {
   if (!ctx) throw new Error('useLibrary must be used inside LibraryProvider');
   return ctx;
 }
-
-// --- Settings ---
 
 interface SettingsContextValue {
   state: {
@@ -382,17 +370,10 @@ export function useSettings(): SettingsContextValue {
   return ctx;
 }
 
-// --- Convert draft (survives tab switches + reloads) ---
-//
-// The Convert route unmounts on navigation, so inspected-video + conversion
-// options live here (mounted above the router) instead of route-local
-// useState. Mirrors the SettingsProvider localStorage pattern.
-
 export interface ConvertDraft {
   url: string;
   metadata: VideoMetadata | null;
   options: ConversionOptions;
-  /** One-shot URL queued by the History tab; Convert consumes it once and clears it. Not persisted. */
   pendingInspectUrl: string | null;
 }
 
@@ -432,9 +413,6 @@ function loadConvertDraft(): Omit<ConvertDraft, 'pendingInspectUrl'> {
     const raw = localStorage.getItem(CONVERT_DRAFT_KEY);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<ConvertDraft>;
-    // Sanitize: the convert flow no longer carries autotagger tags, but
-    // drafts persisted by older builds may still contain them. Drop the
-    // stale field so it can never leak into a future conversion.
     if (parsed.options && typeof parsed.options === 'object' && 'tags' in parsed.options) {
       const { tags: _staleTags, ...rest } = parsed.options as ConversionOptions & {
         tags?: unknown;
@@ -452,7 +430,6 @@ function loadConvertDraft(): Omit<ConvertDraft, 'pendingInspectUrl'> {
           ? {
               ...DEFAULT_CONVERT_OPTIONS,
               ...parsed.options,
-              // Migrate legacy boolean drafts to the dual-mode selector.
               normalizeMode: migrateNormalizeMode(
                 parsed.options as {
                   normalizeMode?: string;
@@ -474,7 +451,6 @@ export function ConvertDraftProvider({ children }: { children: ReactNode }) {
   }));
 
   useEffect(() => {
-    // Persist only the restorable fields; the one-shot inspect URL stays in memory.
     try {
       const { url, metadata, options } = draft;
       localStorage.setItem(CONVERT_DRAFT_KEY, JSON.stringify({ url, metadata, options }));
@@ -490,8 +466,6 @@ export function ConvertDraftProvider({ children }: { children: ReactNode }) {
   const setOptions = useCallback((options: ConversionOptions) => {
     setDraft(prev => ({ ...prev, options }));
   }, []);
-  // Explicit Reset clears the inspected video but keeps the user's
-  // conversion configuration.
   const resetDraft = useCallback(() => {
     setDraft(prev => ({
       url: '',
@@ -533,8 +507,6 @@ export function useConvertDraft(): ConvertDraftContextValue {
   return ctx;
 }
 
-// --- Session cookies (kept small: status only, modal owns the rest) ---
-
 interface SessionContextValue {
   state: { status: CookieStatus };
   actions: {
@@ -569,19 +541,27 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch {}
   }, []);
 
-  // Mount fetch mirrors refresh but keeps every state update inside async
-  // continuations: synchronous updates do not belong in effects.
   useEffect(() => {
+    let cancelled = false;
     ApiClient.getCookieStatus()
       .then(next => {
+        if (cancelled) return;
         setStatus(next);
         if (!next.configured) {
-          ApiClient.autoFetchCookies()
-            .then(res => setStatus(res.status))
-            .catch(() => {});
+          window.setTimeout(() => {
+            if (cancelled) return;
+            ApiClient.autoFetchCookies()
+              .then(res => {
+                if (!cancelled) setStatus(res.status);
+              })
+              .catch(() => {});
+          }, 2000);
         }
       })
       .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const value = useMemo<SessionContextValue>(

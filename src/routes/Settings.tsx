@@ -1,6 +1,9 @@
-import React, { useRef, useState } from 'react';
-import { CookieModal } from '../components/CookieModal';
+import React, { Suspense, lazy, useRef, useState } from 'react';
 import { useSession, useSettings } from '../store/appStore';
+
+const CookieModal = lazy(() =>
+  import('../components/CookieModal').then(m => ({ default: m.CookieModal }))
+);
 
 export function SettingsRoute() {
   const { state, actions } = useSettings();
@@ -15,9 +18,6 @@ export function SettingsRoute() {
   const [isCookieModalOpen, setIsCookieModalOpen] = useState(false);
   const errorRef = useRef<HTMLDivElement | null>(null);
 
-  // Sync the form drafts when freshly loaded (or reloaded) settings arrive.
-  // Done during render, not in an effect: synchronous updates do not belong
-  // in effects.
   const [prevSettings, setPrevSettings] = useState(settings);
   if (settings !== prevSettings) {
     setPrevSettings(settings);
@@ -175,15 +175,19 @@ export function SettingsRoute() {
         </button>
       </section>
 
-      <CookieModal
-        isOpen={isCookieModalOpen}
-        onClose={() => {
-          setIsCookieModalOpen(false);
-          void sessionActions.refresh();
-        }}
-        status={session.status}
-        onStatusUpdated={next => sessionActions.update(next)}
-      />
+      {isCookieModalOpen && (
+        <Suspense fallback={null}>
+          <CookieModal
+            isOpen={isCookieModalOpen}
+            onClose={() => {
+              setIsCookieModalOpen(false);
+              void sessionActions.refresh();
+            }}
+            status={session.status}
+            onStatusUpdated={next => sessionActions.update(next)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

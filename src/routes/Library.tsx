@@ -1,11 +1,16 @@
-import { Upload } from 'lucide-react';
-import React, { useMemo, useRef, useState } from 'react';
+import { FolderSearch, Import, Pencil, Play, Trash2 } from 'lucide-react';
+import React, { Suspense, lazy, useMemo, useRef, useState } from 'react';
 import { AudioPlayer } from '../components/AudioPlayer';
 import { CoverArtPreview } from '../components/CoverArtPreview';
-import { LibraryEditPanel } from '../components/library/LibraryEditPanel';
 import { useLibrary } from '../store/appStore';
 import type { ConversionJob, LibraryRecord } from '../types';
 import { previewStreamUrl } from '../utils/audioSupport';
+
+const LibraryEditPanel = lazy(() =>
+  import('../components/library/LibraryEditPanel').then(m => ({
+    default: m.LibraryEditPanel,
+  }))
+);
 
 type SortKey = 'recent' | 'name' | 'size';
 
@@ -33,8 +38,6 @@ function recordToJob(record: LibraryRecord, mediaVersion = 0): ConversionJob {
     outputFilePath: record.filePath,
     fileSizeBytes: record.fileSizeBytes,
     downloadUrl: `/api/download/${encodeURIComponent(record.jobId)}`,
-    // Cache-buster so trims/retags reload the rewritten file instead of a
-    // stale buffered stream. The server ignores the extra query param.
     streamUrl: `${base}${base.includes('?') ? '&' : '?'}v=${mediaVersion}`,
     createdAt: record.completedAt,
     completedAt: record.completedAt,
@@ -54,9 +57,6 @@ export function LibraryRoute() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
-  // Per-track media version: bumped on edit so the player and trim preview
-  // reload the rewritten file. Keyed by track so editing one row never
-  // interrupts playback of another.
   const [mediaVersions, setMediaVersions] = useState<Record<string, number>>({});
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -168,7 +168,7 @@ export function LibraryRoute() {
       }}
     >
       <section
-        className={`px-panel flex flex-col gap-3 p-3 sm:flex-row sm:items-end ${
+        className={`px-panel sticky top-0 z-10 flex flex-col gap-3 p-3 sm:flex-row sm:items-end ${
           isDragging ? 'border-px-acc' : ''
         }`}
         aria-label="Library controls"
@@ -226,7 +226,7 @@ export function LibraryRoute() {
             disabled={isImporting}
             title="Copy audio into the library"
           >
-            <Upload className="h-3.5 w-3.5" aria-hidden="true" />
+            <Import className="h-3.5 w-3.5" aria-hidden="true" />
             {isImporting ? 'Copying…' : 'Add audio'}
           </button>
         </div>
@@ -296,7 +296,7 @@ export function LibraryRoute() {
                       aria-label={`Play ${record.title}`}
                       title="Play in player"
                     >
-                      ▶
+                      <Play className="h-4 w-4" aria-hidden="true" />
                     </button>
                     <button
                       type="button"
@@ -305,7 +305,7 @@ export function LibraryRoute() {
                       aria-label={`Show ${record.fileName} in Explorer`}
                       title="Show in Explorer"
                     >
-                      ⌕
+                      <FolderSearch className="h-4 w-4" aria-hidden="true" />
                     </button>
                     <button
                       type="button"
@@ -322,7 +322,7 @@ export function LibraryRoute() {
                       }
                       title="Edit trim, tags and advanced options"
                     >
-                      {editingId === record.jobId ? '▾ Edit' : '▸ Edit'}
+                      <Pencil className="h-4 w-4" aria-hidden="true" />
                     </button>
                     <button
                       type="button"
@@ -331,17 +331,19 @@ export function LibraryRoute() {
                       aria-label={`Delete ${record.fileName}`}
                       title="Delete"
                     >
-                      ✕
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
                     </button>
                   </div>
                 </div>
                 {isEditing && (
                   <div id={`library-edit-${record.jobId}`}>
-                    <LibraryEditPanel
-                      key={`${record.jobId}:${record.fileName}:${record.fileSizeBytes}`}
-                      record={record}
-                      onEdited={() => handleEdited(record.jobId)}
-                    />
+                    <Suspense fallback={null}>
+                      <LibraryEditPanel
+                        key={`${record.jobId}:${record.fileName}:${record.fileSizeBytes}`}
+                        record={record}
+                        onEdited={() => handleEdited(record.jobId)}
+                      />
+                    </Suspense>
                   </div>
                 )}
               </div>

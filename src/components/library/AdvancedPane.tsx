@@ -7,10 +7,6 @@ import { useEditPanel } from './LibraryEditPanel';
 
 const FORMATS = ['mp3', 'm4a', 'opus', 'flac', 'wav'] as const;
 
-/**
- * Advanced pane: change container/codec, loudness handling, and file name.
- * Rename-only changes skip re-encoding on the server.
- */
 export function AdvancedPane() {
   const { record, onEdited } = useEditPanel();
   const currentFormat = FORMATS.includes(record.format as (typeof FORMATS)[number])
@@ -55,7 +51,6 @@ export function AdvancedPane() {
               format,
               bitrate: format === 'mp3' ? bitrate : undefined,
               normalizeMode,
-              // Legacy compat for older servers.
               normalizeAudio: normalizeMode === 'loudness',
               volumeBoost,
             }

@@ -1,9 +1,14 @@
 import { Check, Download, ExternalLink, Link2, Play, Search, X } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
-import { YouTubePreviewModal } from '../components/YouTubePreviewModal';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { ApiClient } from '../services/apiClient';
 import { useConvertDraft } from '../store/appStore';
 import type { YouTubeSearchResult } from '../types';
+
+const YouTubePreviewModal = lazy(() =>
+  import('../components/YouTubePreviewModal').then(m => ({
+    default: m.YouTubePreviewModal,
+  }))
+);
 
 const COPY_CONFIRM_TIMEOUT_MS = 2000;
 const SEARCH_LIMIT = 12;
@@ -75,7 +80,7 @@ export function YouTubeRoute({ onDownload, active }: { onDownload: () => void; a
 
   return (
     <div className="flex min-h-full flex-col gap-3">
-      <section className="px-panel p-3" aria-label="Search YouTube">
+      <section className="px-panel sticky top-0 z-10 p-3" aria-label="Search YouTube">
         <form onSubmit={event => void handleSearch(event)} className="flex gap-2">
           <label htmlFor="youtube-search" className="sr-only">
             Search YouTube
@@ -129,7 +134,7 @@ export function YouTubeRoute({ onDownload, active }: { onDownload: () => void; a
             {results.length} {results.length === 1 ? 'result' : 'results'}
           </p>
           {results.map(result => (
-            <div key={result.id} className="px-row flex items-center gap-3 py-2.5">
+            <div key={result.id} className="px-row flex items-center gap-3 p-2.5">
               <span className="h-10 w-10 shrink-0 overflow-hidden border-2 border-px-line bg-px-bg">
                 <img
                   src={result.thumbnail}
@@ -143,8 +148,8 @@ export function YouTubeRoute({ onDownload, active }: { onDownload: () => void; a
               </span>
 
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-xs font-semibold">{result.title}</span>
-                <span className="px-tabular block truncate text-[11px] text-px-dim">
+                <span className="block truncate text-sm font-semibold">{result.title}</span>
+                <span className="px-tabular block truncate text-xs text-px-dim">
                   {result.author}
                   {result.duration ? ` • ${result.duration}` : ''}
                 </span>
@@ -208,7 +213,9 @@ export function YouTubeRoute({ onDownload, active }: { onDownload: () => void; a
       ) : null}
 
       {preview && active && (
-        <YouTubePreviewModal result={preview} onClose={() => setPreview(null)} />
+        <Suspense fallback={null}>
+          <YouTubePreviewModal result={preview} onClose={() => setPreview(null)} />
+        </Suspense>
       )}
     </div>
   );

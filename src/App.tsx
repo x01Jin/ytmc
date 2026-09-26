@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import {
   AppShell,
   ShellContent,
@@ -9,11 +9,28 @@ import {
   useHashRoute,
 } from './components/AppShell';
 import { ConvertRoute } from './routes/Convert';
-import { HistoryRoute } from './routes/History';
-import { LibraryRoute } from './routes/Library';
-import { QueueRoute } from './routes/Queue';
-import { SettingsRoute } from './routes/Settings';
-import { YouTubeRoute } from './routes/YouTube';
+
+const YouTubeRoute = lazy(() =>
+  import('./routes/YouTube').then(m => ({ default: m.YouTubeRoute }))
+);
+const LibraryRoute = lazy(() =>
+  import('./routes/Library').then(m => ({ default: m.LibraryRoute }))
+);
+const HistoryRoute = lazy(() =>
+  import('./routes/History').then(m => ({ default: m.HistoryRoute }))
+);
+const QueueRoute = lazy(() => import('./routes/Queue').then(m => ({ default: m.QueueRoute })));
+const SettingsRoute = lazy(() =>
+  import('./routes/Settings').then(m => ({ default: m.SettingsRoute }))
+);
+
+function RouteFallback() {
+  return (
+    <div className="px-panel p-4" aria-label="Loading section">
+      <p className="text-sm text-px-dim">Loading…</p>
+    </div>
+  );
+}
 import {
   ConvertDraftProvider,
   HistoryProvider,
@@ -69,12 +86,30 @@ function ShellChrome() {
         <ShellContent>
           {route === 'convert' && <ConvertRoute />}
           <div className={route === 'youtube' ? 'contents' : 'hidden'}>
-            <YouTubeRoute onDownload={() => navigate('convert')} active={route === 'youtube'} />
+            <Suspense fallback={<RouteFallback />}>
+              <YouTubeRoute onDownload={() => navigate('convert')} active={route === 'youtube'} />
+            </Suspense>
           </div>
-          {route === 'library' && <LibraryRoute />}
-          {route === 'history' && <HistoryRoute onReconvert={() => navigate('convert')} />}
-          {route === 'queue' && <QueueRoute />}
-          {route === 'settings' && <SettingsRoute />}
+          {route === 'library' && (
+            <Suspense fallback={<RouteFallback />}>
+              <LibraryRoute />
+            </Suspense>
+          )}
+          {route === 'history' && (
+            <Suspense fallback={<RouteFallback />}>
+              <HistoryRoute onReconvert={() => navigate('convert')} />
+            </Suspense>
+          )}
+          {route === 'queue' && (
+            <Suspense fallback={<RouteFallback />}>
+              <QueueRoute />
+            </Suspense>
+          )}
+          {route === 'settings' && (
+            <Suspense fallback={<RouteFallback />}>
+              <SettingsRoute />
+            </Suspense>
+          )}
         </ShellContent>
       </ShellMain>
       <StatusBar

@@ -1,10 +1,5 @@
 import type { NormalizeMode } from '../types';
 
-/**
- * Frontend mirror of server/services/audioFilterService.ts AUDIO_DSP.
- * Numeric values here are DISPLAY ONLY — the backend owns the actual
- * ffmpeg filter chain. Keep labels in sync when tuning backend constants.
- */
 export const NORMALIZE_MODES: {
   id: NormalizeMode;
   label: string;
@@ -31,7 +26,6 @@ export function normalizeModeLabel(mode: NormalizeMode): string {
   return NORMALIZE_MODES.find(m => m.id === mode)?.label ?? mode;
 }
 
-/** Migrate legacy drafts: normalizeAudio:true → "loudness". */
 export function migrateNormalizeMode(options: {
   normalizeMode?: NormalizeMode | string;
   normalizeAudio?: boolean;

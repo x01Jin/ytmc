@@ -20,9 +20,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
   const [loadError, setLoadError] = useState<string | null>(null);
   const [previewFallback, setPreviewFallback] = useState(false);
 
-  // Reset playback state when the track (or its media version) changes.
-  // Done during render, not in an effect: synchronous updates do not belong
-  // in effects. The imperative audio sync lives in the effect below.
   const jobKey = `${job?.id ?? ''}|${job?.streamUrl ?? ''}`;
   const [prevJobKey, setPrevJobKey] = useState(jobKey);
   const syncedKeyRef = useRef(jobKey);
@@ -171,7 +168,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
       />
 
       <div className="flex min-w-0 items-center gap-2">
-        {/* Thumbnail art */}
         <div className="h-9 w-9 shrink-0 overflow-hidden border-2 border-px-line bg-px-bg">
           <img
             src={job.thumbnail}
@@ -184,7 +180,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
           />
         </div>
 
-        {/* Track Title and Artist */}
         <div className="min-w-0 flex-1">
           <h4 className="truncate text-sm font-semibold text-px-text">{job.title}</h4>
           <p className="px-tabular truncate text-xs text-px-dim" translate="no">
@@ -193,7 +188,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
         </div>
       </div>
 
-      {/* Main play control stays immediately left of the responsive scrubber. */}
       <button
         id="player-play-pause-btn"
         type="button"
@@ -209,7 +203,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
         )}
       </button>
 
-      {/* Scrubber progress bar */}
       <div className="min-w-0 space-y-1">
         <label htmlFor="audio-scrubber-slider" className="sr-only">
           Seek in {job.title}
@@ -235,7 +228,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
         )}
       </div>
 
-      {/* Secondary controls stay in their own compact column. */}
       <div className="flex items-center gap-1">
         <button
           id="player-loop-toggle"
@@ -248,7 +240,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
         >
           <Repeat className="h-4 w-4" aria-hidden="true" />
         </button>
-        {/* Volume controls */}
         <div className="flex w-20 items-center gap-1">
           <button
             id="player-mute-btn"

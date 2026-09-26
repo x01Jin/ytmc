@@ -1,6 +1,5 @@
 const NUMERIC_RE = /^\d+(\.\d+)?$/;
 
-/** Parse `MM:SS`, `HH:MM:SS`, or raw seconds into seconds. Returns null when invalid. */
 export function parseTimeToSeconds(raw: string): number | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -18,7 +17,6 @@ export function parseTimeToSeconds(raw: string): number | null {
   return hours * 3600 + mins * 60 + secs;
 }
 
-/** Format seconds as `M:SS`. */
 export function formatSeconds(total: number): string {
   if (!Number.isFinite(total) || total < 0) return '0:00';
   const mins = Math.floor(total / 60);

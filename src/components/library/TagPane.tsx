@@ -4,7 +4,6 @@ import type { MusicTags } from '../../types';
 import { TagEditor } from '../TagEditor';
 import { useEditPanel } from './LibraryEditPanel';
 
-/** Tagger pane: retag a finished file (metadata rewritten in place, file renamed to match). */
 export function TagPane() {
   const { record, onEdited } = useEditPanel();
   const [isSaving, setIsSaving] = useState(false);

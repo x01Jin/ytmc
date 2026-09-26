@@ -3,7 +3,6 @@ import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
 
-// Prevent benign Vite HMR websocket reconnection noise in sandboxed containers
 if (typeof window !== 'undefined') {
   window.addEventListener('unhandledrejection', event => {
     const msg = (event.reason?.message || String(event.reason || '')).toLowerCase();

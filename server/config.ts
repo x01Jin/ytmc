@@ -1,10 +1,6 @@
 import { config } from 'dotenv';
 import path from 'path';
 
-// Load .env before any process.env read below. This module is the only
-// top-level env reader and is imported before all other server modules,
-// so dotenv is always initialized first (replaces `import "dotenv/config"`
-// in the entry, which the import linter rejects as unassigned).
 config();
 
 const MAX_PORT = 65535;
@@ -20,8 +16,6 @@ function resolvePort(): number {
     }
     console.warn(`Invalid PORT="${raw}", falling back to default`);
   }
-  // Production (incl. desktop app) defaults to a random free port (0);
-  // development defaults to 3000 for a stable local URL.
   return process.env.NODE_ENV === 'production' ? 0 : DEV_PORT;
 }
 
@@ -52,7 +46,6 @@ function resolvePotPort(): number {
 }
 
 export const POT_PORT = resolvePotPort();
-// Packaged desktop builds override these so the app writes outside ASAR.
 export const DATA_DIR = process.env.APP_DATA_DIR || path.join(ROOT_DIR, 'data');
 export const DOWNLOADS_DIR = process.env.APP_DOWNLOADS_DIR || path.join(ROOT_DIR, 'downloads');
 export const STATIC_DIR = process.env.APP_STATIC_DIR || path.join(ROOT_DIR, 'dist');

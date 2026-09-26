@@ -18,14 +18,6 @@ export interface MusicTags {
   cleanDescription?: boolean;
 }
 
-/**
- * Opus/Ogg cover-art helpers (module scope — no extra deps).
- * Ogg/Opus cannot mux an attached_pic video stream like MP3/M4A; the
- * Vorbis-comment standard is METADATA_BLOCK_PICTURE: a base64 FLAC Picture
- * block. We build it in-process and ship it via an ffmetadata sidecar file
- * (avoids MAX_ARG_STRLEN blowups for large JPEGs). Any failure falls back
- * to audio-only so a bad image can never corrupt the song.
- */
 function detectImageMime(buffer: Buffer): string {
   if (buffer.length > 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff)
     return 'image/jpeg';
@@ -41,29 +33,26 @@ function detectImageMime(buffer: Buffer): string {
 }
 
 function buildFlacPictureBlock(image: Buffer, mime: string): Buffer {
-  // FLAC Picture block: type(3=front) + mime + desc + w/h/depth/colors + data.
-  // Width/height/depth left as 0 (valid per spec, players accept) to avoid
-  // fragile JPEG SOF parsing — never corrupt audio over dimensions.
   const mimeBuf = Buffer.from(mime, 'ascii');
   const headerLen = 4 + 4 + mimeBuf.length + 4 + 4 + 4 + 4 + 4 + 4;
   const out = Buffer.alloc(headerLen + image.length);
   let o = 0;
   out.writeUInt32BE(3, o);
-  o += 4; // front cover
+  o += 4;
   out.writeUInt32BE(mimeBuf.length, o);
   o += 4;
   mimeBuf.copy(out, o);
   o += mimeBuf.length;
   out.writeUInt32BE(0, o);
-  o += 4; // empty description
+  o += 4;
   out.writeUInt32BE(0, o);
-  o += 4; // width unknown
+  o += 4;
   out.writeUInt32BE(0, o);
-  o += 4; // height unknown
+  o += 4;
   out.writeUInt32BE(0, o);
-  o += 4; // depth unknown
+  o += 4;
   out.writeUInt32BE(0, o);
-  o += 4; // colors unknown
+  o += 4;
   out.writeUInt32BE(image.length, o);
   o += 4;
   image.copy(out, o);
@@ -99,7 +88,6 @@ function writeOpusMetadataFile(
   push('track', tags.trackNumber);
   push('comment', tags.comment);
   if (tags.cleanDescription !== false) {
-    // Map-clean: omitting description/synopsis/purl drops yt-dlp leftovers.
     lines.push('description=');
     lines.push('synopsis=');
     lines.push('purl=');
@@ -139,16 +127,9 @@ async function resolveCoverBuffer(tags: MusicTags): Promise<Buffer | null> {
   }
 }
 
-/**
- * Extract the raw image bytes from an Opus file's cover art.
- * Handles both storages: a real attached-pic video stream (what modern
- * ffmpeg writes) and a METADATA_BLOCK_PICTURE Vorbis comment.
- * Returns null when absent or malformed — never throws.
- */
 export async function extractOpusPicture(opusFilePath: string): Promise<Buffer | null> {
   try {
     if (!fs.existsSync(opusFilePath)) return null;
-    // 1) Attached-pic video stream (ffmpeg ≥5 style opus covers).
     const asVideo = await AudioTagService.extractCoverArt(opusFilePath).catch(() => null);
     if (asVideo && asVideo.data.length > 0) return Buffer.from(asVideo.data);
     const ffprobeCmd = fs.existsSync(FFPROBE_PATH) ? FFPROBE_PATH : 'ffprobe';
@@ -170,7 +151,6 @@ export async function extractOpusPicture(opusFilePath: string): Promise<Buffer |
     const key = Object.keys(audioTags).find(k => k.toUpperCase() === 'METADATA_BLOCK_PICTURE');
     if (!key) return null;
     const block = Buffer.from(audioTags[key], 'base64');
-    // Parse FLAC Picture block with strict bounds checks.
     let o = 0;
     const u32 = (): number | null => {
       if (o + 4 > block.length) return null;
@@ -178,7 +158,7 @@ export async function extractOpusPicture(opusFilePath: string): Promise<Buffer |
       o += 4;
       return v;
     };
-    if (u32() === null) return null; // picture type
+    if (u32() === null) return null;
     const mimeLen = u32();
     if (mimeLen === null || mimeLen > 256) return null;
     o += mimeLen;
@@ -187,7 +167,7 @@ export async function extractOpusPicture(opusFilePath: string): Promise<Buffer |
     if (descLen === null || descLen > 1024 * 1024) return null;
     o += descLen;
     if (o > block.length) return null;
-    o += 16; // width, height, depth, colors
+    o += 16;
     if (o > block.length) return null;
     const dataLen = u32();
     if (dataLen === null || dataLen <= 0 || dataLen > 8 * 1024 * 1024) return null;
@@ -198,12 +178,6 @@ export async function extractOpusPicture(opusFilePath: string): Promise<Buffer |
   }
 }
 
-/**
- * Embed cover art into an existing Opus file via METADATA_BLOCK_PICTURE,
- * preserving all currently embedded tags (re-read from the file).
- * Resolves false when there is nothing to embed or the embed fails —
- * callers must treat false as "audio-only, carry on", never as fatal.
- */
 export async function embedOpusPicture(
   opusFilePath: string,
   cover: Buffer | null
@@ -215,7 +189,6 @@ export async function embedOpusPicture(
     const tempId = crypto.randomUUID();
     const ext = path.extname(opusFilePath).toLowerCase().replace('.', '') || 'opus';
     const tmpOut = path.join(dir, `temp_opuspic_${tempId}.${ext}`);
-    // readTags is defined on the class below (hoisted access at call time).
     const current = await AudioTagService.readTags(opusFilePath);
     const metaPath = writeOpusMetadataFile(
       dir,
@@ -284,12 +257,6 @@ function defined(v: unknown): v is string {
 }
 
 export namespace AudioTagService {
-  /**
-   * Read common embedded tags.
-   * Merges container-level tags (MP3/M4A/FLAC) with audio-stream Vorbis
-   * comments (Opus/Ogg store TITLE/ARTIST/... on the stream, leaving
-   * format.tags empty — without this, opus tracks look untagged).
-   */
   export async function readTags(filePath: string): Promise<MusicTags> {
     if (!fs.existsSync(filePath)) {
       throw new Error(`Target audio file does not exist: ${filePath}`);
@@ -312,13 +279,10 @@ export namespace AudioTagService {
               }>;
             };
             const formatTags = parsed.format?.tags ?? {};
-            // Prefer the first audio stream's tags; fall back to any stream.
             const audioTags =
               parsed.streams?.find(s => s.codec_type === 'audio')?.tags ??
               parsed.streams?.find(s => s.tags)?.tags ??
               {};
-            // Stream-level (opus) wins when present, format-level fills gaps.
-            // Keys are case-insensitive; vorbis comments are UPPERCASE.
             const merged: Record<string, string> = {};
             for (const [k, v] of Object.entries(formatTags)) merged[k] = v;
             for (const [k, v] of Object.entries(audioTags)) {
@@ -347,7 +311,6 @@ export namespace AudioTagService {
     });
   }
 
-  /** Extract embedded artwork for local library previews. */
   export async function extractCoverArt(filePath: string): Promise<{
     data: Buffer;
     mimeType: 'image/jpeg';
@@ -393,9 +356,6 @@ export namespace AudioTagService {
     });
   }
 
-  /**
-   * Embeds or updates metadata tags and cover artwork in an audio file on disk.
-   */
   export async function applyTagsToFile(
     filePath: string,
     tags: MusicTags
@@ -430,19 +390,11 @@ export namespace AudioTagService {
     };
 
     try {
-      // Opus branch: METADATA_BLOCK_PICTURE via ffmetadata sidecar (no re-encode).
-      // The ffmetadata pass REPLACES stream Vorbis comments wholesale, so
-      // merge incoming tags over the currently embedded ones (mirrors the
-      // non-opus path, where untouched fields survive via stream copy) and
-      // carry the existing cover when no new artwork is supplied.
-      // Never throws on bad artwork — falls back to tags-only, then audio-only.
       if (ext === 'opus') {
         const current: MusicTags = await AudioTagService.readTags(filePath).catch(() => ({
           title: '',
           artist: '',
         }));
-        // Mirrors the non-opus path (`if (tags.album)` guards): empty means
-        // "keep what's embedded", never "wipe".
         const merged: MusicTags = {
           title: defined(tags.title) ? tags.title : (current.title ?? ''),
           artist: defined(tags.artist) ? tags.artist : (current.artist ?? ''),
@@ -462,10 +414,6 @@ export namespace AudioTagService {
           if (fs.existsSync(tempOutputFile)) fs.rmSync(tempOutputFile, { force: true });
           if (tempMetaFile && fs.existsSync(tempMetaFile)) fs.rmSync(tempMetaFile, { force: true });
           tempMetaFile = writeOpusMetadataFile(dir, tempId, merged, withCover ? coverBuffer : null);
-          // Verified recipe: the ffmetadata demuxer exposes the picture
-          // block as an attached-pic video stream; -map 1:v? carries it and
-          // -map_metadata:s:a 1 pushes title/artist into Vorbis comments
-          // (global -map_metadata alone is ignored by the opus muxer).
           await runFfmpeg([
             '-y',
             '-i',
@@ -491,7 +439,6 @@ export namespace AudioTagService {
           await attempt(coverBuffer !== null);
         } catch {
           if (coverBuffer !== null) {
-            // Retry without artwork — artwork must never corrupt the song.
             await attempt(false);
           } else {
             throw new Error('FFmpeg opus tagging failed');
@@ -500,7 +447,6 @@ export namespace AudioTagService {
         return commitOutput();
       }
 
-      // 1. Resolve custom artwork from a local data URL or a fetched URL.
       if ((tags.coverData || tags.coverUrl) && (ext === 'mp3' || ext === 'm4a' || ext === 'flac')) {
         try {
           let buffer: Buffer;
@@ -530,9 +476,6 @@ export namespace AudioTagService {
         }
       }
 
-      // 2. Build FFmpeg arguments for direct metadata injection without re-encoding
-      // -map_metadata 0 preserves existing tags (album/year/genre/etc);
-      // explicit -metadata below overrides with the new values.
       const args: string[] = ['-y', '-i', filePath];
 
       if (tempCoverFile && fs.existsSync(tempCoverFile)) {
@@ -552,7 +495,6 @@ export namespace AudioTagService {
         args.push('-map', '0:a:0', '-map', '0:v?', '-map_metadata', '0', '-c', 'copy');
       }
 
-      // Standard tag key-value pairs
       if (tags.title) {
         args.push('-metadata', `title=${tags.title}`);
       }
@@ -579,7 +521,6 @@ export namespace AudioTagService {
         args.push('-metadata', `comment=${tags.comment}`);
       }
 
-      // Clean out lengthy YouTube descriptions and dump metadata if requested (default behavior)
       if (tags.cleanDescription !== false) {
         args.push('-metadata', 'description=');
         args.push('-metadata', 'synopsis=');
@@ -588,13 +529,10 @@ export namespace AudioTagService {
 
       args.push(tempOutputFile);
 
-      // 3. Execute FFmpeg (bundled binary first, PATH fallback)
       await runFfmpeg(args);
 
-      // 4. Overwrite original file with newly tagged audio
       return commitOutput();
     } finally {
-      // Clean up temp cover art and output files if left behind
       if (tempCoverFile && fs.existsSync(tempCoverFile)) {
         try {
           fs.unlinkSync(tempCoverFile);

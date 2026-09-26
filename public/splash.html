@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b0b12" />
+    <title>YT Music Converter</title>
+    <link rel="icon" type="image/png" href="./icon.png" />
+    <style>
+      :root {
+        --splash-bg: #0b0b12;
+        --splash-text: #ededf2;
+        --splash-dim: #9a9ab0;
+        --splash-acc: #7c5cff;
+        --splash-line: #2e2e3e;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        background-color: var(--splash-bg);
+        color: var(--splash-text);
+      }
+      body {
+        font-family:
+          'Press Start 2P', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overscroll-behavior: none;
+        -webkit-app-region: drag;
+        user-select: none;
+      }
+      .splash {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        padding: 32px;
+        text-align: center;
+      }
+      .splash-icon {
+        image-rendering: pixelated;
+        width: 64px;
+        height: 64px;
+      }
+      .splash-title {
+        margin: 0;
+        font-size: 34px;
+        line-height: 1;
+        letter-spacing: 6px;
+        font-weight: 400;
+      }
+      .px-letter {
+        display: inline-block;
+        animation: px-jump 0.9s steps(2, end) infinite;
+      }
+      @keyframes px-jump {
+        0%,
+        100% {
+          transform: translateY(0);
+        }
+        50% {
+          transform: translateY(-7px);
+          color: var(--splash-acc);
+        }
+      }
+      .splash-subtitle {
+        margin: 0;
+        font-size: 10px;
+        letter-spacing: 1px;
+      }
+      .splash-version {
+        margin: 0;
+        font-size: 10px;
+        color: var(--splash-dim);
+        min-height: 14px;
+      }
+      .splash-bar {
+        width: 220px;
+        height: 10px;
+        border: 2px solid var(--splash-line);
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      .splash-bar-fill {
+        width: 40%;
+        height: 100%;
+        background-color: var(--splash-acc);
+        animation: px-slide 1.1s steps(8, end) infinite;
+      }
+      @keyframes px-slide {
+        0% {
+          margin-left: -40%;
+        }
+        100% {
+          margin-left: 100%;
+        }
+      }
+      .splash-status {
+        margin: 0;
+        font-size: 10px;
+        color: var(--splash-dim);
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .px-letter,
+        .splash-bar-fill {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="splash" aria-label="Loading YT Music Converter">
+      <img src="./icon.png" alt="" width="64" height="64" class="splash-icon" />
+      <h1 class="splash-title" aria-label="YTMC">
+        <span class="px-letter" style="animation-delay: 0ms">Y</span
+        ><span class="px-letter" style="animation-delay: 120ms">T</span
+        ><span class="px-letter" style="animation-delay: 240ms">M</span
+        ><span class="px-letter" style="animation-delay: 360ms">C</span>
+      </h1>
+      <p class="splash-subtitle">YouTube to Music Converter</p>
+      <p class="splash-version" id="splash-version"></p>
+      <div class="splash-bar" role="progressbar" aria-label="Starting backend">
+        <div class="splash-bar-fill"></div>
+      </div>
+      <p class="splash-status" id="splash-status" aria-live="polite">Starting backend…</p>
+    </main>
+    <script>
+      (function () {
+        var params = new URLSearchParams(window.location.search);
+        var version = params.get('v') || '';
+        var versionEl = document.getElementById('splash-version');
+        if (versionEl) versionEl.textContent = version ? 'v' + version : '';
+        var statusEl = document.getElementById('splash-status');
+        function setStatus(text) {
+          if (statusEl && text) statusEl.textContent = text;
+        }
+        try {
+          var bridge = window.splash;
+          if (bridge && typeof bridge.onStatus === 'function') bridge.onStatus(setStatus);
+        } catch (err) {}
+      })();
+    </script>
+  </body>
+</html>

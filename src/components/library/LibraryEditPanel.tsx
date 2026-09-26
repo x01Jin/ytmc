@@ -22,7 +22,6 @@ interface EditPanelContextValue {
 
 const EditPanelContext = createContext<EditPanelContextValue | null>(null);
 
-/** Read the enclosing edit-panel context (React 19 `use`, conditional-safe). */
 export function useEditPanel(): EditPanelContextValue {
   const ctx = use(EditPanelContext);
   if (!ctx) throw new Error('Edit panel parts must render inside <LibraryEditPanel>');
@@ -107,11 +106,6 @@ function EditTabs({
   );
 }
 
-/**
- * Inline expandable editor for a library track.
- * Compound structure: <LibraryEditPanel> owns tab state + record context,
- * each pane is an explicit variant component (no boolean-prop modes).
- */
 export function LibraryEditPanel({ record, initialTab = 'trim', onEdited }: LibraryEditPanelProps) {
   const [tab, setTab] = useState<EditTabId>(initialTab);
   const baseId = useId().replace(/[^a-zA-Z0-9]/g, '');
@@ -126,7 +120,6 @@ export function LibraryEditPanel({ record, initialTab = 'trim', onEdited }: Libr
           </span>
         </div>
         <EditTabs tab={tab} onTabChange={setTab} baseId={baseId} />
-        {/* Panes stay mounted with `hidden` so tab switches keep TagEditor drafts. */}
         <div className="pt-3">
           <div
             role="tabpanel"

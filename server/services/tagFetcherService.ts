@@ -1,8 +1,3 @@
-/**
- * Single-purpose service for fetching music metadata and ID3 tags
- * from multiple public sources (iTunes, Deezer, MusicBrainz).
- */
-
 export interface MusicTagCandidate {
   id: string;
   source: 'itunes' | 'deezer' | 'musicbrainz';
@@ -20,9 +15,6 @@ export interface MusicTagCandidate {
 export namespace TagFetcherService {
   const REQUEST_TIMEOUT_MS = 5000;
 
-  /**
-   * Search for music tags across all sources or a specific source.
-   */
   export async function searchTags(
     query: string,
     source: 'all' | 'itunes' | 'deezer' | 'musicbrainz' = 'all'
@@ -56,9 +48,6 @@ export namespace TagFetcherService {
     return deduplicateAndRank(allCandidates, trimmed);
   }
 
-  /**
-   * Fetch candidates from Apple / iTunes Search API.
-   */
   async function fetchFromItunes(query: string): Promise<MusicTagCandidate[]> {
     try {
       const endpoint = `https://itunes.apple.com/search?term=${encodeURIComponent(query)}&entity=song&limit=10`;
@@ -75,7 +64,6 @@ export namespace TagFetcherService {
       return json.results.map((r: any, idx: number): MusicTagCandidate => {
         let cover = r.artworkUrl100 || '';
         if (cover) {
-          // Upgrade thumbnail to 600x600 for studio quality artwork
           cover = cover.replace(/\/\d+x\d+bb\./, '/600x600bb.');
         }
 
@@ -100,9 +88,6 @@ export namespace TagFetcherService {
     }
   }
 
-  /**
-   * Fetch candidates from Deezer Public Search API.
-   */
   async function fetchFromDeezer(query: string): Promise<MusicTagCandidate[]> {
     try {
       const endpoint = `https://api.deezer.com/search?q=${encodeURIComponent(query)}&limit=10`;
@@ -136,12 +121,8 @@ export namespace TagFetcherService {
     }
   }
 
-  /**
-   * Fetch candidates from MusicBrainz Open Database.
-   */
   async function fetchFromMusicBrainz(query: string): Promise<MusicTagCandidate[]> {
     try {
-      // Clean query for MusicBrainz lucene syntax
       const cleanQ = query.replace(/[^\w\s]/gi, ' ').trim();
       const endpoint = `https://musicbrainz.org/ws/2/recording?query=${encodeURIComponent(cleanQ)}&fmt=json&limit=10`;
       const res = await fetch(endpoint, {
@@ -193,21 +174,17 @@ export namespace TagFetcherService {
     }
   }
 
-  /**
-   * Deduplicate candidates and order them so complete, high-quality results appear first.
-   */
   function deduplicateAndRank(candidates: MusicTagCandidate[], query: string): MusicTagCandidate[] {
     const seen = new Set<string>();
     const normalizedQuery = query.toLowerCase();
 
-    // Score candidates based on metadata richness and match
     const scored = candidates.map(c => {
       let score = 0;
       if (c.coverUrl) score += 4;
       if (c.year) score += 3;
       if (c.genre) score += 2;
       if (c.album && c.album.toLowerCase() !== 'single') score += 2;
-      if (c.source === 'itunes') score += 3; // iTunes has highest artwork consistency
+      if (c.source === 'itunes') score += 3;
       if (c.source === 'deezer') score += 2;
 
       const titleLower = c.title.toLowerCase();
@@ -223,19 +200,16 @@ export namespace TagFetcherService {
       return { candidate: c, score };
     });
 
-    // Sort descending by score
     scored.sort((a, b) => b.score - a.score);
 
     const deduped: MusicTagCandidate[] = [];
     for (const item of scored) {
       const c = item.candidate;
-      // Signature based on artist + title (normalized)
       const sig = `${c.artist.toLowerCase()}_${c.title.toLowerCase()}`;
       if (!seen.has(sig)) {
         seen.add(sig);
         deduped.push(c);
       } else if (deduped.length < 15) {
-        // Also allow different albums if distinct
         const albumSig = `${sig}_${(c.album || '').toLowerCase()}`;
         if (!seen.has(albumSig)) {
           seen.add(albumSig);

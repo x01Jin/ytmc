@@ -4,15 +4,6 @@ import fs from 'fs';
 import path from 'path';
 import { DATA_DIR, FFMPEG_PATH } from '../config.js';
 
-/**
- * Cached MP3 previews for in-app playback.
- *
- * Opus and M4A ship on disk as untouched native streams. Browsers and the
- * Electron shell cannot decode those reliably, so the player streams a
- * cached MP3 instead. Everything else plays from the stored file directly.
- * Previews are listening copies only. Downloads, tags, and trims always use
- * the original.
- */
 export const PREVIEW_ELIGIBLE_FORMATS = new Set(['opus', 'm4a']);
 
 const PREVIEW_SUFFIX = '.preview.mp3';
@@ -29,7 +20,6 @@ function previewsDir(): string {
   return dir;
 }
 
-/** Job ids can contain characters illegal in file names (`:` on Windows), so cache files use a hash. */
 function cacheKey(jobId: string): string {
   return crypto.createHash('sha1').update(jobId, 'utf8').digest('hex');
 }
@@ -52,7 +42,6 @@ function runFfmpeg(args: string[]): Promise<void> {
   });
 }
 
-/** Single-flight transcodes so concurrent range requests share one FFmpeg run. */
 const pending = new Map<string, Promise<string>>();
 
 export namespace PreviewService {
@@ -60,10 +49,6 @@ export namespace PreviewService {
     return PREVIEW_ELIGIBLE_FORMATS.has(ext.replace(/^\./, '').toLowerCase());
   }
 
-  /**
-   * Return the cached MP3 preview, transcoding on first request. The cache
-   * validates against source mtime/size, so trims and retags regenerate it.
-   */
   export async function getOrCreate(jobId: string, sourcePath: string): Promise<string> {
     const ext = path.extname(sourcePath).replace('.', '').toLowerCase();
     if (!isEligible(ext)) {
@@ -81,16 +66,12 @@ export namespace PreviewService {
       if (outStat && outStat.size > 0 && outStat.mtimeMs >= srcStat.mtimeMs) {
         return out;
       }
-    } catch {
-      // Fall through to (re)transcode.
-    }
+    } catch {}
     const inFlight = pending.get(jobId);
     if (inFlight) return inFlight;
     const task = (async (): Promise<string> => {
       const tmp = `${out}.${process.pid}.tmp.mp3`;
       try {
-        // Raw audio only. No filters, no loudness, no volume. LAME VBR 0 is
-        // the encoder's highest quality mode.
         await runFfmpeg([
           '-y',
           '-i',
@@ -118,7 +99,6 @@ export namespace PreviewService {
     return task;
   }
 
-  /** Drop the cached preview (trim, retag, format change, delete). */
   export function invalidate(jobId: string): void {
     pending.delete(jobId);
     try {
@@ -127,7 +107,6 @@ export namespace PreviewService {
     } catch {}
   }
 
-  /** Remove previews whose job id is no longer in the library/job index. */
   export function sweepOrphans(validIds: Set<string>): number {
     const validKeys = new Set([...validIds].map(id => cacheKey(id)));
     let removed = 0;

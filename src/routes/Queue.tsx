@@ -1,9 +1,12 @@
 import { AlertCircle } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { ConversionProgress } from '../components/ConversionProgress';
-import { CookieModal } from '../components/CookieModal';
 import { useConvertDraft, useJobs, useLibrary, useSession } from '../store/appStore';
-import { canonicalWatchUrl } from './History';
+import { ApiClient } from '../services/apiClient';
+
+const CookieModal = lazy(() =>
+  import('../components/CookieModal').then(m => ({ default: m.CookieModal }))
+);
 
 export function QueueRoute() {
   const { state: jobs, actions: jobActions } = useJobs();
@@ -15,7 +18,6 @@ export function QueueRoute() {
   const [retryError, setRetryError] = useState<string | null>(null);
   const completedIdRef = useRef<string | null>(null);
 
-  // A finished job belongs to Library + History; the queue only tracks live work.
   useEffect(() => {
     if (activeJob?.status !== 'completed' || completedIdRef.current === activeJob.id) return;
     completedIdRef.current = activeJob.id;
@@ -28,7 +30,7 @@ export function QueueRoute() {
     if (!activeJob) return;
     setRetryError(null);
     try {
-      await jobActions.startConversion(canonicalWatchUrl(activeJob.videoId), draft.options);
+      await jobActions.startConversion(ApiClient.youTubeWatchUrl(activeJob.videoId), draft.options);
     } catch (err) {
       setRetryError(err instanceof Error ? err.message : 'Could not restart the conversion.');
     }
@@ -61,15 +63,19 @@ export function QueueRoute() {
         </section>
       )}
 
-      <CookieModal
-        isOpen={isCookieModalOpen}
-        onClose={() => {
-          setIsCookieModalOpen(false);
-          void sessionActions.refresh();
-        }}
-        status={session.status}
-        onStatusUpdated={next => sessionActions.update(next)}
-      />
+      {isCookieModalOpen && (
+        <Suspense fallback={null}>
+          <CookieModal
+            isOpen={isCookieModalOpen}
+            onClose={() => {
+              setIsCookieModalOpen(false);
+              void sessionActions.refresh();
+            }}
+            status={session.status}
+            onStatusUpdated={next => sessionActions.update(next)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

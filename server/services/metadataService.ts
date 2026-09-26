@@ -27,7 +27,6 @@ export interface VideoMetadata {
   isAvailable: boolean;
   botVerificationRequired: boolean;
   hasCookiesConfigured: boolean;
-  /** Raw yt-dlp failure (first ERROR line) when the stream probe failed. */
   probeError?: string;
   description?: string;
   nativeStreams?: NativeAudioStreamInfo[];
@@ -35,9 +34,6 @@ export interface VideoMetadata {
 }
 
 export namespace MetadataService {
-  /**
-   * Fetches official oEmbed data for high reliability.
-   */
   export async function fetchOEmbed(canonicalUrl: string): Promise<{
     title: string;
     author: string;
@@ -66,9 +62,6 @@ export namespace MetadataService {
     }
   }
 
-  /**
-   * Fetches full metadata using yt-dlp, augmented with oEmbed fallback.
-   */
   export async function getVideoInfo(input: string): Promise<VideoMetadata> {
     const parsed = parseYouTubeInput(input);
     if (!parsed.isValid || !parsed.videoId || !parsed.canonicalUrl) {
@@ -80,10 +73,8 @@ export namespace MetadataService {
     const cookiesPath = CookieService.getCookiesPath();
     const hasCookies = !!cookiesPath;
 
-    // 1. Fetch oEmbed first
     const oembed = await fetchOEmbed(canonicalUrl);
 
-    // Default fallback metadata from oembed
     const metadata: VideoMetadata = {
       id: videoId,
       title: oembed?.title || `YouTube Video (${videoId})`,
@@ -95,7 +86,6 @@ export namespace MetadataService {
       hasCookiesConfigured: hasCookies,
     };
 
-    // 2. Query yt-dlp for detailed metadata (duration, format readiness)
     const { strategy } = await resolveStrategy();
     const launch = ytdlpLaunch();
     const useCookies = cookiesAllowed(strategy, hasCookies);
@@ -115,7 +105,6 @@ export namespace MetadataService {
         args.push('--cookies', cookiesPath);
       }
 
-      // Query direct canonical URL
       args.push(canonicalUrl);
 
       execFile(
@@ -135,13 +124,10 @@ export namespace MetadataService {
             ) {
               metadata.botVerificationRequired = true;
             }
-            // Surface the probe failure instead of silently implying
-            // "Direct streamcopy ready" from oEmbed data alone.
             metadata.probeError =
               stderr.split('\n').filter(l => l.includes('ERROR:'))[0] ||
               error.message ||
               'Stream probe failed';
-            // Even if yt-dlp errored, we resolve with the oembed data
             resolve(metadata);
             return;
           }
@@ -172,7 +158,6 @@ export namespace MetadataService {
                 metadata.description = details.description.slice(0, 300);
               }
 
-              // Extract native audio streams directly from YouTube server format definitions
               if (Array.isArray(details.formats)) {
                 const audioFormats = details.formats.filter(
                   (f: any) => f.acodec && f.acodec !== 'none' && (!f.vcodec || f.vcodec === 'none')
@@ -196,7 +181,6 @@ export namespace MetadataService {
                   };
                 });
 
-                // Sort by highest bitrate
                 streams.sort((a, b) => b.bitrateKbps - a.bitrateKbps);
 
                 if (streams.length > 0) {
@@ -205,7 +189,6 @@ export namespace MetadataService {
                 }
               }
 
-              // Fallback native stream info if formats list wasn't populated
               if (!metadata.bestNativeStream) {
                 metadata.bestNativeStream = {
                   formatId: '251',
@@ -218,9 +201,7 @@ export namespace MetadataService {
                 };
               }
             }
-          } catch {
-            // Keep oembed metadata
-          }
+          } catch {}
 
           resolve(metadata);
         }

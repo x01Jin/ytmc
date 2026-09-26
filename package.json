@@ -1,6 +1,6 @@
 {
   "name": "youtube-to-music-converter",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "Convert YouTube videos to studio-grade MP3, M4A, FLAC, WAV, or Opus audio with ID3 tagging.",
   "license": "GPL-3.0-only",
@@ -16,7 +16,7 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "electron:dev": "concurrently -k -n \"server,electron\" \"npm run dev\" \"wait-on http-get://127.0.0.1:3000/api/health -t 60s -l && cross-env NODE_ENV=development ELECTRON_DEV_URL=http://127.0.0.1:3000 electron .\"",
-    "electron:build": "npm run build && node -e \"const fs=require('fs'); if (!fs.existsSync('dist/server.cjs')) { console.error('Missing dist/server.cjs. Build the backend before packaging.'); process.exit(1); }\" && tsc -p electron/tsconfig.json && electron-builder --win nsis portable"
+    "electron:build": "npm run build && node -e \"const fs=require('fs'); if (!fs.existsSync('dist/server.cjs')) { console.error('Missing dist/server.cjs. Build the backend before packaging.'); process.exit(1); }\" && tsc -p electron/tsconfig.json && electron-builder --win portable zip"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
@@ -78,15 +78,10 @@
     ],
     "win": {
       "target": [
-        "nsis",
-        "portable"
+        "portable",
+        "zip"
       ],
       "icon": "assets/windows/icon.ico"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "perMachine": false
     }
   }
 }

@@ -1,16 +1,10 @@
-import { Loader2, Scissors } from 'lucide-react';
+import { Loader2, Play, Scissors } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { ApiClient } from '../../services/apiClient';
 import { formatSeconds, parseTimeToSeconds } from '../../utils/time';
 import { previewStreamUrl } from '../../utils/audioSupport';
 import { useEditPanel } from './LibraryEditPanel';
 
-/**
- * Probe helper shared by the mount effect and the post-trim refresh.
- * Takes a settlement callback instead of touching state, so effect bodies
- * stay free of synchronous updates; every write happens in an async
- * continuation. Returns a cancel function for effect cleanup.
- */
 function probeDuration(jobId: string, onSettled: (seconds: number | null) => void): () => void {
   let cancelled = false;
   ApiClient.probeLibraryFile(jobId)
@@ -24,10 +18,6 @@ function probeDuration(jobId: string, onSettled: (seconds: number | null) => voi
     cancelled = true;
   };
 }
-/**
- * Trimmer pane: preview the track, pick start/end, loop the selection,
- * then overwrite the file. Destructive apply requires explicit confirmation.
- */
 export function TrimPane() {
   const { record, onEdited } = useEditPanel();
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -42,13 +32,8 @@ export function TrimPane() {
   const [isProbing, setIsProbing] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [confirmArmed, setConfirmArmed] = useState(false);
-  // Bumped after each applied trim so the preview element reloads the
-  // rewritten file (cache-busted src) and the duration is re-probed.
   const [mediaNonce, setMediaNonce] = useState(0);
 
-  // Re-probe when the record changes (normally a remount covers this via the
-  // parent key; this guards the ordering) — during render, not in an
-  // effect: synchronous updates do not belong in effects.
   const [prevJobId, setPrevJobId] = useState(record.jobId);
   if (record.jobId !== prevJobId) {
     setPrevJobId(record.jobId);
@@ -118,16 +103,11 @@ export function TrimPane() {
       await ApiClient.trimLibraryFile(record.jobId, start.trim() || '0', end.trim());
       setStatus('Trim applied. The file was overwritten.');
       setConfirmArmed(false);
-      // Reset the trimmer onto the rewritten file: clear the bounds, drop
-      // the playback position, and reload the preview (new duration/src).
       audioRef.current?.pause();
       setStart('');
       setEnd('');
       setPosition(0);
       setMediaNonce(n => n + 1);
-      // Re-probe the rewritten file directly: the duration display must
-      // refresh even when the trim leaves the file size unchanged (no
-      // remount). Same settlement path as the mount effect above.
       setIsProbing(true);
       probeDuration(record.jobId, seconds => {
         setDuration(seconds);
@@ -206,7 +186,7 @@ export function TrimPane() {
               className="px-btn shrink-0 !px-2 !py-1 text-xs"
               aria-label="Preview from start time"
             >
-              ▶
+              <Play className="h-4 w-4" aria-hidden="true" />
             </button>
             <button
               type="button"
@@ -248,7 +228,7 @@ export function TrimPane() {
               className="px-btn shrink-0 !px-2 !py-1 text-xs"
               aria-label="Preview from end time"
             >
-              ▶
+              <Play className="h-4 w-4" aria-hidden="true" />
             </button>
             <button
               type="button"

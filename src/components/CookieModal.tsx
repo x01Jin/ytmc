@@ -163,7 +163,6 @@ export const CookieModal: React.FC<CookieModalProps> = ({
         id="cookie-settings-modal"
         className="px-panel flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden transition-colors"
       >
-        {/* Modal Header */}
         <div className="p-4 sm:p-5 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/50 dark:bg-zinc-950/50">
           <div className="flex items-center gap-2.5">
             <div className="p-2 rounded-[2px] bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
@@ -189,9 +188,7 @@ export const CookieModal: React.FC<CookieModalProps> = ({
           </button>
         </div>
 
-        {/* Modal Content */}
         <div className="p-4 sm:p-5 overflow-y-auto overscroll-contain space-y-4 text-xs">
-          {/* Status banner */}
           <div
             className={`p-3.5 rounded-[2px] border flex items-center justify-between transition-colors ${
               status.configured
@@ -241,7 +238,6 @@ export const CookieModal: React.FC<CookieModalProps> = ({
             )}
           </div>
 
-          {/* Quick Actions (Auto Fetch & Test Connection) */}
           <div className="grid grid-cols-2 gap-2.5">
             <button
               id="auto-fetch-guest-session-btn"
@@ -274,7 +270,6 @@ export const CookieModal: React.FC<CookieModalProps> = ({
             </button>
           </div>
 
-          {/* Test connection result display */}
           {testResult && (
             <div
               className={`p-3 rounded-[2px] border text-xs animate-in fade-in duration-150 ${
@@ -323,7 +318,6 @@ export const CookieModal: React.FC<CookieModalProps> = ({
             </div>
           )}
 
-          {/* Feedback banner */}
           {feedback && (
             <div
               className={`p-3 rounded-[2px] border text-xs flex items-center gap-2 ${
@@ -341,7 +335,6 @@ export const CookieModal: React.FC<CookieModalProps> = ({
             </div>
           )}
 
-          {/* Drag & Drop / File Input Area */}
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="font-semibold text-zinc-800 dark:text-zinc-200">
@@ -392,7 +385,6 @@ export const CookieModal: React.FC<CookieModalProps> = ({
             </div>
           </div>
 
-          {/* Engine & Architecture Info */}
           <div className="p-3 rounded-[2px] bg-zinc-50 dark:bg-zinc-950/60 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 space-y-1.5">
             <div className="flex items-center gap-1.5 font-semibold text-zinc-800 dark:text-zinc-200">
               <Cpu className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
@@ -421,7 +413,6 @@ export const CookieModal: React.FC<CookieModalProps> = ({
           </div>
         </div>
 
-        {/* Modal Footer */}
         <div className="p-4 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/50 flex items-center justify-end gap-2">
           <button
             id="cancel-cookie-modal-btn"

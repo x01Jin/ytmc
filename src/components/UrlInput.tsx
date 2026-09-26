@@ -19,9 +19,7 @@ export const UrlInput: React.FC<UrlInputProps> = ({ value, onChange, onSubmit, i
         setCopiedNotification(true);
         setTimeout(() => setCopiedNotification(false), 2000);
       }
-    } catch {
-      // Clipboard permissions may not be granted in iframe
-    }
+    } catch {}
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {

@@ -21,7 +21,6 @@ export interface LibraryRecord {
 const LIBRARY_FILE = path.join(DATA_DIR, 'library.json');
 const MAX_RECORDS = 500;
 
-/** Identity of a file on disk. Case-insensitive on Windows. */
 function norm(p: string): string {
   return path.normalize(p);
 }
@@ -54,8 +53,6 @@ function keyOf(p: string): string {
 
 export namespace LibraryStore {
   export function upsert(record: LibraryRecord): void {
-    // One row per file: drop any row with the same id OR the same path so
-    // a rescan/rename can never stack two rows over one file on disk.
     const records = readAll().filter(
       r => r.jobId !== record.jobId && !isSameFilePath(r.filePath, record.filePath)
     );
@@ -63,14 +60,10 @@ export namespace LibraryStore {
     writeAll(records);
   }
 
-  /**
-   * Collapse duplicate rows (same file, different ids) keeping the newest,
-   * and persist-drop rows whose file no longer exists. Runs at boot so
-   * stale accumulation from older builds heals itself.
-   */
   export function reconcile(): { removed: number } {
+    const all = readAll();
     const seen = new Set<string>();
-    const sorted = readAll().toSorted((a, b) => b.completedAt - a.completedAt);
+    const sorted = all.toSorted((a, b) => b.completedAt - a.completedAt);
     const kept: LibraryRecord[] = [];
     for (const record of sorted) {
       const key = keyOf(record.filePath);
@@ -83,7 +76,7 @@ export namespace LibraryStore {
       }
       kept.push(record);
     }
-    const removed = readAll().length - kept.length;
+    const removed = all.length - kept.length;
     if (removed > 0) writeAll(kept);
     return { removed };
   }

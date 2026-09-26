@@ -20,7 +20,6 @@ export interface LibraryEditPatch {
   format?: string;
   bitrate?: string;
   normalizeAudio?: boolean;
-  /** New dual-mode selector. Legacy `normalizeAudio: true` maps to "loudness". */
   normalizeMode?: NormalizeMode | string;
   volumeBoost?: number;
   title?: string;
@@ -32,9 +31,7 @@ export interface EditResult {
   fileName: string;
   fileSizeBytes: number;
   format: string;
-  /** True when source had cover art but target could not carry it. */
   coverDropped?: boolean;
-  /** Uniform loudness gain applied (two-pass linear), if any. */
   loudness?: { gainDb: number; outputI: number };
 }
 
@@ -95,7 +92,6 @@ async function sourceHasCover(filePath: string): Promise<boolean> {
       streams?: Array<{ codec_type?: string; tags?: Record<string, string> }>;
     };
     if ((parsed.streams ?? []).some(s => s.codec_type === 'video')) return true;
-    // Opus/Ogg artwork lives as METADATA_BLOCK_PICTURE, not a video stream.
     const audioTags = parsed.streams?.find(s => s.codec_type === 'audio')?.tags ?? {};
     return Object.keys(audioTags).some(k => k.toUpperCase() === 'METADATA_BLOCK_PICTURE');
   } catch {
@@ -103,7 +99,6 @@ async function sourceHasCover(filePath: string): Promise<boolean> {
   }
 }
 
-/** Raw cover bytes from any supported source (video stream or opus block). */
 async function sourceCoverBytes(filePath: string, ext: string): Promise<Buffer | null> {
   if (ext === 'opus' || ext === 'ogg' || ext === 'oga') {
     return extractOpusPicture(filePath);
@@ -159,8 +154,6 @@ export namespace AudioEditService {
     }
     const dir = path.dirname(filePath);
     const tmp = path.join(dir, `temp_trim_${crypto.randomUUID()}.${ext}`);
-    // Opus cannot carry a video stream (muxer rejects it) — capture artwork
-    // first and re-embed via METADATA_BLOCK_PICTURE after the trim.
     const isOpusTrim = ext === 'opus';
     const trimCover = isOpusTrim ? await sourceCoverBytes(filePath, ext).catch(() => null) : null;
     try {

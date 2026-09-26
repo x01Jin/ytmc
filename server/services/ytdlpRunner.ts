@@ -1,35 +1,27 @@
 import { execFile } from 'child_process';
 import fs from 'fs';
-import { FFMPEG_PATH, PLUGINS_DIR, YTDLP_PATH } from '../config.js';
+import path from 'path';
+import { DATA_DIR, FFMPEG_PATH, PLUGINS_DIR, YTDLP_PATH } from '../config.js';
 
 export interface YtDlpLaunch {
-  /** Executable to spawn (yt-dlp itself, or a Python launcher on Windows). */
   command: string;
-  /** Args prepended before every yt-dlp invocation (e.g. the zipapp path). */
   prefixArgs: string[];
-  /** Resolved yt-dlp version string, when probed successfully. */
   version: string | null;
 }
 
 let cached: YtDlpLaunch | null = null;
 
-const YTDLP_VERSION_TIMEOUT_MS = 30000;
-const FFMPEG_VERSION_TIMEOUT_MS = 15000;
+const YTDLP_VERSION_TIMEOUT_MS = 8000;
+const FFMPEG_VERSION_TIMEOUT_MS = 5000;
 
-/**
- * Shared environment for every yt-dlp child process (plugin discovery).
- */
 export function ytdlpEnv(): NodeJS.ProcessEnv {
-  return { ...process.env, PYTHONPATH: PLUGINS_DIR };
+  return {
+    ...process.env,
+    PYTHONPATH: PLUGINS_DIR,
+    XDG_CACHE_HOME: path.join(DATA_DIR, 'cache'),
+  };
 }
 
-/**
- * Probe candidate launch commands and cache the first one that reports a
- * version. On Windows the bundled `bin/yt-dlp` is an extensionless Python
- * zipapp that Node cannot CreateProcess directly (`spawn ENOENT`), so it
- * must go through the `py` launcher. A user-supplied `YTDLP_PATH` ending
- * in `.exe` is used directly.
- */
 export async function ensureYtDlp(): Promise<YtDlpLaunch> {
   if (cached) return cached;
 
@@ -77,19 +69,10 @@ export async function ensureYtDlp(): Promise<YtDlpLaunch> {
   return cached;
 }
 
-/**
- * Synchronous accessor for already-resolved launch config. Call
- * `ensureYtDlp()` once at boot; this never throws so request paths stay simple.
- */
 export function ytdlpLaunch(): YtDlpLaunch {
   return cached ?? { command: YTDLP_PATH, prefixArgs: [], version: null };
 }
 
-/**
- * Boot probe for the bundled ffmpeg (extraction, thumbnail embedding, and
- * file tagging all require it). Warns loudly instead of failing conversions
- * at 75%+ with a cryptic postprocessor error.
- */
 export async function ensureFfmpeg(): Promise<string | null> {
   const cmd = fs.existsSync(FFMPEG_PATH) ? FFMPEG_PATH : 'ffmpeg';
   try {

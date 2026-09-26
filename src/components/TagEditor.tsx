@@ -68,8 +68,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Adopt refreshed initial tags until the user edits anything. Done during
-  // render, not in an effect: synchronous updates do not belong in effects.
   const [prevInitialTags, setPrevInitialTags] = useState(initialTags);
   if (initialTags && initialTags !== prevInitialTags) {
     setPrevInitialTags(initialTags);
@@ -102,7 +100,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     setTags(updated);
     onChange(updated);
 
-    // Debounce autotagger query
     if (debounceTimeoutRef.current) {
       clearTimeout(debounceTimeoutRef.current);
     }
@@ -112,10 +109,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     }, 400);
   };
 
-  // Automatic first search for a pre-filled title. The request is staged as
-  // state during render; the effect below performs only the fetch, so its
-  // body stays free of synchronous updates. Typed searches and source
-  // switches call performSearch directly from their event handlers.
   const [autoSearch, setAutoSearch] = useState<{
     query: string;
     source: TagSource;
@@ -150,7 +143,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     };
   }, [autoSearch]);
 
-  // Debounce timer belongs to typing, not to any fetch: clear it on unmount.
   useEffect(() => {
     return () => {
       if (debounceTimeoutRef.current) {
@@ -272,7 +264,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
         </div>
       </div>
 
-      {/* AUTOTAGGER MATCHES / SOURCE SELECTOR */}
       <div className="space-y-2 border border-px-line bg-px-bg p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-xs font-medium text-px-text">
@@ -285,7 +276,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
             )}
           </div>
 
-          {/* Sources Filter */}
           <div className="flex flex-wrap items-center gap-1 text-[11px]">
             <span className="mr-1 text-px-dim">Source:</span>
             {(['all', 'itunes', 'deezer', 'musicbrainz'] as TagSource[]).map(src => (
@@ -305,7 +295,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           </div>
         </div>
 
-        {/* Applied Feedback Notification */}
         {appliedSource && (
           <div className="flex items-center gap-1.5 border border-px-ok bg-px-bg p-2 text-xs text-px-ok">
             <Check className="h-3.5 w-3.5" />
@@ -313,7 +302,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           </div>
         )}
 
-        {/* Detected Candidates Scroll List */}
         {isSearching ? (
           <div className="flex items-center justify-center gap-2 py-4 text-xs text-px-dim">
             <Loader2 className="h-4 w-4 animate-spin text-px-acc" />
@@ -402,9 +390,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
         )}
       </div>
 
-      {/* DETAILED TAG FIELDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-        {/* Artist Field */}
         <div className="space-y-1">
           <label htmlFor="tag-artist" className="text-xs font-semibold text-px-text">
             Artist / Performer
@@ -419,7 +405,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           />
         </div>
 
-        {/* Album Field */}
         <div className="space-y-1">
           <label htmlFor="tag-album" className="text-xs font-semibold text-px-text">
             Album
@@ -434,7 +419,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           />
         </div>
 
-        {/* Year / Release Date */}
         <div className="space-y-1">
           <label htmlFor="tag-year" className="text-xs font-semibold text-px-text">
             Release Year
@@ -449,7 +433,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           />
         </div>
 
-        {/* Genre */}
         <div className="space-y-1">
           <label htmlFor="tag-genre" className="text-xs font-semibold text-px-text">
             Genre
@@ -464,7 +447,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           />
         </div>
 
-        {/* Track Number */}
         <div className="space-y-1">
           <label htmlFor="tag-track-number" className="text-xs font-semibold text-px-text">
             Track #
@@ -479,7 +461,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           />
         </div>
 
-        {/* Album Artist */}
         <div className="space-y-1">
           <label htmlFor="tag-album-artist" className="text-xs font-semibold text-px-text">
             Album Artist (Optional)
@@ -495,7 +476,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
         </div>
       </div>
 
-      {/* COVER ARTWORK MANAGEMENT */}
       <div className="space-y-2 border-t border-px-line pt-2">
         <label className="flex items-center justify-between text-xs font-semibold text-px-text">
           <span>Album Cover Artwork</span>
@@ -590,7 +570,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
         </div>
       </div>
 
-      {/* CLEAN OPTIONS & POST-CONVERT ACTIONS */}
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-px-line pt-2">
         <label className="flex cursor-pointer select-none items-center gap-2 text-xs text-px-dim hover:text-px-text">
           <input
@@ -602,7 +581,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           <span>Strip lengthy YouTube video descriptions from audio tags</span>
         </label>
 
-        {/* If in post-convert mode, offer explicit "Apply Tags to Audio File" action */}
         {mode === 'post-convert' && onSaveToFile && (
           <button
             type="button"

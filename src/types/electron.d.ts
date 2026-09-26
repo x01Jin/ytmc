@@ -7,9 +7,14 @@ export interface DesktopBridge {
   getAppVersion: () => Promise<string>;
 }
 
+export interface SplashBridge {
+  onStatus: (listener: (text: string) => void) => void;
+}
+
 declare global {
   interface Window {
     desktop?: DesktopBridge;
+    splash?: SplashBridge;
     __BACKEND_PORT__?: number;
   }
 }

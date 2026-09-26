@@ -3,7 +3,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ApiClient } from '../services/apiClient';
 import { useConvertDraft, useHistory } from '../store/appStore';
 
-// Single implementation lives in ApiClient; Convert and Queue import this alias.
 export const canonicalWatchUrl = ApiClient.youTubeWatchUrl;
 
 const COPY_CONFIRM_TIMEOUT_MS = 2000;

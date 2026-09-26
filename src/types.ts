@@ -57,7 +57,6 @@ export interface VideoMetadata {
   description?: string;
   nativeStreams?: NativeAudioStreamInfo[];
   bestNativeStream?: NativeAudioStreamInfo;
-  /** Raw yt-dlp failure when the stream probe failed (inspect still works). */
   probeError?: string;
 }
 
@@ -67,9 +66,7 @@ export interface ConversionOptions {
   trimStart: string;
   trimEnd: string;
   volumeBoost: number;
-  /** Dual-mode selector: "off" | "loudness" (-14 LUFS) | "peak" (-1 dBTP, never lifts silence). */
   normalizeMode: NormalizeMode;
-  /** Legacy flag from older builds — true migrates to "loudness". Kept optional for compat. */
   normalizeAudio?: boolean;
   embedThumbnail: boolean;
 }

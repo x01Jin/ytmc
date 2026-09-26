@@ -28,3 +28,6 @@ Explore the documentation guides below:
 
 7. **[YouTube Search & Preview](youtube-search.md)**  
    How in-app YouTube search, embed preview, link copy, Convert handoff, and open-in-browser work.
+
+8. **[Startup & Performance](startup-performance.md)**  
+   How the instant splash window, listen-first backend boot, readiness flags, lazy routes, and deferred provider fetches keep cold start and runtime cost low.

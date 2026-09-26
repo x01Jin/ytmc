@@ -17,9 +17,7 @@ export interface ConversionJob {
   progress: number;
   stageMessage: string;
   error?: string;
-  /** Raw yt-dlp stderr tail for diagnosis (shown in UI details). */
   errorDetails?: string;
-  /** Process exit code; null when the process never started. */
   exitCode?: number | null;
   isBotBlocked?: boolean;
   outputFilePath?: string;
@@ -84,9 +82,6 @@ export namespace JobManager {
       .slice(0, limit);
   }
 
-  /**
-   * Cleanup old jobs and files older than 2 hours.
-   */
   export function cleanupOldJobs(): void {
     const twoHoursAgo = Date.now() - JOB_RETENTION_MS;
     for (const [id, job] of jobs.entries()) {
@@ -105,7 +100,6 @@ export namespace JobManager {
       }
     }
 
-    // Also scan downloads directory for orphaned files older than 2 hours
     const downloadsDir = FileService.getDownloadsDir();
     if (fs.existsSync(downloadsDir)) {
       try {
@@ -127,7 +121,7 @@ export namespace JobManager {
   }
 }
 
-// Periodically run cleanup every 30 minutes
-setInterval(() => {
+const cleanupTimer = setInterval(() => {
   JobManager.cleanupOldJobs();
 }, CLEANUP_INTERVAL_MS);
+cleanupTimer.unref?.();

@@ -21,7 +21,6 @@ export interface SessionTestResult {
   title?: string;
   duration?: string;
   errorDetails?: string;
-  /** Which extraction path the probe exercised. */
   strategy?: 'pot' | 'fallback';
   potReachable?: boolean;
   cookiesUsed?: boolean;
@@ -123,9 +122,6 @@ export namespace CookieService {
     }
   }
 
-  /**
-   * Automatically fetches fresh guest session visitor cookies directly from YouTube.
-   */
   export async function autoFetchGuestSession(): Promise<{
     success: boolean;
     message: string;
@@ -168,7 +164,7 @@ export namespace CookieService {
         let domain = '.youtube.com';
         let pathStr = '/';
         let secure = 'TRUE';
-        let expires = Math.floor(Date.now() / 1000) + 86400 * 180; // 180 days default
+        let expires = Math.floor(Date.now() / 1000) + 86400 * 180;
 
         for (let i = 1; i < parts.length; i++) {
           const p = parts[i];
@@ -193,7 +189,6 @@ export namespace CookieService {
       const content = lines.join('\n');
       fs.writeFileSync(GUEST_COOKIES_FILE, content, 'utf-8');
 
-      // If user has no personal cookies yet, also write to COOKIES_FILE so yt-dlp uses it by default
       if (!CookieService.hasCookies()) {
         fs.writeFileSync(COOKIES_FILE, content, 'utf-8');
       }
@@ -209,9 +204,6 @@ export namespace CookieService {
     }
   }
 
-  /**
-   * Tests whether the current session cookies work against YouTube.
-   */
   export async function testSession(): Promise<SessionTestResult> {
     const cookiesPath = CookieService.getCookiesPath();
     const status = CookieService.getStatus();
@@ -234,18 +226,19 @@ export namespace CookieService {
       args.push('--cookies', cookiesPath);
     }
 
-    // Use a standard public video to test extraction
     args.push('https://www.youtube.com/watch?v=dQw4w9WgXcQ');
 
-    const diagnostics = { strategy, potReachable: reachable, cookiesUsed: useCookies };
+    const diagnostics = {
+      strategy,
+      potReachable: reachable,
+      cookiesUsed: useCookies,
+    };
 
     return new Promise(resolve => {
       execFile(
         launch.command,
         args,
         {
-          // Cold-starting the bundled zipapp on Windows regularly takes
-          // ~10s; anything shorter fails healthy machines (see P5 notes).
           timeout: 60000,
           env: ytdlpEnv(),
         },
@@ -311,7 +304,6 @@ export namespace CookieService {
     const trimmed = rawText.trim();
     let netscapeFormat = '';
 
-    // Check if user pasted JSON format (e.g. from EditThisCookie / Cookie-Editor)
     if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
       try {
         const jsonList = JSON.parse(trimmed);
@@ -338,13 +330,10 @@ export namespace CookieService {
           }
           netscapeFormat = lines.join('\n');
         }
-      } catch {
-        // Fallback to treat as plain text if JSON parsing fails
-      }
+      } catch {}
     }
 
     if (!netscapeFormat) {
-      // Treat as Netscape format directly
       const lines = trimmed.split('\n');
       const validLines = lines.filter(l => l.includes('\t') || l.startsWith('#'));
       if (validLines.length === 0) {
@@ -369,16 +358,12 @@ export namespace CookieService {
     if (fs.existsSync(COOKIES_FILE)) {
       try {
         fs.unlinkSync(COOKIES_FILE);
-      } catch {
-        // Ignore deletion error
-      }
+      } catch {}
     }
     if (fs.existsSync(GUEST_COOKIES_FILE)) {
       try {
         fs.unlinkSync(GUEST_COOKIES_FILE);
-      } catch {
-        // Ignore deletion error
-      }
+      } catch {}
     }
     return { success: true };
   }

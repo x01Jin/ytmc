@@ -1,3 +1,4 @@
+import { X } from 'lucide-react';
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { YouTubeSearchResult } from '../types';
@@ -46,7 +47,7 @@ export function YouTubePreviewModal({ result, onClose }: YouTubePreviewModalProp
             aria-label="Close video preview"
             autoFocus
           >
-            ✕
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
         <div className="mt-2 aspect-video w-full overflow-hidden bg-px-bg">

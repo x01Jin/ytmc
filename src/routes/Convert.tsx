@@ -1,13 +1,15 @@
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { ConversionOptionsPanel } from '../components/ConversionOptionsPanel';
 import { ConversionProgress } from '../components/ConversionProgress';
-import { CookieModal } from '../components/CookieModal';
 import { UrlInput } from '../components/UrlInput';
 import { VideoCard } from '../components/VideoCard';
 import { ApiClient } from '../services/apiClient';
 import { useConvertDraft, useHistory, useJobs, useLibrary, useSession } from '../store/appStore';
-import { canonicalWatchUrl } from './History';
+
+const CookieModal = lazy(() =>
+  import('../components/CookieModal').then(m => ({ default: m.CookieModal }))
+);
 
 const SAVE_BANNER_TIMEOUT_MS = 6000;
 
@@ -55,7 +57,7 @@ export function ConvertRoute() {
   const handleStartConversion = useCallback(async () => {
     if (!metadata) return;
     try {
-      await jobActions.startConversion(canonicalWatchUrl(metadata.id), options);
+      await jobActions.startConversion(ApiClient.youTubeWatchUrl(metadata.id), options);
     } catch (err: unknown) {
       setInspectError(
         err instanceof Error ? err.message : 'Failed to start conversion. Try again.'
@@ -63,8 +65,6 @@ export function ConvertRoute() {
     }
   }, [metadata, jobActions, options]);
 
-  // Completion handoff: the finished track already lives in the library, so
-  // the tab resets to its blank state and reports success briefly.
   useEffect(() => {
     if (activeJob?.status !== 'completed' || completedIdRef.current === activeJob.id) return;
     completedIdRef.current = activeJob.id;
@@ -79,10 +79,6 @@ export function ConvertRoute() {
     return () => window.clearTimeout(timer);
   }, [activeJob, jobActions, historyActions, libraryActions, resetDraft]);
 
-  // Re-convert entry: the History tab queues a URL, Convert pastes it and
-  // inspects it once. The paste is state synced from the store during
-  // render; the effect below performs only side effects. Synchronous
-  // updates do not belong in effects.
   const [prevInspectUrl, setPrevInspectUrl] = useState<string | null>(null);
   if (pendingInspectUrl && pendingInspectUrl !== prevInspectUrl) {
     setPrevInspectUrl(pendingInspectUrl);
@@ -178,15 +174,19 @@ export function ConvertRoute() {
         )
       )}
 
-      <CookieModal
-        isOpen={isCookieModalOpen}
-        onClose={() => {
-          setIsCookieModalOpen(false);
-          void sessionActions.refresh();
-        }}
-        status={session.status}
-        onStatusUpdated={next => sessionActions.update(next)}
-      />
+      {isCookieModalOpen && (
+        <Suspense fallback={null}>
+          <CookieModal
+            isOpen={isCookieModalOpen}
+            onClose={() => {
+              setIsCookieModalOpen(false);
+              void sessionActions.refresh();
+            }}
+            status={session.status}
+            onStatusUpdated={next => sessionActions.update(next)}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

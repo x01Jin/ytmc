@@ -53,16 +53,10 @@ function buildArtworkUrl(jobId: string, filePath: string): string {
   let version = '0';
   try {
     version = String(Math.floor(fs.statSync(filePath).mtimeMs));
-  } catch {
-    // The file may disappear between the library scan and response creation.
-  }
+  } catch {}
   return `/api/library/${encodeURIComponent(jobId)}/artwork?v=${encodeURIComponent(version)}`;
 }
 
-/**
- * Resolve a library track for in-place editing. Works for recent jobs and
- * for older library entries whose in-memory job has expired.
- */
 function resolveLibraryTarget(id: string): {
   filePath: string;
   videoId: string;
@@ -94,7 +88,6 @@ function resolveLibraryTarget(id: string): {
   };
 }
 
-/** Keep the job cache and the on-disk library index in sync after an edit. */
 function syncLibraryIndexes(
   id: string,
   update: {
@@ -139,9 +132,6 @@ function syncLibraryIndexes(
   });
 }
 
-/**
- * Fetch video metadata from YouTube URL or ID
- */
 apiRouter.get(
   '/info',
   asyncHandler(async (req: Request, res: Response) => {
@@ -188,9 +178,6 @@ apiRouter.get(
   })
 );
 
-/**
- * Start conversion job
- */
 apiRouter.post(
   '/convert',
   asyncHandler(async (req: Request, res: Response) => {
@@ -244,9 +231,6 @@ apiRouter.post(
   })
 );
 
-/**
- * Check conversion status
- */
 apiRouter.get('/status/:id', (req: Request, res: Response) => {
   const jobId = req.params.id;
   const job = JobManager.getJob(jobId);
@@ -257,19 +241,11 @@ apiRouter.get('/status/:id', (req: Request, res: Response) => {
   res.json({ success: true, job });
 });
 
-/**
- * Live conversion jobs (queue). History lives in its own persistent store
- * below — library edits never touch it.
- */
 apiRouter.get('/jobs', (req: Request, res: Response) => {
   const jobs = JobManager.listRecentJobs();
   res.json({ success: true, jobs });
 });
 
-/**
- * Conversion history: every finished Convert-tab job, frozen with its
- * original YouTube title, author, and thumbnail. Persists across restarts.
- */
 apiRouter.get('/history', (req: Request, res: Response) => {
   res.json({ success: true, data: HistoryStore.list() });
 });
@@ -310,7 +286,6 @@ apiRouter.get(
     const sourceExt = path.extname(filePath).replace('.', '').toLowerCase();
     if (String(req.query.preview || '').toLowerCase() === 'mp3') {
       if (sourceExt === 'mp3') {
-        // Already MP3: no preview needed.
       } else if (PreviewService.isEligible(sourceExt)) {
         try {
           filePath = await PreviewService.getOrCreate(jobId, filePath);
@@ -322,7 +297,6 @@ apiRouter.get(
           return;
         }
       }
-      // Non-eligible formats fall through to the native file.
     }
     let stat: fs.Stats;
     try {
@@ -343,7 +317,6 @@ apiRouter.get(
       const match = /^bytes=(\d*)-(\d*)$/.exec(range.trim());
       let start = match && match[1] ? parseInt(match[1], 10) : NaN;
       let end = match && match[2] ? parseInt(match[2], 10) : fileSize - 1;
-      // Suffix ranges ("bytes=-500") mean "last 500 bytes".
       if (match && !match[1] && match[2]) {
         start = Math.max(0, fileSize - parseInt(match[2], 10));
         end = fileSize - 1;
@@ -393,9 +366,6 @@ apiRouter.get(
   })
 );
 
-/**
- * Download converted audio file
- */
 apiRouter.get('/download/:id', (req: Request, res: Response) => {
   const jobId = req.params.id;
   const resolved = resolveAudioFile(jobId);
@@ -414,17 +384,11 @@ apiRouter.get('/download/:id', (req: Request, res: Response) => {
   });
 });
 
-/**
- * Cookie status
- */
 apiRouter.get('/cookies', (req: Request, res: Response) => {
   const status = CookieService.getStatus();
   res.json({ success: true, data: status });
 });
 
-/**
- * Auto-fetch YouTube guest session cookies
- */
 apiRouter.post(
   '/cookies/auto-fetch',
   asyncHandler(async (req: Request, res: Response) => {
@@ -442,9 +406,6 @@ apiRouter.post(
   })
 );
 
-/**
- * Test current YouTube session cookies and challenge solver
- */
 apiRouter.post(
   '/cookies/test',
   asyncHandler(async (req: Request, res: Response) => {
@@ -460,9 +421,6 @@ apiRouter.post(
   })
 );
 
-/**
- * Save user session cookies
- */
 apiRouter.post('/cookies', (req: Request, res: Response) => {
   try {
     const { cookies } = req.body;
@@ -481,24 +439,15 @@ apiRouter.post('/cookies', (req: Request, res: Response) => {
   }
 });
 
-/**
- * Clear session cookies
- */
 apiRouter.delete('/cookies', (req: Request, res: Response) => {
   const result = CookieService.clearCookies();
   res.json(result);
 });
 
-/**
- * Pre-verified demo tracks
- */
 apiRouter.get('/demo-tracks', (req: Request, res: Response) => {
   res.json({ success: true, data: DEFAULT_DEMO_TRACKS });
 });
 
-/**
- * Library settings: where finished files live on disk.
- */
 apiRouter.get('/settings', (req: Request, res: Response) => {
   const settings = SettingsService.getSettings();
   res.json({
@@ -530,9 +479,6 @@ apiRouter.post('/settings/reset', (req: Request, res: Response) => {
   res.json({ success: true, data: settings });
 });
 
-/**
- * On-disk library: persistent records plus any unindexed audio files.
- */
 apiRouter.get(
   '/library',
   asyncHandler(async (req: Request, res: Response) => {
@@ -690,9 +636,6 @@ apiRouter.delete('/library/:id', (req: Request, res: Response) => {
   res.json({ success: true, message: 'File deleted from your library.' });
 });
 
-/**
- * Probe a library track (duration/format/size) for the trimmer preview.
- */
 apiRouter.get(
   '/library/:id/probe',
   asyncHandler(async (req: Request, res: Response) => {
@@ -717,10 +660,6 @@ apiRouter.get(
   })
 );
 
-/**
- * Trim a library track in place: cuts [start, end) and overwrites the file.
- * Body: { start: "0:15" | "15", end?: "2:45" | "" } — blank end keeps the tail.
- */
 apiRouter.post(
   '/library/:id/trim',
   asyncHandler(async (req: Request, res: Response) => {
@@ -858,8 +797,6 @@ apiRouter.post(
         },
         { filePath: finalPath, format: nextFormat }
       );
-      // Re-read tags from the rewritten file so the index reflects what is
-      // actually embedded (instead of masking file-level loss with stale tags).
       let embeddedTags = target.tags;
       try {
         const probed = await AudioTagService.readTags(result.filePath);
@@ -960,10 +897,6 @@ apiRouter.post(
   })
 );
 
-/**
- * Search/detect music tags from external databases (iTunes, Deezer, MusicBrainz)
- * based on the music/track name input in the tag editor
- */
 apiRouter.get(
   '/tags/search',
   asyncHandler(async (req: Request, res: Response) => {
@@ -987,9 +920,6 @@ apiRouter.get(
   })
 );
 
-/**
- * Apply/update custom tags on an existing completed audio file
- */
 apiRouter.post(
   '/tags/apply/:id',
   asyncHandler(async (req: Request, res: Response) => {
@@ -1040,7 +970,6 @@ apiRouter.post(
 
       const result = await AudioTagService.applyTagsToFile(target.filePath, tags);
 
-      // Rename the file on disk to match the new tags (not just metadata).
       const newFileName = buildDisplayFileName(tags.artist || 'Unknown', tags.title, target.format);
       const dir = path.dirname(target.filePath);
       const currentBase = path.basename(target.filePath);
@@ -1060,8 +989,6 @@ apiRouter.post(
       const nextTitle = tags.title;
       const nextAuthor = tags.artist || target.author;
       const nextThumbnail = tags.coverUrl || target.thumbnail;
-      // Preserve the record origin: retagging an imported file must not turn
-      // it into a conversion (which would leak it into History).
       const existingSource = LibraryStore.list().find(r => r.jobId === jobId)?.source;
       const updatedJob = job
         ? JobManager.updateJob(jobId, {

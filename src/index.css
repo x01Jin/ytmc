@@ -24,11 +24,9 @@ body {
   background-color: var(--color-px-bg);
   color: var(--color-px-text);
   font-family: var(--font-body);
-  /* App-frame: the tab scrollport owns scrolling; never chain to the page. */
   overscroll-behavior: none;
 }
 
-/* Pixel surfaces: 2px hard borders, square corners, no blur or shadow. */
 .px-panel {
   background-color: var(--color-px-panel);
   border: 2px solid var(--color-px-line);
@@ -108,7 +106,6 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
-/* Blocky stepped progress bar. */
 .px-progress {
   image-rendering: pixelated;
 }
@@ -125,7 +122,6 @@ img.px-pixelated {
   font-variant-numeric: tabular-nums;
 }
 
-/* Long lists: skip offscreen row rendering without a virtualization dependency. */
 .px-row {
   content-visibility: auto;
   contain-intrinsic-size: auto 76px;
@@ -142,4 +138,28 @@ h3 {
   .px-progress-fill {
     transition: none;
   }
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-px-line) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--color-px-line);
+  border: 2px solid var(--color-px-bg);
+  border-radius: 2px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--color-px-acc);
 }

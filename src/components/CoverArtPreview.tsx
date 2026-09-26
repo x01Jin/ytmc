@@ -1,3 +1,4 @@
+import { X } from 'lucide-react';
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 
@@ -47,7 +48,7 @@ export function CoverArtPreview({ src, title, subtitle, onClose }: CoverArtPrevi
             aria-label="Close cover art preview"
             autoFocus
           >
-            ✕
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </figcaption>
       </figure>

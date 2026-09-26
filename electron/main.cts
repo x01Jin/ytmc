@@ -10,6 +10,24 @@ let serverProcess: ChildProcess | null = null;
 let serverPort = 0;
 let isQuitting = false;
 
+app.setName('YT Music Converter');
+
+const BOOT_T0 = Date.now();
+
+function bootLog(stage: string): void {
+  const line = `[boot +${Date.now() - BOOT_T0}ms] ${stage}`;
+  console.log(line);
+  try {
+    const dir = app.getPath('userData');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(
+      path.join(dir, 'boot-times.log'),
+      `${new Date().toISOString()} ${line}\n`,
+      'utf8'
+    );
+  } catch {}
+}
+
 const DEV_URL = process.env.ELECTRON_DEV_URL || '';
 const isDev = !!DEV_URL && !app.isPackaged;
 
@@ -27,11 +45,11 @@ function cspPolicy(): string {
   return [
     "default-src 'self'",
     "script-src 'self'",
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "font-src 'self' https://fonts.gstatic.com",
+    "style-src 'self' 'unsafe-inline'",
+    "font-src 'self' data:",
     "img-src 'self' data: https:",
     "media-src 'self' blob:",
-    `connect-src 'self' http://127.0.0.1:* http://localhost:*${ws} https://fonts.googleapis.com https://fonts.gstatic.com`,
+    `connect-src 'self' http://127.0.0.1:* http://localhost:*${ws}`,
     'frame-src https://www.youtube-nocookie.com https://www.youtube.com',
     "object-src 'none'",
     "base-uri 'self'",
@@ -136,8 +154,6 @@ function waitForServer(port: number, timeoutMs = 30000): Promise<void> {
 
 async function startBackend(): Promise<number> {
   if (isDev) {
-    // The dev server is owned by `concurrently` (npm run dev); just wait
-    // for readiness instead of racing loadURL against server startup.
     const port = devPort();
     await waitForServer(port);
     serverPort = port;
@@ -164,8 +180,6 @@ async function startBackend(): Promise<number> {
     APP_DOWNLOADS_DIR: defaultLibraryDir(),
   };
 
-  // Run the bundled Express server inside Electron's Node runtime so no
-  // separate Node installation is required on the user's machine.
   serverProcess = spawn(process.execPath, [entry], {
     env,
     cwd: path.dirname(entry),
@@ -214,8 +228,6 @@ function stopBackend(): Promise<void> {
     const pid = child.pid;
     try {
       if (process.platform === 'win32' && pid) {
-        // Windows has no SIGTERM: kill the whole process tree (backend +
-        // yt-dlp + ffmpeg children) so nothing lingers after quit.
         spawn('taskkill', ['/T', '/F', '/PID', String(pid)], {
           stdio: 'ignore',
         });
@@ -241,6 +253,59 @@ function stopBackend(): Promise<void> {
   });
 }
 
+function splashFile(): string | undefined {
+  const candidates = [
+    path.join(app.getAppPath(), 'dist', 'splash.html'),
+    path.join(app.getAppPath(), 'public', 'splash.html'),
+    path.join(__dirname, '..', 'public', 'splash.html'),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {}
+  }
+  return undefined;
+}
+
+function configurePortableDataDir(): void {
+  if (!app.isPackaged) return;
+  const exeDir = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath);
+  if (!exeDir) return;
+  const dir = path.join(exeDir, 'data');
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.accessSync(dir, fs.constants.W_OK);
+    app.setPath('userData', dir);
+  } catch {}
+}
+
+configurePortableDataDir();
+
+function sendSplashStatus(text: string): void {
+  try {
+    mainWindow?.webContents.send('splash:status', text);
+  } catch {}
+}
+
+function splashPainted(): Promise<void> {
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return Promise.resolve();
+  return new Promise(resolve => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(finish, 5000);
+    win.webContents.once('did-finish-load', () => {
+      bootLog('splash painted');
+      finish();
+    });
+  });
+}
+
 function windowIcon(): string | undefined {
   const candidates = [
     path.join(app.getAppPath(), 'assets', 'icon.png'),
@@ -254,13 +319,14 @@ function windowIcon(): string | undefined {
   return undefined;
 }
 
-function createWindow(port: number): void {
+function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 900,
     minHeight: 600,
     backgroundColor: '#0B0B12',
+    show: true,
     autoHideMenuBar: true,
     icon: windowIcon(),
     webPreferences: {
@@ -270,23 +336,6 @@ function createWindow(port: number): void {
       nodeIntegration: false,
     },
   });
-
-  const target = isDev ? DEV_URL : `http://127.0.0.1:${port}`;
-  if (isDev) {
-    mainWindow.webContents.openDevTools({ mode: 'detach' });
-  }
-  // Terminal-visible load proof: renderer failures (e.g. connection refused)
-  // otherwise surface only inside DevTools, invisible to `npm run` output.
-  mainWindow.webContents.once('did-finish-load', () => {
-    console.log(`[window] loaded ${target}`);
-  });
-  mainWindow.webContents.once(
-    'did-fail-load',
-    (_event, errorCode, errorDescription, validatedURL) => {
-      console.error(`[window] failed to load ${validatedURL}: ${errorDescription} (${errorCode})`);
-    }
-  );
-  void mainWindow.loadURL(target);
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) {
@@ -298,6 +347,36 @@ function createWindow(port: number): void {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  const splash = splashFile();
+  bootLog(splash ? `splash-file ${splash}` : 'splash-file missing');
+  if (splash) {
+    let version = '';
+    try {
+      version = app.getVersion();
+    } catch {}
+    void mainWindow.loadFile(splash, version ? { query: { v: version } } : undefined);
+  }
+}
+
+function showApp(port: number): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    createWindow();
+  }
+  const win = mainWindow;
+  if (!win || win.isDestroyed()) return;
+  const target = isDev ? DEV_URL : `http://127.0.0.1:${port}`;
+  if (isDev) {
+    win.webContents.openDevTools({ mode: 'detach' });
+  }
+  win.webContents.once('did-finish-load', () => {
+    bootLog('app painted');
+    console.log(`[window] loaded ${target}`);
+  });
+  win.webContents.once('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    console.error(`[window] failed to load ${validatedURL}: ${errorDescription} (${errorCode})`);
+  });
+  void win.loadURL(target);
 }
 
 function focusWindow(): void {
@@ -339,23 +418,32 @@ function registerIpc(): void {
 }
 
 async function boot(): Promise<void> {
+  bootLog('whenReady');
   try {
+    const payload = fs.statSync(app.getAppPath());
+    bootLog(
+      `payload-birthtime ${payload.birthtime.toISOString()} portable=${process.env.PORTABLE_EXECUTABLE_DIR ? 'yes' : 'no'}`
+    );
+  } catch {}
+  createWindow();
+  bootLog('window created');
+  registerIpc();
+  registerCsp();
+  sendSplashStatus('Starting backend…');
+  try {
+    await splashPainted();
+    sendSplashStatus('Probing engine…');
     const port = await startBackend();
-    registerIpc();
-    registerCsp();
-    createWindow(port);
+    bootLog('backend ready');
+    sendSplashStatus('Loading library…');
+    showApp(port);
   } catch (err) {
     console.error('Failed to start:', err);
-    dialog.showErrorBox(
-      'YT Music Converter - Failed to Start',
-      `The internal server could not start.\n\n${err instanceof Error ? err.message : String(err)}\n\nPlease try restarting the application.`
-    );
+    sendSplashStatus(`Startup failed: ${err instanceof Error ? err.message : String(err)}`);
     app.quit();
   }
 }
 
-// Single-instance lock: a second launch focuses the running window instead
-// of spawning a second backend that would fight over ports and files.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -365,8 +453,12 @@ if (!gotLock) {
   void app.whenReady().then(() => boot());
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0 && (isDev || serverPort > 0)) {
-      createWindow(isDev ? devPort() : serverPort);
+    if (BrowserWindow.getAllWindows().length === 0) {
+      if (isDev || serverPort > 0) {
+        showApp(isDev ? devPort() : serverPort);
+      } else {
+        void boot();
+      }
     }
   });
 
@@ -382,7 +474,6 @@ if (!gotLock) {
   });
 }
 
-// Best-effort cleanup for abnormal termination paths.
 process.on('SIGINT', () => {
   void stopBackend().then(() => process.exit(0));
 });

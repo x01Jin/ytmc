@@ -75,13 +75,11 @@ export namespace FileService {
       return 0;
     }
     for (const entry of entries) {
-      if (!entry.endsWith('.part')) continue;
+      if (!entry.endsWith('.part') && !entry.startsWith('temp_')) continue;
       try {
         fs.unlinkSync(path.join(dir, entry));
         removed += 1;
-      } catch {
-        // Ignore locked partial files.
-      }
+      } catch {}
     }
     return removed;
   }

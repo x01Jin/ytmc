@@ -1,7 +1,3 @@
-/**
- * Single-purpose service for parsing, extracting, and validating YouTube URLs and IDs.
- */
-
 export interface ParsedYouTubeInfo {
   isValid: boolean;
   videoId: string | null;
@@ -13,22 +9,15 @@ export function extractYouTubeId(input: string): string | null {
   if (!input || typeof input !== 'string') return null;
   const trimmed = input.trim();
 
-  // If already a clean 11-char ID
   if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) {
     return trimmed;
   }
 
-  // Common YouTube URL regex patterns
   const patterns = [
-    // Standard watch URL: youtube.com/watch?v=ID or music.youtube.com/watch?v=ID
     /(?:https?:\/\/)?(?:www\.|m\.|music\.)?youtube\.com\/watch\?(?:[^&]+&)*v=([a-zA-Z0-9_-]{11})/,
-    // Short URL: youtu.be/ID
     /(?:https?:\/\/)?youtu\.be\/([a-zA-Z0-9_-]{11})/,
-    // Embed URL: youtube.com/embed/ID
     /(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})/,
-    // Shorts URL: youtube.com/shorts/ID
     /(?:https?:\/\/)?(?:www\.)?youtube\.com\/shorts\/([a-zA-Z0-9_-]{11})/,
-    // Live URL: youtube.com/live/ID
     /(?:https?:\/\/)?(?:www\.)?youtube\.com\/live\/([a-zA-Z0-9_-]{11})/,
   ];
 
@@ -44,7 +33,6 @@ export function extractYouTubeId(input: string): string | null {
 
 export function parseTimestamp(input: string): number | undefined {
   if (!input) return undefined;
-  // Match t=120 or t=2m0s / t=1h2m3s
   const tMatch = input.match(/[?&]t=([0-9hms]+)/i);
   if (!tMatch) return undefined;
 

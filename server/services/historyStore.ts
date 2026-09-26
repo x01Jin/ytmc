@@ -2,8 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { DATA_DIR } from '../config.js';
 
-// Runtime ships Array.prototype.toSorted (ES2023) but the pinned ES2022 lib
-// has no type for it, so declare it once here for the whole project.
 declare global {
   interface Array<T> {
     toSorted(compareFn?: (a: T, b: T) => number): T[];
@@ -41,15 +39,6 @@ function writeAll(entries: HistoryEntry[]): void {
   fs.renameSync(tmp, HISTORY_FILE);
 }
 
-/**
- * Append-only log of finished Convert-tab conversions.
- *
- * Entries are frozen at completion time (original YouTube title, author,
- * thumbnail). Library edits (retag, trim, format change) never touch this
- * index, so History always shows what was originally converted. Deleting a
- * library file does not remove its History entry — the link can still be
- * re-converted.
- */
 export namespace HistoryStore {
   export function add(entry: HistoryEntry): void {
     const entries = readAll().filter(e => e.jobId !== entry.jobId);

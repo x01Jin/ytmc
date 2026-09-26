@@ -10,7 +10,6 @@ import { LibraryStore } from './server/services/libraryStore.js';
 import { refreshSidecarReachability } from './server/services/potService.js';
 import { ensureYtDlp, ensureFfmpeg } from './server/services/ytdlpRunner.js';
 
-/** Per-process token that mutating same-origin API calls must echo back. */
 export const LOOPBACK_TOKEN = crypto.randomUUID();
 
 let potProcess: ChildProcess | null = null;
@@ -60,25 +59,54 @@ export interface StartedServer {
   close: () => Promise<void>;
 }
 
-export async function startServer(): Promise<StartedServer> {
-  // Start POT server sidecar
-  startPotServer();
-  // Probe the yt-dlp launch chain once so failures are loud at boot
-  await ensureYtDlp();
-  await ensureFfmpeg();
-  void refreshSidecarReachability();
-  FileService.sweepPartFiles();
-  try {
-    const { removed } = LibraryStore.reconcile();
-    if (removed > 0) console.log(`Library reconciled: removed ${removed} stale/duplicate row(s).`);
-  } catch (err: unknown) {
-    console.warn('Library reconcile failed:', err instanceof Error ? err.message : err);
-  }
+export interface BootReadiness {
+  ytDlp: boolean | null;
+  ffmpeg: boolean | null;
+  pot: boolean | null;
+  library: boolean;
+}
 
+export const readiness: BootReadiness = {
+  ytDlp: null,
+  ffmpeg: null,
+  pot: null,
+  library: false,
+};
+
+function runBackgroundProbes(): void {
+  void Promise.allSettled([
+    ensureYtDlp().then(launch => {
+      readiness.ytDlp = launch.version !== null;
+    }),
+    ensureFfmpeg().then(version => {
+      readiness.ffmpeg = version !== null;
+    }),
+    refreshSidecarReachability().then(ok => {
+      readiness.pot = ok;
+    }),
+  ]);
+  void (async () => {
+    try {
+      FileService.sweepPartFiles();
+    } catch (err: unknown) {
+      console.warn('Part-file sweep failed:', err instanceof Error ? err.message : err);
+    }
+    try {
+      const { removed } = LibraryStore.reconcile();
+      readiness.library = true;
+      if (removed > 0)
+        console.log(`Library reconciled: removed ${removed} stale/duplicate row(s).`);
+    } catch (err: unknown) {
+      readiness.library = true;
+      console.warn('Library reconcile failed:', err instanceof Error ? err.message : err);
+    }
+  })();
+}
+
+export async function startServer(): Promise<StartedServer> {
+  startPotServer();
   const app = express();
 
-  // Loopback guard: refuse requests that arrived via a non-loopback Host
-  // header (DNS-rebinding defense for the desktop sidecar).
   app.use((req, res, next) => {
     const host = req.headers.host ?? '';
     if (!isLoopbackHostname(host)) {
@@ -88,12 +116,9 @@ export async function startServer(): Promise<StartedServer> {
     next();
   });
 
-  // Middleware for parsing JSON and form payloads
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  app.use(express.json({ limit: '1mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
-  // Token check for mutating API calls. The renderer fetches the token
-  // from /api/health (same-origin) and echoes it back. GET stays open.
   app.use('/api', (req, res, next) => {
     if (req.method === 'GET' || req.path === '/health') {
       next();
@@ -106,19 +131,17 @@ export async function startServer(): Promise<StartedServer> {
     next();
   });
 
-  // Mount API routes first
   app.use('/api', apiRouter);
 
-  // Health check endpoint (also publishes the loopback token + readiness)
   app.get('/api/health', (req, res) => {
     res.json({
       status: 'ok',
       time: new Date().toISOString(),
       loopbackToken: LOOPBACK_TOKEN,
+      readiness,
     });
   });
 
-  // Vite development middleware or production static serving.
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
@@ -131,8 +154,9 @@ export async function startServer(): Promise<StartedServer> {
     app.use(vite.middlewares);
   } else {
     const distPath = STATIC_DIR;
-    app.use(express.static(distPath));
+    app.use(express.static(distPath, { maxAge: '1y', immutable: true, etag: true }));
     app.get('*', (req, res) => {
+      res.set('Cache-Control', 'no-store');
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
@@ -142,8 +166,8 @@ export async function startServer(): Promise<StartedServer> {
       const addr = server.address();
       const actualPort = typeof addr === 'object' && addr ? addr.port : PORT;
       console.log(`YouTube to Music Converter server running on http://${HOST}:${actualPort}`);
-      // Machine-readable line for the Electron sidecar host.
       console.log(`PORT_READY=${actualPort}`);
+      runBackgroundProbes();
       resolve({
         port: actualPort,
         close: () =>
@@ -186,8 +210,6 @@ const cleanup = () => {
 process.on('SIGINT', cleanup);
 process.on('SIGTERM', cleanup);
 
-// Auto-start when run as a process (dev CLI or Electron sidecar child).
-// Importers (tests, future in-process hosts) set NO_AUTO_START=1.
 if (process.env.NO_AUTO_START !== '1') {
   startServer().catch(err => {
     console.error('Failed to start server:', err);

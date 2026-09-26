@@ -11,19 +11,12 @@ interface PollCallbacks {
   onDone?: (job: ConversionJob) => void;
 }
 
-/**
- * Polls a conversion job until it completes or fails. State updates ride
- * inside startTransition so progress ticks never block typing or playback.
- * Interval backs off from 1s to 3s after repeated network failures.
- */
 export function useJobPolling(
   jobId: string | null,
   status: string | undefined,
   { onUpdate, onDone }: PollCallbacks
 ) {
   const callbacksRef = useRef({ onUpdate, onDone });
-  // Assigned in an effect, never during render: reading or writing a ref
-  // while rendering breaks with concurrent features.
   useEffect(() => {
     callbacksRef.current = { onUpdate, onDone };
   }, [onUpdate, onDone]);
@@ -38,6 +31,10 @@ export function useJobPolling(
 
     const tick = async () => {
       if (stopped) return;
+      if (typeof document !== 'undefined' && document.hidden) {
+        if (!stopped) timer = setTimeout(tick, POLL_INTERVAL_MS);
+        return;
+      }
       try {
         const updated = await ApiClient.getJobStatus(jobId);
         failures = 0;

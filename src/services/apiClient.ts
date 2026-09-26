@@ -15,6 +15,21 @@ import type {
 
 let loopbackTokenPromise: Promise<string> | null = null;
 
+const getDedup = new Map<string, { at: number; promise: Promise<unknown> }>();
+const GET_DEDUP_TTL_MS = 2000;
+
+function dedupedGet<T>(key: string, loader: () => Promise<T>): Promise<T> {
+  const now = Date.now();
+  const cached = getDedup.get(key);
+  if (cached && now - cached.at < GET_DEDUP_TTL_MS) return cached.promise as Promise<T>;
+  const promise = loader().finally(() => {
+    const entry = getDedup.get(key);
+    if (entry?.promise === promise) getDedup.delete(key);
+  });
+  getDedup.set(key, { at: now, promise });
+  return promise;
+}
+
 async function getLoopbackToken(): Promise<string> {
   if (!loopbackTokenPromise) {
     loopbackTokenPromise = fetch('/api/health')
@@ -111,21 +126,25 @@ export namespace ApiClient {
   }
 
   export async function getRecentJobs(): Promise<ConversionJob[]> {
-    const res = await fetch('/api/jobs');
-    const json = await res.json();
-    if (!res.ok || !json.success) {
-      return [];
-    }
-    return json.jobs || [];
+    return dedupedGet('jobs', async () => {
+      const res = await fetch('/api/jobs');
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return [];
+      }
+      return json.jobs || [];
+    });
   }
 
   export async function getHistory(): Promise<HistoryEntry[]> {
-    const res = await fetch('/api/history');
-    const json = await res.json();
-    if (!res.ok || !json.success) {
-      return [];
-    }
-    return json.data || [];
+    return dedupedGet('history', async () => {
+      const res = await fetch('/api/history');
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return [];
+      }
+      return json.data || [];
+    });
   }
 
   export async function searchYouTube(
@@ -191,18 +210,20 @@ export namespace ApiClient {
   }
 
   export async function getCookieStatus(): Promise<CookieStatus> {
-    const res = await fetch('/api/cookies');
-    const json = await res.json();
-    if (!res.ok || !json.success) {
-      return {
-        configured: false,
-        sizeBytes: 0,
-        lineCount: 0,
-        lastModified: null,
-        sampleDomains: [],
-      };
-    }
-    return json.data;
+    return dedupedGet('cookies', async () => {
+      const res = await fetch('/api/cookies');
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        return {
+          configured: false,
+          sizeBytes: 0,
+          lineCount: 0,
+          lastModified: null,
+          sampleDomains: [],
+        };
+      }
+      return json.data;
+    });
   }
 
   export async function saveCookies(
@@ -282,12 +303,14 @@ export namespace ApiClient {
   }
 
   export async function getSettings(): Promise<AppSettings> {
-    const res = await fetch('/api/settings');
-    const json = await res.json();
-    if (!res.ok || !json.success) {
-      throw new Error(json.error || 'Failed to load settings');
-    }
-    return json.data;
+    return dedupedGet('settings', async () => {
+      const res = await fetch('/api/settings');
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Failed to load settings');
+      }
+      return json.data;
+    });
   }
 
   export async function updateSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
@@ -316,12 +339,14 @@ export namespace ApiClient {
   }
 
   export async function getLibrary(): Promise<LibraryData> {
-    const res = await fetch('/api/library');
-    const json = await res.json();
-    if (!res.ok || !json.success) {
-      throw new Error(json.error || 'Failed to load library');
-    }
-    return json.data;
+    return dedupedGet('library', async () => {
+      const res = await fetch('/api/library');
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error || 'Failed to load library');
+      }
+      return json.data;
+    });
   }
 
   export async function importLibraryFile(file: File): Promise<void> {

@@ -30,7 +30,6 @@ export interface ConvertRequestOptions {
   trimEnd?: string;
   volumeBoost?: number;
   normalizeAudio?: boolean;
-  /** New dual-mode selector. Legacy `normalizeAudio: true` maps to "loudness". */
   normalizeMode?: NormalizeMode | string;
   embedThumbnail?: boolean;
 }
@@ -55,9 +54,6 @@ export namespace ConversionService {
         ? options.bitrate
         : 'native';
 
-    // Fetch quick oEmbed info to immediately initialize job and output filename.
-    // Job identity is always the YouTube title/uploader/thumbnail — the
-    // convert flow carries no autotagger tags.
     const oembed = await MetadataService.fetchOEmbed(canonicalUrl);
     const rawTitle = oembed?.title || `Track_${videoId}`;
     const rawAuthor = oembed?.author || 'YouTube';
@@ -76,7 +72,6 @@ export namespace ConversionService {
       format,
       bitrate
     );
-    // Asynchronously execute yt-dlp conversion pipeline
     void executeYtDlp(
       jobId,
       canonicalUrl,
@@ -110,10 +105,6 @@ export namespace ConversionService {
     const { strategy } = await resolveStrategy();
     const useCookies = cookiesAllowed(strategy, !!cookiesPath);
 
-    // Loudness mode runs as a LOCAL two-pass post-pass after a native
-    // download: true-linear scaling needs a measurement pass first, which
-    // can't run inside yt-dlp's one-shot transcode. Peak/off+boost stay in
-    // yt-dlp args (single-pass, pumping-free by construction).
     const loudnessPostPass =
       resolveNormalizeMode({
         normalizeMode: options.normalizeMode,
@@ -155,9 +146,6 @@ export namespace ConversionService {
     }
 
     if (loudnessPostPass) {
-      // Native streamcopy download; the two-pass linear post-pass below
-      // transcodes to the requested target afterwards. (Single transcode
-      // total — same cost class as the old in-yt-dlp filter.)
       args.push('--extract-audio');
       args.push('--audio-format', 'best');
     } else if (format === 'best' || format === 'opus' || format === 'm4a') {
@@ -208,12 +196,6 @@ export namespace ConversionService {
       }
     }
 
-    // NOTE: opus excluded — ffmpeg cannot mux attached_pic into Ogg/Opus
-    // (cover would fail the whole conversion). Opus cover is embedded later
-    // via METADATA_BLOCK_PICTURE in the minimalTags step below.
-    // Loudness post-pass also skips yt-dlp embedding: the native download
-    // may be opus (un-embeddable) and the local transcode + minimalTags step
-    // attach the artwork afterwards.
     if (
       options.embedThumbnail &&
       !loudnessPostPass &&
@@ -319,9 +301,6 @@ export namespace ConversionService {
 
       let loudnessInfo: { gainDb: number; outputI: number } | null = null;
       if (loudnessPostPass) {
-        // Two-pass linear loudnorm to the REQUESTED target ("best" keeps the
-        // native container). Uniform gain — dynamics preserved, silence
-        // untouched. Runs after the native download, before naming/tagging.
         const SUPPORTED_TARGETS = ['opus', 'm4a', 'mp3', 'flac', 'wav'];
         const finalTarget =
           format === 'best' ? (SUPPORTED_TARGETS.includes(actualExt) ? actualExt : 'opus') : format;
@@ -428,10 +407,6 @@ export namespace ConversionService {
           completedAt: updated.completedAt ?? Date.now(),
           tags: updated.tags,
         });
-        // Freeze the original YouTube identity for History. This runs
-        // synchronously at completion — before any library edit is
-        // possible — so these are the untouched conversion values. The
-        // entry is never modified afterwards.
         HistoryStore.add({
           jobId,
           videoId,
