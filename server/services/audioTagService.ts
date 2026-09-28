@@ -29,6 +29,18 @@ function detectImageMime(buffer: Buffer): string {
     buffer[3] === 0x47
   )
     return 'image/png';
+  if (
+    buffer.length > 12 &&
+    buffer[0] === 0x52 &&
+    buffer[1] === 0x49 &&
+    buffer[2] === 0x46 &&
+    buffer[3] === 0x46 &&
+    buffer[8] === 0x57 &&
+    buffer[9] === 0x45 &&
+    buffer[10] === 0x42 &&
+    buffer[11] === 0x50
+  )
+    return 'image/webp';
   return 'image/jpeg';
 }
 
@@ -313,7 +325,7 @@ export namespace AudioTagService {
 
   export async function extractCoverArt(filePath: string): Promise<{
     data: Buffer;
-    mimeType: 'image/jpeg';
+    mimeType: string;
   } | null> {
     if (!fs.existsSync(filePath)) return null;
 
@@ -329,10 +341,9 @@ export namespace AudioTagService {
         '0:v:0',
         '-frames:v',
         '1',
-        '-f',
-        'image2pipe',
         '-vcodec',
         'mjpeg',
+        '-y',
         outputPath,
       ]);
       const timeout = setTimeout(() => child.kill(), 15000);
@@ -351,9 +362,37 @@ export namespace AudioTagService {
         }
         const data = fs.readFileSync(outputPath);
         fs.rmSync(outputPath, { force: true });
-        resolve(data.length > 8 * 1024 * 1024 ? null : { data, mimeType: 'image/jpeg' });
+        if (data.length === 0 || data.length > 8 * 1024 * 1024) {
+          resolve(null);
+          return;
+        }
+        resolve({ data, mimeType: detectImageMime(data) });
       });
     });
+  }
+
+  export async function getEmbeddedArtwork(filePath: string): Promise<{
+    data: Buffer;
+    mimeType: string;
+  } | null> {
+    if (!fs.existsSync(filePath)) return null;
+    const ext = path.extname(filePath).toLowerCase().replace('.', '');
+    const isOpusContainer = ext === 'opus' || ext === 'ogg' || ext === 'oga';
+    if (isOpusContainer) {
+      const picture = await extractOpusPicture(filePath).catch(() => null);
+      if (picture && picture.length > 0 && picture.length <= 8 * 1024 * 1024) {
+        return {
+          data: Buffer.from(picture),
+          mimeType: detectImageMime(picture),
+        };
+      }
+    }
+    const art = await AudioTagService.extractCoverArt(filePath).catch(() => null);
+    if (art) return art;
+    if (!isOpusContainer) return null;
+    const picture = await extractOpusPicture(filePath).catch(() => null);
+    if (!picture || picture.length === 0 || picture.length > 8 * 1024 * 1024) return null;
+    return { data: Buffer.from(picture), mimeType: detectImageMime(picture) };
   }
 
   export async function applyTagsToFile(

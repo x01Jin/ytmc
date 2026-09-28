@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ConversionJob } from '../types';
 import { needsPreviewPlayback, withPreviewForFormat } from '../utils/audioSupport';
 import { formatSeconds } from '../utils/time';
+import { TrackArtwork } from './TrackArtwork';
 
 interface AudioPlayerProps {
   job?: ConversionJob;
@@ -169,15 +170,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
 
       <div className="flex min-w-0 items-center gap-2">
         <div className="h-9 w-9 shrink-0 overflow-hidden border-2 border-px-line bg-px-bg">
-          <img
-            src={job.thumbnail}
-            alt=""
-            width={36}
-            height={36}
-            loading="lazy"
-            referrerPolicy="no-referrer"
-            className="px-pixelated h-full w-full object-cover"
-          />
+          <TrackArtwork src={job.thumbnail} className="px-pixelated h-full w-full object-cover" />
         </div>
 
         <div className="min-w-0 flex-1">

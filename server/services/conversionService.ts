@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { SUPPORTED_BITRATES, SUPPORTED_FORMATS, FFMPEG_PATH } from '../config.js';
 import { buildDisplayFileName, dedupeFileName } from '../utils/filename.js';
+import { buildArtworkUrl } from '../utils/artwork.js';
 import { FileService } from './fileService.js';
 import { HistoryStore } from './historyStore.js';
 import { LibraryStore } from './libraryStore.js';
@@ -15,12 +16,7 @@ import { MetadataService } from './metadataService.js';
 import { cookiesAllowed, extractorArgsFor, resolveStrategy } from './potService.js';
 import { parseYouTubeInput } from './urlService.js';
 import { ytdlpEnv, ytdlpLaunch } from './ytdlpRunner.js';
-import {
-  buildAudioFilters,
-  resolveNormalizeMode,
-  transcodeWithLinearLoudness,
-  type NormalizeMode,
-} from './audioFilterService.js';
+import { buildAudioFilters } from './audioFilterService.js';
 
 export interface ConvertRequestOptions {
   url: string;
@@ -29,8 +25,6 @@ export interface ConvertRequestOptions {
   trimStart?: string;
   trimEnd?: string;
   volumeBoost?: number;
-  normalizeAudio?: boolean;
-  normalizeMode?: NormalizeMode | string;
   embedThumbnail?: boolean;
 }
 
@@ -105,18 +99,9 @@ export namespace ConversionService {
     const { strategy } = await resolveStrategy();
     const useCookies = cookiesAllowed(strategy, !!cookiesPath);
 
-    const loudnessPostPass =
-      resolveNormalizeMode({
-        normalizeMode: options.normalizeMode,
-        normalizeAudio: options.normalizeAudio,
-      }) === 'loudness';
-    const ffmpegFilters: string[] = loudnessPostPass
-      ? []
-      : buildAudioFilters({
-          normalizeMode: options.normalizeMode,
-          normalizeAudio: options.normalizeAudio,
-          volumeBoost: options.volumeBoost,
-        });
+    const ffmpegFilters: string[] = buildAudioFilters({
+      volumeBoost: options.volumeBoost,
+    });
     const hasFilters = ffmpegFilters.length > 0;
 
     const args: string[] = [
@@ -145,10 +130,7 @@ export namespace ConversionService {
       args.push('--force-keyframes-at-cuts');
     }
 
-    if (loudnessPostPass) {
-      args.push('--extract-audio');
-      args.push('--audio-format', 'best');
-    } else if (format === 'best' || format === 'opus' || format === 'm4a') {
+    if (format === 'best' || format === 'opus' || format === 'm4a') {
       if (!hasFilters) {
         args.push('--extract-audio');
         args.push('--audio-format', format === 'best' ? 'best' : format);
@@ -196,11 +178,7 @@ export namespace ConversionService {
       }
     }
 
-    if (
-      options.embedThumbnail &&
-      !loudnessPostPass &&
-      (format === 'mp3' || format === 'm4a' || format === 'flac')
-    ) {
+    if (options.embedThumbnail && (format === 'mp3' || format === 'm4a' || format === 'flac')) {
       args.push('--embed-thumbnail');
     }
 
@@ -209,9 +187,8 @@ export namespace ConversionService {
     JobManager.updateJob(jobId, {
       status: 'downloading',
       progress: 5,
-      stageMessage: loudnessPostPass
-        ? 'Fetching native audio stream (loudness balanced afterwards, dynamics preserved)...'
-        : format === 'best' || format === 'opus' || format === 'm4a'
+      stageMessage:
+        format === 'best' || format === 'opus' || format === 'm4a'
           ? 'Fetching highest native audio stream directly from YouTube...'
           : `Connecting to YouTube audio stream for ${format.toUpperCase()} conversion...`,
     });
@@ -296,44 +273,8 @@ export namespace ConversionService {
         return;
       }
 
-      let stagedFile = path.join(downloadsDir, matchedFile);
-      let actualExt = path.extname(stagedFile).replace('.', '').toLowerCase();
-
-      let loudnessInfo: { gainDb: number; outputI: number } | null = null;
-      if (loudnessPostPass) {
-        const SUPPORTED_TARGETS = ['opus', 'm4a', 'mp3', 'flac', 'wav'];
-        const finalTarget =
-          format === 'best' ? (SUPPORTED_TARGETS.includes(actualExt) ? actualExt : 'opus') : format;
-        const postPath = path.join(downloadsDir, `${jobId}.loudness.${finalTarget}`);
-        try {
-          const res = await transcodeWithLinearLoudness(stagedFile, postPath, {
-            format: finalTarget,
-            bitrate,
-            onPass: pass =>
-              JobManager.updateJob(jobId, {
-                status: 'converting',
-                progress: pass === 1 ? 86 : 92,
-                stageMessage:
-                  pass === 1
-                    ? 'Measuring loudness (pass 1/2) — audio untouched...'
-                    : 'Applying uniform loudness gain (pass 2/2)...',
-              }),
-          });
-          loudnessInfo = { gainDb: res.gainDb, outputI: res.outputI };
-        } catch (postErr: any) {
-          JobManager.updateJob(jobId, {
-            status: 'error',
-            exitCode: code,
-            error: `Loudness pass failed: ${postErr?.message || postErr}`,
-          });
-          return;
-        }
-        try {
-          fs.unlinkSync(stagedFile);
-        } catch {}
-        stagedFile = postPath;
-        actualExt = finalTarget;
-      }
+      const stagedFile = path.join(downloadsDir, matchedFile);
+      const actualExt = path.extname(stagedFile).replace('.', '').toLowerCase();
 
       const resolvedDisplayFileName = displayFileName.replace(/\.[a-z0-9]+$/i, `.${actualExt}`);
       const finalName = dedupeFileName(downloadsDir, resolvedDisplayFileName);
@@ -375,11 +316,8 @@ export namespace ConversionService {
       const updated = JobManager.updateJob(jobId, {
         status: 'completed',
         progress: 100,
-        stageMessage: loudnessPostPass
-          ? loudnessInfo && Number.isFinite(loudnessInfo.outputI)
-            ? `Loudness balanced to ${loudnessInfo.outputI.toFixed(1)} LUFS with a uniform ${loudnessInfo.gainDb >= 0 ? '+' : ''}${loudnessInfo.gainDb.toFixed(1)} dB gain — dynamics fully preserved!`
-            : 'Loudness balanced with a uniform gain — dynamics fully preserved!'
-          : format === 'best' || format === 'opus' || format === 'm4a'
+        stageMessage:
+          format === 'best' || format === 'opus' || format === 'm4a'
             ? `Highest native audio stream extracted bit-for-bit (~${actualExt === 'opus' ? '160k Opus' : '128k AAC'})!`
             : 'Audio converted successfully!',
         format: actualExt,
@@ -399,7 +337,8 @@ export namespace ConversionService {
           videoId,
           title: updated.title,
           author: updated.author,
-          thumbnail: updated.thumbnail,
+          thumbnail: buildArtworkUrl(jobId, updated.outputFilePath),
+          sourceThumbnail: updated.thumbnail,
           format: actualExt,
           fileName: finalName,
           filePath: updated.outputFilePath,

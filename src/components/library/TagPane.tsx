@@ -57,6 +57,7 @@ export function TagPane() {
         defaultVideoTitle={record.title}
         defaultArtist={record.author}
         defaultThumbnail={record.thumbnail}
+        sourceThumbnail={record.sourceThumbnail}
         onChange={() => {}}
         onSaveToFile={handleSave}
         isSavingToFile={isSaving}

@@ -19,10 +19,11 @@ import { MetadataService } from '../services/metadataService.js';
 import { SettingsService } from '../services/settingsService.js';
 import { TagFetcherService } from '../services/tagFetcherService.js';
 import { buildDisplayFileName, dedupeFileName } from '../utils/filename.js';
+import { buildArtworkUrl, isRemoteArtworkUrl } from '../utils/artwork.js';
 import { getAudioMimeType } from '../utils/mime.js';
 import { PreviewService } from '../services/previewService.js';
 import { YouTubeService } from '../services/youtubeService.js';
-import { AUDIO_DSP, isValidNormalizeMode } from '../services/audioFilterService.js';
+import { AUDIO_DSP } from '../services/audioFilterService.js';
 
 export const apiRouter: Router = express.Router();
 
@@ -47,14 +48,6 @@ function resolveAudioFile(id: string): { filePath: string; fileName: string } | 
     return { filePath: record.filePath, fileName: record.fileName };
   }
   return null;
-}
-
-function buildArtworkUrl(jobId: string, filePath: string): string {
-  let version = '0';
-  try {
-    version = String(Math.floor(fs.statSync(filePath).mtimeMs));
-  } catch {}
-  return `/api/library/${encodeURIComponent(jobId)}/artwork?v=${encodeURIComponent(version)}`;
 }
 
 function resolveLibraryTarget(id: string): {
@@ -123,6 +116,9 @@ function syncLibraryIndexes(
     title: update.title,
     author: update.author,
     thumbnail: update.thumbnail,
+    sourceThumbnail:
+      existing?.sourceThumbnail ??
+      (isRemoteArtworkUrl(existing?.thumbnail) ? existing?.thumbnail : undefined),
     format: update.format,
     fileName: update.fileName,
     filePath: update.filePath,
@@ -182,29 +178,9 @@ apiRouter.post(
   '/convert',
   asyncHandler(async (req: Request, res: Response) => {
     try {
-      const {
-        url,
-        format,
-        bitrate,
-        trimStart,
-        trimEnd,
-        volumeBoost,
-        normalizeAudio,
-        normalizeMode,
-        embedThumbnail,
-      } = req.body;
+      const { url, format, bitrate, trimStart, trimEnd, volumeBoost, embedThumbnail } = req.body;
       if (!url) {
         res.status(400).json({ success: false, error: 'Target URL is required' });
-        return;
-      }
-      if (
-        normalizeMode !== undefined &&
-        !isValidNormalizeMode(String(normalizeMode).toLowerCase())
-      ) {
-        res.status(400).json({
-          success: false,
-          error: 'Invalid normalizeMode. Choose one of: off, loudness, peak.',
-        });
         return;
       }
 
@@ -215,9 +191,6 @@ apiRouter.post(
         trimStart,
         trimEnd,
         volumeBoost: volumeBoost ? parseInt(volumeBoost, 10) : undefined,
-        normalizeAudio: Boolean(normalizeAudio),
-        normalizeMode:
-          normalizeMode !== undefined ? String(normalizeMode).toLowerCase() : undefined,
         embedThumbnail: embedThumbnail !== false,
       });
 
@@ -285,8 +258,7 @@ apiRouter.get(
     let filePath = resolved.filePath;
     const sourceExt = path.extname(filePath).replace('.', '').toLowerCase();
     if (String(req.query.preview || '').toLowerCase() === 'mp3') {
-      if (sourceExt === 'mp3') {
-      } else if (PreviewService.isEligible(sourceExt)) {
+      if (sourceExt !== 'mp3' && PreviewService.isEligible(sourceExt)) {
         try {
           filePath = await PreviewService.getOrCreate(jobId, filePath);
         } catch (error: any) {
@@ -485,12 +457,16 @@ apiRouter.get(
     let records = LibraryStore.list();
     for (const record of records) {
       const tags = record.tags ?? (await AudioTagService.readTags(record.filePath));
-      const thumbnail =
-        record.source === 'import'
-          ? buildArtworkUrl(record.jobId, record.filePath)
-          : record.thumbnail;
-      if (!record.tags || thumbnail !== record.thumbnail) {
-        LibraryStore.upsert({ ...record, thumbnail, tags });
+      const thumbnail = buildArtworkUrl(record.jobId, record.filePath);
+      const sourceThumbnail =
+        record.sourceThumbnail ??
+        (isRemoteArtworkUrl(record.thumbnail) ? record.thumbnail : undefined);
+      if (
+        !record.tags ||
+        thumbnail !== record.thumbnail ||
+        sourceThumbnail !== record.sourceThumbnail
+      ) {
+        LibraryStore.upsert({ ...record, thumbnail, sourceThumbnail, tags });
       }
     }
     records = LibraryStore.list();
@@ -598,12 +574,15 @@ apiRouter.get(
       return;
     }
 
-    const artwork = await AudioTagService.extractCoverArt(record.filePath);
+    const artwork = await AudioTagService.getEmbeddedArtwork(record.filePath);
     if (!artwork) {
       res.status(404).end();
       return;
     }
-    res.type(artwork.mimeType).set('Cache-Control', 'no-cache').send(artwork.data);
+    res
+      .type(artwork.mimeType)
+      .set('Cache-Control', 'public, max-age=31536000, immutable')
+      .send(artwork.data);
   })
 );
 
@@ -713,7 +692,7 @@ apiRouter.post(
         format: result.format,
         title: target.title,
         author: target.author,
-        thumbnail: target.thumbnail,
+        thumbnail: buildArtworkUrl(req.params.id, result.filePath),
         videoId: target.videoId,
         completedAt: target.completedAt,
       });
@@ -740,23 +719,13 @@ apiRouter.post(
       res.status(400).json({ success: false, error: 'File is outside the library folder.' });
       return;
     }
-    const { format, bitrate, normalizeAudio, normalizeMode, volumeBoost, title, artist } =
-      (req.body ?? {}) as {
-        format?: string;
-        bitrate?: string;
-        normalizeAudio?: boolean;
-        normalizeMode?: string;
-        volumeBoost?: number;
-        title?: string;
-        artist?: string;
-      };
-    if (normalizeMode !== undefined && !isValidNormalizeMode(String(normalizeMode).toLowerCase())) {
-      res.status(400).json({
-        success: false,
-        error: 'Invalid normalizeMode. Choose one of: off, loudness, peak.',
-      });
-      return;
-    }
+    const { format, bitrate, volumeBoost, title, artist } = (req.body ?? {}) as {
+      format?: string;
+      bitrate?: string;
+      volumeBoost?: number;
+      title?: string;
+      artist?: string;
+    };
     const nextFormat = format !== undefined ? String(format).toLowerCase() : target.format;
     if (!(EDITABLE_FORMATS as readonly string[]).includes(nextFormat)) {
       res.status(400).json({
@@ -788,9 +757,6 @@ apiRouter.post(
         {
           format: nextFormat,
           bitrate,
-          normalizeAudio: Boolean(normalizeAudio),
-          normalizeMode:
-            normalizeMode !== undefined ? String(normalizeMode).toLowerCase() : undefined,
           volumeBoost: gain,
           title: title !== undefined ? nextTitle : undefined,
           artist: artist !== undefined ? nextAuthor : undefined,
@@ -811,7 +777,7 @@ apiRouter.post(
             genre: probed.genre || target.tags?.genre,
             trackNumber: probed.trackNumber || target.tags?.trackNumber,
             comment: probed.comment ?? target.tags?.comment,
-            coverUrl: target.tags?.coverUrl ?? target.thumbnail,
+            coverUrl: target.tags?.coverUrl,
             cleanDescription: target.tags?.cleanDescription,
           };
         }
@@ -823,21 +789,17 @@ apiRouter.post(
         format: result.format,
         title: nextTitle,
         author: nextAuthor,
-        thumbnail: target.thumbnail,
+        thumbnail: buildArtworkUrl(req.params.id, result.filePath),
         videoId: target.videoId,
         completedAt: target.completedAt,
         tags: embeddedTags,
       });
       PreviewService.invalidate(req.params.id);
-      const loudnessNote =
-        result.loudness && Number.isFinite(result.loudness.outputI)
-          ? ` Loudness balanced to ${result.loudness.outputI.toFixed(1)} LUFS with a uniform ${result.loudness.gainDb >= 0 ? '+' : ''}${result.loudness.gainDb.toFixed(1)} dB gain (dynamics preserved).`
-          : '';
       res.json({
         success: true,
         message: result.coverDropped
-          ? `Changes applied.${loudnessNote} Note: cover art could not be carried to the new container, audio is intact.`
-          : `Changes applied.${loudnessNote}`,
+          ? 'Changes applied. Note: cover art could not be carried to the new container, audio is intact.'
+          : 'Changes applied.',
         data: result,
       });
     } catch (error: any) {
@@ -988,8 +950,14 @@ apiRouter.post(
 
       const nextTitle = tags.title;
       const nextAuthor = tags.artist || target.author;
-      const nextThumbnail = tags.coverUrl || target.thumbnail;
+      const nextThumbnail = buildArtworkUrl(jobId, finalPath);
       const existingSource = LibraryStore.list().find(r => r.jobId === jobId)?.source;
+      const existingSourceThumbnail = LibraryStore.list().find(
+        r => r.jobId === jobId
+      )?.sourceThumbnail;
+      const nextSourceThumbnail =
+        existingSourceThumbnail ??
+        (isRemoteArtworkUrl(target.thumbnail) ? target.thumbnail : undefined);
       const updatedJob = job
         ? JobManager.updateJob(jobId, {
             title: nextTitle,
@@ -1008,6 +976,7 @@ apiRouter.post(
         title: nextTitle,
         author: nextAuthor,
         thumbnail: nextThumbnail,
+        sourceThumbnail: nextSourceThumbnail,
         format: target.format,
         fileName: finalName,
         filePath: finalPath,

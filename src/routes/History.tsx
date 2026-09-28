@@ -54,98 +54,103 @@ export function HistoryRoute({ onReconvert }: { onReconvert: () => void }) {
   }
 
   return (
-    <section className="px-panel w-full space-y-2 p-3" aria-label="Conversion history">
-      <div className="flex items-center justify-between border-b-2 border-px-line pb-2">
-        <h3 className="font-display text-[10px]">HISTORY</h3>
-        <span className="flex items-center gap-2">
-          <span className="px-tabular text-xs text-px-dim">{entries.length} tracks</span>
-          <button
-            type="button"
-            className={`px-btn shrink-0 !px-2 !py-1 text-xs ${
-              confirmClear ? '!border-px-err !text-px-err' : ''
-            }`}
-            onClick={() => {
-              if (!confirmClear) {
-                setConfirmClear(true);
-                return;
-              }
-              setConfirmClear(false);
-              void historyActions.clear().catch(() => {});
-            }}
-            onBlur={() => setConfirmClear(false)}
-            title={confirmClear ? 'Click again to confirm' : 'Clear history'}
-            aria-label={confirmClear ? 'Confirm clear history' : 'Clear history'}
-          >
-            <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
-            {confirmClear ? 'Confirm' : 'Clear'}
-          </button>
-        </span>
-      </div>
-
-      <div className="divide-y divide-px-line">
-        {entries.map(entry => (
-          <div
-            key={entry.jobId}
-            id={`history-item-${entry.jobId}`}
-            className="px-row flex items-center gap-3 py-2.5"
-          >
-            <span className="h-10 w-10 shrink-0 overflow-hidden border-2 border-px-line bg-px-bg">
-              {entry.thumbnail ? (
-                <img
-                  src={entry.thumbnail}
-                  alt=""
-                  width={40}
-                  height={40}
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                  className="px-pixelated h-full w-full object-cover"
-                />
-              ) : (
-                <FileAudio className="h-full w-full p-2 text-px-dim" aria-hidden="true" />
-              )}
-            </span>
-
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-xs font-semibold">{entry.title}</span>
-              <span className="block truncate text-[11px] text-px-dim">{entry.author}</span>
-            </span>
-
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
+      <section
+        className="px-panel flex min-h-0 w-full flex-1 flex-col space-y-2 p-3"
+        aria-label="Conversion history"
+      >
+        <div className="flex shrink-0 items-center justify-between border-b-2 border-px-line pb-2">
+          <h3 className="font-display text-[10px]">HISTORY</h3>
+          <span className="flex items-center gap-2">
+            <span className="px-tabular text-xs text-px-dim">{entries.length} tracks</span>
             <button
               type="button"
-              className="px-btn shrink-0 !p-2"
-              onClick={() => void handleCopyLink(entry.jobId, entry.videoId)}
-              title="Copy YouTube link"
-              aria-label={
-                copiedId === entry.jobId ? 'Link copied' : `Copy YouTube link for ${entry.title}`
-              }
+              className={`px-btn shrink-0 !px-2 !py-1 text-xs ${
+                confirmClear ? '!border-px-err !text-px-err' : ''
+              }`}
+              onClick={() => {
+                if (!confirmClear) {
+                  setConfirmClear(true);
+                  return;
+                }
+                setConfirmClear(false);
+                void historyActions.clear().catch(() => {});
+              }}
+              onBlur={() => setConfirmClear(false)}
+              title={confirmClear ? 'Click again to confirm' : 'Clear history'}
+              aria-label={confirmClear ? 'Confirm clear history' : 'Clear history'}
             >
-              {copiedId === entry.jobId ? (
-                <Check className="h-4 w-4 text-px-ok" aria-hidden="true" />
-              ) : (
-                <Link2 className="h-4 w-4" aria-hidden="true" />
-              )}
+              <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
+              {confirmClear ? 'Confirm' : 'Clear'}
             </button>
-            <button
-              type="button"
-              className="px-btn shrink-0 !p-2"
-              onClick={() => handleReconvert(entry.videoId)}
-              title="Convert again"
-              aria-label={`Convert ${entry.title} again`}
+          </span>
+        </div>
+
+        <div className="divide-y divide-px-line min-h-0 flex-1 overflow-y-auto overscroll-contain">
+          {entries.map(entry => (
+            <div
+              key={entry.jobId}
+              id={`history-item-${entry.jobId}`}
+              className="px-row flex items-center gap-3 py-2.5"
             >
-              <RotateCcw className="h-4 w-4" aria-hidden="true" />
-            </button>
-            <button
-              type="button"
-              className="px-btn shrink-0 !p-2"
-              onClick={() => void historyActions.removeEntry(entry.jobId)}
-              title="Remove from history"
-              aria-label={`Remove ${entry.title} from history`}
-            >
-              <Trash2 className="h-4 w-4" aria-hidden="true" />
-            </button>
-          </div>
-        ))}
-      </div>
-    </section>
+              <span className="h-10 w-10 shrink-0 overflow-hidden border-2 border-px-line bg-px-bg">
+                {entry.thumbnail ? (
+                  <img
+                    src={entry.thumbnail}
+                    alt=""
+                    width={40}
+                    height={40}
+                    loading="lazy"
+                    referrerPolicy="no-referrer"
+                    className="px-pixelated h-full w-full object-cover"
+                  />
+                ) : (
+                  <FileAudio className="h-full w-full p-2 text-px-dim" aria-hidden="true" />
+                )}
+              </span>
+
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-xs font-semibold">{entry.title}</span>
+                <span className="block truncate text-[11px] text-px-dim">{entry.author}</span>
+              </span>
+
+              <button
+                type="button"
+                className="px-btn shrink-0 !p-2"
+                onClick={() => void handleCopyLink(entry.jobId, entry.videoId)}
+                title="Copy YouTube link"
+                aria-label={
+                  copiedId === entry.jobId ? 'Link copied' : `Copy YouTube link for ${entry.title}`
+                }
+              >
+                {copiedId === entry.jobId ? (
+                  <Check className="h-4 w-4 text-px-ok" aria-hidden="true" />
+                ) : (
+                  <Link2 className="h-4 w-4" aria-hidden="true" />
+                )}
+              </button>
+              <button
+                type="button"
+                className="px-btn shrink-0 !p-2"
+                onClick={() => handleReconvert(entry.videoId)}
+                title="Convert again"
+                aria-label={`Convert ${entry.title} again`}
+              >
+                <RotateCcw className="h-4 w-4" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                className="px-btn shrink-0 !p-2"
+                onClick={() => void historyActions.removeEntry(entry.jobId)}
+                title="Remove from history"
+                aria-label={`Remove ${entry.title} from history`}
+              >
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
   );
 }

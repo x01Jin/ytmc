@@ -10,6 +10,7 @@ export interface LibraryRecord {
   title: string;
   author: string;
   thumbnail: string;
+  sourceThumbnail?: string;
   format: string;
   fileName: string;
   filePath: string;

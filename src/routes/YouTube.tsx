@@ -79,8 +79,8 @@ export function YouTubeRoute({ onDownload, active }: { onDownload: () => void; a
   };
 
   return (
-    <div className="flex min-h-full flex-col gap-3">
-      <section className="px-panel sticky top-0 z-10 p-3" aria-label="Search YouTube">
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
+      <section className="px-panel shrink-0 p-3" aria-label="Search YouTube">
         <form onSubmit={event => void handleSearch(event)} className="flex gap-2">
           <label htmlFor="youtube-search" className="sr-only">
             Search YouTube
@@ -129,7 +129,10 @@ export function YouTubeRoute({ onDownload, active }: { onDownload: () => void; a
           </p>
         </section>
       ) : results.length > 0 ? (
-        <section className="px-panel divide-y divide-px-line" aria-label="YouTube results">
+        <section
+          className="px-panel min-h-0 flex-1 divide-y divide-px-line overflow-y-auto overscroll-contain"
+          aria-label="YouTube results"
+        >
           <p className="sr-only" role="status">
             {results.length} {results.length === 1 ? 'result' : 'results'}
           </p>

@@ -3,7 +3,6 @@ import type {
   ConversionJob,
   ConversionOptions,
   CookieStatus,
-  DemoTrack,
   HistoryEntry,
   LibraryData,
   MusicTagCandidate,
@@ -72,8 +71,6 @@ export namespace ApiClient {
         trimStart: options.trimStart.trim() || undefined,
         trimEnd: options.trimEnd.trim() || undefined,
         volumeBoost: options.volumeBoost,
-        normalizeMode: options.normalizeMode,
-        normalizeAudio: options.normalizeMode === 'loudness',
         embedThumbnail: options.embedThumbnail,
       }),
     });
@@ -289,19 +286,6 @@ export namespace ApiClient {
     return json.success === true;
   }
 
-  export async function getDemoTracks(): Promise<DemoTrack[]> {
-    try {
-      const res = await fetch('/api/demo-tracks');
-      const json = await res.json();
-      if (res.ok && json.success) {
-        return json.data;
-      }
-      return [];
-    } catch {
-      return [];
-    }
-  }
-
   export async function getSettings(): Promise<AppSettings> {
     return dedupedGet('settings', async () => {
       const res = await fetch('/api/settings');
@@ -395,8 +379,6 @@ export namespace ApiClient {
     patch: {
       format?: string;
       bitrate?: string;
-      normalizeMode?: string;
-      normalizeAudio?: boolean;
       volumeBoost?: number;
       title?: string;
       artist?: string;

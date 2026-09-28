@@ -3,15 +3,8 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { FFPROBE_PATH, FFMPEG_PATH } from '../config.js';
-import {
-  buildAudioFilters,
-  codecForTarget,
-  linearGainFilter,
-  measureLoudness,
-  resolveNormalizeMode,
-  type NormalizeMode,
-} from './audioFilterService.js';
-import { AudioTagService, embedOpusPicture, extractOpusPicture } from './audioTagService.js';
+import { buildAudioFilters, codecForTarget } from './audioFilterService.js';
+import { AudioTagService, embedOpusPicture } from './audioTagService.js';
 
 export const EDITABLE_FORMATS = ['mp3', 'm4a', 'opus', 'flac', 'wav'] as const;
 export type EditableFormat = (typeof EDITABLE_FORMATS)[number];
@@ -19,8 +12,6 @@ export type EditableFormat = (typeof EDITABLE_FORMATS)[number];
 export interface LibraryEditPatch {
   format?: string;
   bitrate?: string;
-  normalizeAudio?: boolean;
-  normalizeMode?: NormalizeMode | string;
   volumeBoost?: number;
   title?: string;
   artist?: string;
@@ -32,7 +23,6 @@ export interface EditResult {
   fileSizeBytes: number;
   format: string;
   coverDropped?: boolean;
-  loudness?: { gainDb: number; outputI: number };
 }
 
 export function parseTimeInput(raw: string): number | null {
@@ -99,11 +89,8 @@ async function sourceHasCover(filePath: string): Promise<boolean> {
   }
 }
 
-async function sourceCoverBytes(filePath: string, ext: string): Promise<Buffer | null> {
-  if (ext === 'opus' || ext === 'ogg' || ext === 'oga') {
-    return extractOpusPicture(filePath);
-  }
-  const art = await AudioTagService.extractCoverArt(filePath).catch(() => null);
+async function sourceCoverBytes(filePath: string): Promise<Buffer | null> {
+  const art = await AudioTagService.getEmbeddedArtwork(filePath).catch(() => null);
   return art ? Buffer.from(art.data) : null;
 }
 
@@ -155,7 +142,7 @@ export namespace AudioEditService {
     const dir = path.dirname(filePath);
     const tmp = path.join(dir, `temp_trim_${crypto.randomUUID()}.${ext}`);
     const isOpusTrim = ext === 'opus';
-    const trimCover = isOpusTrim ? await sourceCoverBytes(filePath, ext).catch(() => null) : null;
+    const trimCover = isOpusTrim ? await sourceCoverBytes(filePath).catch(() => null) : null;
     try {
       const args = ['-y', '-i', filePath, '-ss', String(startSecs)];
       if (endSecs !== null) args.push('-to', String(endSecs));
@@ -203,21 +190,7 @@ export namespace AudioEditService {
   ): Promise<EditResult> {
     if (!fs.existsSync(filePath)) throw new Error('Audio file not found on disk.');
     const currentExt = path.extname(filePath).replace('.', '').toLowerCase();
-    const mode = resolveNormalizeMode(patch);
-    let dspFilters: string[];
-    let loudness: EditResult['loudness'];
-    if (mode === 'loudness') {
-      const measured = await measureLoudness(filePath);
-      if (measured !== null) {
-        const linear = linearGainFilter(measured);
-        dspFilters = [linear.filter];
-        loudness = { gainDb: linear.gainDb, outputI: linear.outputI };
-      } else {
-        dspFilters = buildAudioFilters(patch);
-      }
-    } else {
-      dspFilters = buildAudioFilters(patch);
-    }
+    const dspFilters: string[] = buildAudioFilters(patch);
     const needsAudio = target.format !== currentExt || dspFilters.length > 0;
     const dir = path.dirname(target.filePath);
     const tmp = path.join(dir, `temp_edit_${crypto.randomUUID()}.${target.format}`);
@@ -270,7 +243,7 @@ export namespace AudioEditService {
 
       if (isOpusTarget && hadCover) {
         try {
-          const cover = await sourceCoverBytes(filePath, currentExt);
+          const cover = await sourceCoverBytes(filePath);
           const ok = await embedOpusPicture(tmp, cover);
           if (!ok) coverDropped = true;
         } catch {
@@ -296,7 +269,6 @@ export namespace AudioEditService {
         fileSizeBytes: stat.size,
         format: target.format,
         ...(coverDropped ? { coverDropped: true as const } : {}),
-        ...(loudness ? { loudness } : {}),
       };
     } finally {
       if (fs.existsSync(tmp)) {

@@ -2,6 +2,7 @@ import { FolderSearch, Import, Pencil, Play, Trash2 } from 'lucide-react';
 import React, { Suspense, lazy, useMemo, useRef, useState } from 'react';
 import { AudioPlayer } from '../components/AudioPlayer';
 import { CoverArtPreview } from '../components/CoverArtPreview';
+import { TrackArtwork } from '../components/TrackArtwork';
 import { useLibrary } from '../store/appStore';
 import type { ConversionJob, LibraryRecord } from '../types';
 import { previewStreamUrl } from '../utils/audioSupport';
@@ -153,7 +154,7 @@ export function LibraryRoute() {
 
   return (
     <div
-      className="flex min-h-full flex-col gap-3"
+      className="flex h-full min-h-0 flex-col gap-3 overflow-hidden"
       onDragOver={event => {
         event.preventDefault();
         setIsDragging(true);
@@ -168,7 +169,7 @@ export function LibraryRoute() {
       }}
     >
       <section
-        className={`px-panel sticky top-0 z-10 flex flex-col gap-3 p-3 sm:flex-row sm:items-end ${
+        className={`px-panel flex shrink-0 flex-col gap-3 p-3 sm:flex-row sm:items-end ${
           isDragging ? 'border-px-acc' : ''
         }`}
         aria-label="Library controls"
@@ -255,7 +256,10 @@ export function LibraryRoute() {
           </p>
         </section>
       ) : (
-        <section className="px-panel divide-y divide-px-line" aria-label="Library files">
+        <section
+          className="px-panel min-h-0 flex-1 divide-y divide-px-line overflow-y-auto overscroll-contain"
+          aria-label="Library files"
+        >
           {records.map(record => {
             const isEditing = editingId === record.jobId;
             return (
@@ -268,14 +272,9 @@ export function LibraryRoute() {
                     title="View cover art"
                     className="shrink-0 cursor-zoom-in border-2 border-px-line transition-colors hover:border-px-acc"
                   >
-                    <img
+                    <TrackArtwork
                       src={record.thumbnail}
-                      alt=""
-                      width={40}
-                      height={40}
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                      className="px-pixelated block h-10 w-10 object-cover"
+                      className="px-pixelated block h-10 w-10 bg-px-bg object-cover"
                     />
                   </button>
                   <div className="min-w-0 flex-1">
@@ -352,7 +351,7 @@ export function LibraryRoute() {
         </section>
       )}
 
-      <section className="sticky bottom-0 z-10 mt-auto" aria-label="Preview player">
+      <section className="shrink-0" aria-label="Preview player">
         <AudioPlayer
           job={
             playingRecord

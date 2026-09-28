@@ -106,25 +106,4 @@ export namespace PreviewService {
       if (fs.existsSync(out)) fs.unlinkSync(out);
     } catch {}
   }
-
-  export function sweepOrphans(validIds: Set<string>): number {
-    const validKeys = new Set([...validIds].map(id => cacheKey(id)));
-    let removed = 0;
-    let entries: string[] = [];
-    try {
-      entries = fs.readdirSync(previewsDir());
-    } catch {
-      return 0;
-    }
-    for (const entry of entries) {
-      if (!entry.endsWith(PREVIEW_SUFFIX)) continue;
-      const key = entry.slice(0, -PREVIEW_SUFFIX.length);
-      if (validKeys.has(key)) continue;
-      try {
-        fs.unlinkSync(path.join(previewsDir(), entry));
-        removed += 1;
-      } catch {}
-    }
-    return removed;
-  }
 }

@@ -15,14 +15,8 @@ export function isSidecarInstalled(): boolean {
   }
 }
 
-let lastReachable: boolean | null = null;
-let lastCheckedAt = 0;
-const PING_TTL_MS = 60_000;
-
 export async function refreshSidecarReachability(): Promise<boolean> {
   if (!isSidecarInstalled()) {
-    lastReachable = false;
-    lastCheckedAt = Date.now();
     return false;
   }
   try {
@@ -30,21 +24,13 @@ export async function refreshSidecarReachability(): Promise<boolean> {
     const timer = setTimeout(() => ctrl.abort(), 3000);
     try {
       const res = await fetch(`${potBaseUrl()}/ping`, { signal: ctrl.signal });
-      lastReachable = res.ok;
+      return res.ok;
     } finally {
       clearTimeout(timer);
     }
   } catch {
-    lastReachable = false;
+    return false;
   }
-  lastCheckedAt = Date.now();
-  return lastReachable;
-}
-
-export function isSidecarReachableCached(): boolean | null {
-  if (lastReachable === null) return null;
-  if (Date.now() - lastCheckedAt > PING_TTL_MS) return lastReachable;
-  return lastReachable;
 }
 
 export async function resolveStrategy(): Promise<{

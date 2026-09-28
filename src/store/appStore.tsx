@@ -1,5 +1,4 @@
 import { createContext, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import React from 'react';
 import type { ReactNode } from 'react';
 import { ApiClient } from '../services/apiClient';
 import type {
@@ -12,7 +11,6 @@ import type {
   VideoMetadata,
 } from '../types';
 import { useJobPolling } from '../hooks/useJobPolling';
-import { migrateNormalizeMode } from '../utils/normalizeModes';
 
 interface JobsContextValue {
   state: {
@@ -22,8 +20,6 @@ interface JobsContextValue {
   };
   actions: {
     startConversion: (url: string, options: ConversionOptions) => Promise<void>;
-    selectJob: (job: ConversionJob) => void;
-    updateJob: (job: ConversionJob) => void;
     resetActive: () => void;
     refreshRecent: () => Promise<void>;
   };
@@ -61,11 +57,6 @@ export function JobsProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const selectJob = useCallback((job: ConversionJob) => setActiveJob(job), []);
-  const updateJob = useCallback((job: ConversionJob) => {
-    setActiveJob(job);
-    setRecentJobs(prev => prev.map(j => (j.id === job.id ? job : j)));
-  }, []);
   const resetActive = useCallback(() => {
     setActiveJob(null);
     setIsConverting(false);
@@ -76,22 +67,11 @@ export function JobsProvider({ children }: { children: ReactNode }) {
       state: { activeJob, recentJobs, isConverting },
       actions: {
         startConversion,
-        selectJob,
-        updateJob,
         resetActive,
         refreshRecent,
       },
     }),
-    [
-      activeJob,
-      recentJobs,
-      isConverting,
-      startConversion,
-      selectJob,
-      updateJob,
-      resetActive,
-      refreshRecent,
-    ]
+    [activeJob, recentJobs, isConverting, startConversion, resetActive, refreshRecent]
   );
 
   return <JobsContext value={value}>{children}</JobsContext>;
@@ -106,7 +86,6 @@ export function useJobs(): JobsContextValue {
 interface HistoryContextValue {
   state: {
     entries: HistoryEntry[];
-    isLoading: boolean;
   };
   actions: {
     refresh: () => Promise<void>;
@@ -119,16 +98,11 @@ const HistoryContext = createContext<HistoryContextValue | null>(null);
 
 export function HistoryProvider({ children }: { children: ReactNode }) {
   const [entries, setEntries] = useState<HistoryEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
 
   const refresh = useCallback(async () => {
-    setIsLoading(true);
     try {
       setEntries(await ApiClient.getHistory());
-    } catch {
-    } finally {
-      setIsLoading(false);
-    }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -138,11 +112,9 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         .then(loaded => {
           if (cancelled) return;
           setEntries(loaded);
-          setIsLoading(false);
         })
         .catch(() => {
           if (cancelled) return;
-          setIsLoading(false);
         });
     };
     const idle = (window as unknown as { requestIdleCallback?: (cb: () => void) => number })
@@ -190,10 +162,10 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<HistoryContextValue>(
     () => ({
-      state: { entries, isLoading },
+      state: { entries },
       actions: { refresh, removeEntry, clear },
     }),
-    [entries, isLoading, refresh, removeEntry, clear]
+    [entries, refresh, removeEntry, clear]
   );
 
   return <HistoryContext value={value}>{children}</HistoryContext>;
@@ -399,7 +371,6 @@ const DEFAULT_CONVERT_OPTIONS: ConversionOptions = {
   trimStart: '',
   trimEnd: '',
   volumeBoost: 100,
-  normalizeMode: 'off',
   embedThumbnail: true,
 };
 
@@ -413,9 +384,16 @@ function loadConvertDraft(): Omit<ConvertDraft, 'pendingInspectUrl'> {
     const raw = localStorage.getItem(CONVERT_DRAFT_KEY);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<ConvertDraft>;
-    if (parsed.options && typeof parsed.options === 'object' && 'tags' in parsed.options) {
-      const { tags: _staleTags, ...rest } = parsed.options as ConversionOptions & {
+    if (parsed.options && typeof parsed.options === 'object') {
+      const {
+        tags: _staleTags,
+        normalizeMode: _staleMode,
+        normalizeAudio: _staleAudio,
+        ...rest
+      } = parsed.options as ConversionOptions & {
         tags?: unknown;
+        normalizeMode?: unknown;
+        normalizeAudio?: unknown;
       };
       parsed.options = rest;
     }
@@ -430,12 +408,6 @@ function loadConvertDraft(): Omit<ConvertDraft, 'pendingInspectUrl'> {
           ? {
               ...DEFAULT_CONVERT_OPTIONS,
               ...parsed.options,
-              normalizeMode: migrateNormalizeMode(
-                parsed.options as {
-                  normalizeMode?: string;
-                  normalizeAudio?: boolean;
-                }
-              ),
             }
           : DEFAULT_CONVERT_OPTIONS,
     };

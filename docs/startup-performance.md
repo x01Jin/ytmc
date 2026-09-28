@@ -16,11 +16,11 @@ The desktop shell opens one window as the first act of `boot()`, before IPC regi
 - The frameless window drags via a `drag` region on the page root.
 - `prefers-reduced-motion` disables the letter jump and the bar slide.
 
-## Packaging and portable data
+## Packaging and app data
 
-Windows ships two artifacts: the single-exe portable and the zip archive. The portable single-exe extracts its full payload to a fresh temp folder on every launch and wipes it on exit, so its launch-to-first-pixel cost is extraction plus antivirus scanning; the zip is extracted once by hand and launches from disk with no per-launch extraction. Daily use belongs on the zip.
+Windows ships one artifact: the zip archive. It is extracted once by hand and launches from disk with no per-launch extraction.
 
-Packaged runs keep all generated files next to the executable: the main process points `userData` at `<exe-dir>/data` (the portable wrapper directory when set, otherwise the executable's own directory; dev runs are unaffected), falling back to the default location when it is not writable, and the server inherits it, so cookies, library, history, settings, session cache, yt-dlp cache, and logs live beside the exe. The app name is set explicitly so any fallback path uses `%APPDATA%\YT Music Converter`, never the package slug. The downloads folder is the only outside write. Temp extraction self-cleans, leaving no system residue.
+Packaged runs keep all generated files next to the executable: the main process points `userData` at `<exe-dir>/data` (the executable's own directory; dev runs are unaffected), falling back to the default location when it is not writable, and the server inherits it, so cookies, library, history, settings, session cache, yt-dlp cache, and logs live beside the exe. The app name is set explicitly so any fallback path uses `%APPDATA%\YT Music Converter`, never the package slug. The downloads folder is the only outside write.
 
 ## Listen-first backend boot
 
@@ -69,7 +69,7 @@ The Convert route and the app shell load eagerly. YouTube, Library, History, Que
 
 ## Diagnosing a slow start
 
-The main process writes staged timings to the console and `<userData>/boot-times.log`: module load, `whenReady`, payload birthtime plus a portable flag, window created, splash painted, backend ready, app painted. Deltas count from module load, not from the user double-clicking: compare the payload birthtime against the first line to size the invisible extraction and process-start cost. Time between window creation and paint belongs to first-renderer load; time after paint belongs to backend probes, which no longer block anything visible. A long `null` tail in the readiness flags points at the matching probe; a gap between backend resolution and app paint points at bundle fetch or render cost.
+The main process writes staged timings to the console and `<userData>/boot-times.log`: module load, `whenReady`, payload birthtime, window created, splash painted, backend ready, app painted. Deltas count from module load, not from the user double-clicking. Time between window creation and paint belongs to first-renderer load; time after paint belongs to backend probes, which no longer block anything visible. A long `null` tail in the readiness flags points at the matching probe; a gap between backend resolution and app paint points at bundle fetch or render cost.
 
 ## Lists, headers, and icons
 

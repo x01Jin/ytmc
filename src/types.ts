@@ -66,12 +66,8 @@ export interface ConversionOptions {
   trimStart: string;
   trimEnd: string;
   volumeBoost: number;
-  normalizeMode: NormalizeMode;
-  normalizeAudio?: boolean;
   embedThumbnail: boolean;
 }
-
-export type NormalizeMode = 'off' | 'loudness' | 'peak';
 
 export type JobStatus = 'queued' | 'downloading' | 'converting' | 'completed' | 'error';
 
@@ -110,16 +106,6 @@ export interface CookieStatus {
   sampleDomains: string[];
 }
 
-export interface DemoTrack {
-  id: string;
-  title: string;
-  author: string;
-  duration: string;
-  thumbnail: string;
-  genre: string;
-  tag: string;
-}
-
 export interface AppSettings {
   downloadsDir: string;
   filenameTemplate: string;
@@ -135,6 +121,7 @@ export interface LibraryRecord {
   title: string;
   author: string;
   thumbnail: string;
+  sourceThumbnail?: string;
   format: string;
   fileName: string;
   filePath: string;

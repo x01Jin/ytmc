@@ -1,10 +1,10 @@
 # Architecture Overview
 
-The YouTube to Music Converter is a Windows desktop app: an Electron shell around the proven Node.js Express + React 19 + Vite core. The same `npm run dev` web build runs in the browser during development; `npm run electron:build` ships it as an NSIS/portable `.exe`.
+The YouTube to Music Converter is a Windows desktop app: an Electron shell around the proven Node.js Express + React 19 + Vite core. The same `npm run dev` web build runs in the browser during development; `npm run electron:build` ships it as a zip archive.
 
 ## Tech Stack
 
-- **Desktop shell**: Electron 44 (Windows-only NSIS + portable), secure `contextBridge` preload, Express sidecar child process
+- **Desktop shell**: Electron 44 (Windows-only zip), secure `contextBridge` preload, Express sidecar child process
 - **Frontend**: React 19, TypeScript, Vite 6, Tailwind CSS 4 (dark-only pixel theme), Lucide Icons
 - **Backend**: Node.js, Express 4, `yt-dlp`, FFmpeg
 - **Persistence**: In-memory job state machine, `data/settings.json`, `data/library.json`, `data/history.json`, on-disk audio library
@@ -14,7 +14,7 @@ The YouTube to Music Converter is a Windows desktop app: an Electron shell aroun
 │              Electron Main (`electron/main.cts`)        │
 │  single-instance lock · single window, splash first    │
 │  paint-gated sidecar spawn · taskkill tree              │
-│  portable data stays next to the exe                   │
+│  app data stays next to the exe                     │
 │  default library: %USERPROFILE%\Downloads\YT Music        │
 └──────────────────────────┬─────────────────────────────┘
                            │ splash paints, then waitForServer (/api/health)

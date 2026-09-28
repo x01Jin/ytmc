@@ -53,10 +53,8 @@ export const COOKIES_FILE = path.join(DATA_DIR, 'cookies.txt');
 export const GUEST_COOKIES_FILE = path.join(DATA_DIR, 'guest_cookies.txt');
 
 export const SUPPORTED_FORMATS = ['best', 'opus', 'm4a', 'mp3', 'flac', 'wav'] as const;
-export type AudioFormat = (typeof SUPPORTED_FORMATS)[number];
 
 export const SUPPORTED_BITRATES = ['native', '160k', '128k', '192k', '256k', '320k'] as const;
-export type AudioBitrate = (typeof SUPPORTED_BITRATES)[number];
 
 export const DEFAULT_DEMO_TRACKS = [
   {

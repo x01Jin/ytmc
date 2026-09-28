@@ -13,12 +13,14 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ApiClient } from '../services/apiClient';
 import { MusicTagCandidate, MusicTags, TagSource } from '../types';
 import { CoverArtPreview } from './CoverArtPreview';
+import { TrackArtwork } from './TrackArtwork';
 
 interface TagEditorProps {
   initialTags?: MusicTags;
   defaultVideoTitle?: string;
   defaultArtist?: string;
   defaultThumbnail?: string;
+  sourceThumbnail?: string;
   onChange: (tags: MusicTags) => void;
   onSaveToFile?: (tags: MusicTags) => Promise<void>;
   isSavingToFile?: boolean;
@@ -45,6 +47,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
   defaultVideoTitle = '',
   defaultArtist = '',
   defaultThumbnail = '',
+  sourceThumbnail = '',
   onChange,
   onSaveToFile,
   isSavingToFile = false,
@@ -322,7 +325,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
                     onClick={event => {
                       event.stopPropagation();
                       setArtPreview({
-                        src: c.coverUrl ?? '',
+                        src: c.coverUrl,
                         title: `${c.title} • ${c.artist}`,
                       });
                     }}
@@ -330,11 +333,9 @@ export const TagEditor: React.FC<TagEditorProps> = ({
                     title="Preview cover art"
                     className="shrink-0 cursor-zoom-in border border-px-line transition-colors hover:border-px-acc"
                   >
-                    <img
+                    <TrackArtwork
                       src={c.coverUrl}
-                      alt=""
-                      referrerPolicy="no-referrer"
-                      className="block h-11 w-11 object-cover"
+                      className="block h-11 w-11 bg-px-bg object-cover"
                     />
                   </button>
                 ) : (
@@ -496,7 +497,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
               type="button"
               onClick={() =>
                 setArtPreview({
-                  src: tags.coverUrl ?? '',
+                  src: tags.coverUrl,
                   title: tags.album || tags.title,
                 })
               }
@@ -504,12 +505,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
               title="Preview cover art"
               className="shrink-0 cursor-zoom-in border border-px-line transition-colors hover:border-px-acc"
             >
-              <img
-                src={tags.coverUrl}
-                alt=""
-                referrerPolicy="no-referrer"
-                className="block h-14 w-14 object-cover"
-              />
+              <TrackArtwork src={tags.coverUrl} className="block h-14 w-14 bg-px-bg object-cover" />
             </button>
           ) : (
             <div className="flex h-14 w-14 shrink-0 items-center justify-center border border-dashed border-px-line bg-px-bg text-px-dim">
@@ -557,15 +553,22 @@ export const TagEditor: React.FC<TagEditorProps> = ({
               placeholder="Cover Art URL (paste image link or use autotagger above)..."
               className="px-input w-full py-1.5 text-xs"
             />
-            {defaultThumbnail && tags.coverUrl !== defaultThumbnail && (
-              <button
-                type="button"
-                onClick={() => handleFieldChange('coverUrl', defaultThumbnail)}
-                className="text-[11px] text-px-dim underline hover:text-px-text"
-              >
-                Use original YouTube thumbnail
-              </button>
-            )}
+            {(() => {
+              const originalArt =
+                sourceThumbnail || (/^https?:\/\//i.test(defaultThumbnail) ? defaultThumbnail : '');
+              return (
+                originalArt &&
+                tags.coverUrl !== originalArt && (
+                  <button
+                    type="button"
+                    onClick={() => handleFieldChange('coverUrl', originalArt)}
+                    className="text-[11px] text-px-dim underline hover:text-px-text"
+                  >
+                    Use original YouTube thumbnail
+                  </button>
+                )
+              );
+            })()}
           </div>
         </div>
       </div>

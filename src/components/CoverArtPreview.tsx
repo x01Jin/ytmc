@@ -1,6 +1,7 @@
 import { X } from 'lucide-react';
 import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { TrackArtwork } from './TrackArtwork';
 
 interface CoverArtPreviewProps {
   src: string;
@@ -30,10 +31,9 @@ export function CoverArtPreview({ src, title, subtitle, onClose }: CoverArtPrevi
         className="px-panel w-full max-w-md p-3"
         onClick={event => event.stopPropagation()}
       >
-        <img
+        <TrackArtwork
           src={src}
-          alt={`Cover art preview: ${title}`}
-          referrerPolicy="no-referrer"
+          eager
           className="px-pixelated max-h-[70vh] w-full bg-px-bg object-contain"
         />
         <figcaption className="mt-2 flex items-center justify-between gap-2">
