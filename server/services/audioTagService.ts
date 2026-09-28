@@ -2,6 +2,7 @@ import { execFile, spawn } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { parseFile, selectCover } from 'music-metadata';
 import { FFPROBE_PATH, FFMPEG_PATH } from '../config.js';
 
 export interface MusicTags {
@@ -91,18 +92,18 @@ function writeOpusMetadataFile(
     if (v !== undefined && v !== null && String(v).length > 0)
       lines.push(`${k}=${escapeFFMetadata(String(v))}`);
   };
-  push('title', tags.title);
-  push('artist', tags.artist);
-  push('album', tags.album);
-  push('album_artist', tags.albumArtist || tags.artist);
-  push('date', tags.year);
-  push('genre', tags.genre);
-  push('track', tags.trackNumber);
-  push('comment', tags.comment);
+  push('TITLE', tags.title);
+  push('ARTIST', tags.artist);
+  push('ALBUM', tags.album);
+  push('ALBUMARTIST', tags.albumArtist || tags.artist);
+  push('DATE', tags.year);
+  push('GENRE', tags.genre);
+  push('TRACKNUMBER', tags.trackNumber);
+  push('COMMENT', tags.comment);
   if (tags.cleanDescription !== false) {
-    lines.push('description=');
-    lines.push('synopsis=');
-    lines.push('purl=');
+    lines.push('DESCRIPTION=');
+    lines.push('SYNOPSIS=');
+    lines.push('PURL=');
   }
   if (coverBuffer && coverBuffer.length > 0) {
     const block = buildFlacPictureBlock(coverBuffer, detectImageMime(coverBuffer));
@@ -139,55 +140,27 @@ async function resolveCoverBuffer(tags: MusicTags): Promise<Buffer | null> {
   }
 }
 
-export async function extractOpusPicture(opusFilePath: string): Promise<Buffer | null> {
+async function readEmbeddedPicture(filePath: string): Promise<{
+  data: Buffer;
+  mimeType: string;
+} | null> {
   try {
-    if (!fs.existsSync(opusFilePath)) return null;
-    const asVideo = await AudioTagService.extractCoverArt(opusFilePath).catch(() => null);
-    if (asVideo && asVideo.data.length > 0) return Buffer.from(asVideo.data);
-    const ffprobeCmd = fs.existsSync(FFPROBE_PATH) ? FFPROBE_PATH : 'ffprobe';
-    const raw: string = await new Promise((resolve, reject) => {
-      execFile(
-        ffprobeCmd,
-        ['-v', 'quiet', '-print_format', 'json', '-show_streams', opusFilePath],
-        { timeout: 15000 },
-        (err, stdout) => {
-          if (err) reject(err);
-          else resolve(String(stdout));
-        }
-      );
-    });
-    const parsed = JSON.parse(raw) as {
-      streams?: Array<{ codec_type?: string; tags?: Record<string, string> }>;
-    };
-    const audioTags = parsed.streams?.find(s => s.codec_type === 'audio')?.tags ?? {};
-    const key = Object.keys(audioTags).find(k => k.toUpperCase() === 'METADATA_BLOCK_PICTURE');
-    if (!key) return null;
-    const block = Buffer.from(audioTags[key], 'base64');
-    let o = 0;
-    const u32 = (): number | null => {
-      if (o + 4 > block.length) return null;
-      const v = block.readUInt32BE(o);
-      o += 4;
-      return v;
-    };
-    if (u32() === null) return null;
-    const mimeLen = u32();
-    if (mimeLen === null || mimeLen > 256) return null;
-    o += mimeLen;
-    if (o > block.length) return null;
-    const descLen = u32();
-    if (descLen === null || descLen > 1024 * 1024) return null;
-    o += descLen;
-    if (o > block.length) return null;
-    o += 16;
-    if (o > block.length) return null;
-    const dataLen = u32();
-    if (dataLen === null || dataLen <= 0 || dataLen > 8 * 1024 * 1024) return null;
-    if (o + dataLen > block.length) return null;
-    return block.subarray(o, o + dataLen);
+    if (!fs.existsSync(filePath)) return null;
+    const meta = await parseFile(filePath, { duration: false });
+    const cover = selectCover(meta.common.picture) ?? meta.common.picture?.[0];
+    if (!cover || cover.data.length === 0 || cover.data.length > 8 * 1024 * 1024) return null;
+    return { data: Buffer.from(cover.data), mimeType: cover.format };
   } catch {
     return null;
   }
+}
+
+export async function extractOpusPicture(opusFilePath: string): Promise<Buffer | null> {
+  const pic = await readEmbeddedPicture(opusFilePath);
+  if (pic) return pic.data;
+  const asVideo = await AudioTagService.extractCoverArt(opusFilePath).catch(() => null);
+  if (asVideo && asVideo.data.length > 0) return Buffer.from(asVideo.data);
+  return null;
 }
 
 export async function embedOpusPicture(
@@ -274,6 +247,27 @@ export namespace AudioTagService {
       throw new Error(`Target audio file does not exist: ${filePath}`);
     }
 
+    try {
+      const meta = await parseFile(filePath, { duration: false });
+      const common = meta.common;
+      const commentEntry = common.comment?.[0];
+      const mapped: MusicTags = {
+        title: common.title ?? '',
+        artist: common.artist ?? common.albumartist ?? '',
+        album: common.album,
+        albumArtist: common.albumartist,
+        year: common.date ?? (common.year !== undefined ? String(common.year) : ''),
+        genre: common.genre?.[0] ?? '',
+        trackNumber:
+          common.track.no !== undefined && common.track.no !== null ? String(common.track.no) : '',
+        comment: typeof commentEntry === 'string' ? commentEntry : (commentEntry?.text ?? ''),
+        cleanDescription: false,
+      };
+      if (mapped.title || mapped.artist || mapped.album || mapped.genre || mapped.trackNumber) {
+        return mapped;
+      }
+    } catch {}
+
     const ffprobeCmd = fs.existsSync(FFPROBE_PATH) ? FFPROBE_PATH : 'ffprobe';
 
     return new Promise(resolve => {
@@ -328,6 +322,9 @@ export namespace AudioTagService {
     mimeType: string;
   } | null> {
     if (!fs.existsSync(filePath)) return null;
+
+    const embedded = await readEmbeddedPicture(filePath);
+    if (embedded) return embedded;
 
     const ffmpegCmd = fs.existsSync(FFMPEG_PATH) ? FFMPEG_PATH : 'ffmpeg';
     const outputPath = path.join(path.dirname(filePath), `.cover_${crypto.randomUUID()}.jpg`);
@@ -389,10 +386,7 @@ export namespace AudioTagService {
     }
     const art = await AudioTagService.extractCoverArt(filePath).catch(() => null);
     if (art) return art;
-    if (!isOpusContainer) return null;
-    const picture = await extractOpusPicture(filePath).catch(() => null);
-    if (!picture || picture.length === 0 || picture.length > 8 * 1024 * 1024) return null;
-    return { data: Buffer.from(picture), mimeType: detectImageMime(picture) };
+    return null;
   }
 
   export async function applyTagsToFile(
@@ -402,6 +396,7 @@ export namespace AudioTagService {
     success: boolean;
     filePath: string;
     fileSizeBytes: number;
+    coverDropped?: boolean;
     error?: string;
   }> {
     if (!fs.existsSync(filePath)) {
@@ -414,6 +409,7 @@ export namespace AudioTagService {
     const tempOutputFile = path.join(dir, `temp_tagged_${tempId}.${ext}`);
     let tempCoverFile: string | null = null;
     let tempMetaFile: string | null = null;
+    let coverDropped = false;
 
     const commitOutput = (): {
       success: boolean;
@@ -445,10 +441,10 @@ export namespace AudioTagService {
           comment: defined(tags.comment) ? tags.comment : current.comment,
           cleanDescription: tags.cleanDescription,
         };
-        const coverBuffer =
-          tags.coverData || tags.coverUrl
-            ? ((await resolveCoverBuffer(tags)) ?? (await extractOpusPicture(filePath)))
-            : await extractOpusPicture(filePath);
+        const coverRequested = Boolean(tags.coverData || tags.coverUrl);
+        const freshCover = coverRequested ? await resolveCoverBuffer(tags) : undefined;
+        const coverDropped = coverRequested && freshCover === null;
+        const coverBuffer = freshCover ?? (await extractOpusPicture(filePath));
         const attempt = async (withCover: boolean): Promise<void> => {
           if (fs.existsSync(tempOutputFile)) fs.rmSync(tempOutputFile, { force: true });
           if (tempMetaFile && fs.existsSync(tempMetaFile)) fs.rmSync(tempMetaFile, { force: true });
@@ -483,7 +479,8 @@ export namespace AudioTagService {
             throw new Error('FFmpeg opus tagging failed');
           }
         }
-        return commitOutput();
+        const tagged = commitOutput();
+        return coverDropped ? { ...tagged, coverDropped: true } : tagged;
       }
 
       if ((tags.coverData || tags.coverUrl) && (ext === 'mp3' || ext === 'm4a' || ext === 'flac')) {
@@ -506,12 +503,11 @@ export namespace AudioTagService {
           if (buffer.length > 0 && buffer.length <= 8 * 1024 * 1024) {
             tempCoverFile = path.join(dir, `temp_cover_${tempId}.jpg`);
             fs.writeFileSync(tempCoverFile, buffer);
+          } else {
+            coverDropped = true;
           }
-        } catch (error) {
-          throw new Error(
-            `Could not read album artwork: ${error instanceof Error ? error.message : String(error)}`,
-            { cause: error }
-          );
+        } catch {
+          coverDropped = true;
         }
       }
 
@@ -528,6 +524,7 @@ export namespace AudioTagService {
         } else if (ext === 'm4a') {
           args.push('-disposition:v:0', 'attached_pic');
         } else if (ext === 'flac') {
+          args.push('-disposition:v:0', 'attached_pic');
           args.push('-metadata:s:v', 'title=Album cover');
         }
       } else {
@@ -570,7 +567,8 @@ export namespace AudioTagService {
 
       await runFfmpeg(args);
 
-      return commitOutput();
+      const tagged = commitOutput();
+      return coverDropped ? { ...tagged, coverDropped: true } : tagged;
     } finally {
       if (tempCoverFile && fs.existsSync(tempCoverFile)) {
         try {
