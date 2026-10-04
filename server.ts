@@ -44,14 +44,15 @@ function startPotServer(): void {
 }
 
 function isLoopbackHostname(hostname: string): boolean {
-  const host = hostname.split(':')[0].toLowerCase();
-  return (
-    host === '127.0.0.1' ||
-    host === 'localhost' ||
-    host === '::1' ||
-    host === '[::1]' ||
-    host === ''
-  );
+  const host = hostname
+    .split(':')[0]
+    .toLowerCase()
+    .replace(/^\[|\]$/g, '');
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+}
+
+function isLoopbackAddress(address?: string): boolean {
+  return address === '127.0.0.1' || address === '::1' || address === '::ffff:127.0.0.1';
 }
 
 export interface StartedServer {
@@ -109,7 +110,8 @@ export async function startServer(): Promise<StartedServer> {
 
   app.use((req, res, next) => {
     const host = req.headers.host ?? '';
-    if (!isLoopbackHostname(host)) {
+    const remote = req.socket.remoteAddress ?? '';
+    if (!isLoopbackHostname(host) || !isLoopbackAddress(remote)) {
       res.status(403).json({ success: false, error: 'Forbidden: loopback only' });
       return;
     }
@@ -120,7 +122,7 @@ export async function startServer(): Promise<StartedServer> {
   app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 
   app.use('/api', (req, res, next) => {
-    if (req.method === 'GET' || req.path === '/health') {
+    if (req.method === 'GET') {
       next();
       return;
     }
@@ -154,7 +156,7 @@ export async function startServer(): Promise<StartedServer> {
     app.use(vite.middlewares);
   } else {
     const distPath = STATIC_DIR;
-    app.use(express.static(distPath, { maxAge: '1y', immutable: true, etag: true }));
+    app.use(express.static(distPath, { maxAge: '1d', etag: true }));
     app.get('*', (req, res) => {
       res.set('Cache-Control', 'no-store');
       res.sendFile(path.join(distPath, 'index.html'));

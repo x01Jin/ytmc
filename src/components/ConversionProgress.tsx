@@ -26,7 +26,7 @@ export const ConversionProgress: React.FC<ConversionProgressProps> = ({
   return (
     <section
       id="conversion-progress-section"
-      className="px-panel w-full space-y-4 p-4"
+      className="px-panel w-full space-y-2 p-2"
       aria-label="Conversion progress"
     >
       <div className="flex items-center justify-between">
@@ -77,9 +77,15 @@ export const ConversionProgress: React.FC<ConversionProgressProps> = ({
         </span>
       </div>
 
+      {isCompleted && job.tagWarning && (
+        <p role="status" className="border-2 border-px-warn bg-px-bg p-2 text-xs text-px-warn">
+          {job.tagWarning}
+        </p>
+      )}
+
       {isError && (
-        <div className="space-y-3 border-2 border-px-err bg-px-bg p-4 text-xs" role="alert">
-          <div className="flex items-start gap-2.5">
+        <div className="space-y-2 border-2 border-px-err bg-px-bg p-2 text-xs" role="alert">
+          <div className="flex items-start gap-2">
             <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-px-err" aria-hidden="true" />
             <div className="space-y-1">
               <p className="text-sm font-semibold">
@@ -104,7 +110,7 @@ export const ConversionProgress: React.FC<ConversionProgressProps> = ({
           </div>
 
           {isBotBlocked ? (
-            <div className="px-panel-raised space-y-2.5 p-3">
+            <div className="px-panel-raised space-y-2 p-2">
               <p className="leading-relaxed text-px-dim">
                 YouTube requires user session authentication or browser cookies for this track in
                 cloud environments.
@@ -131,7 +137,7 @@ export const ConversionProgress: React.FC<ConversionProgressProps> = ({
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-3 pt-1">
+            <div className="flex items-center gap-2 pt-1">
               <button
                 id="retry-conversion-btn"
                 type="button"

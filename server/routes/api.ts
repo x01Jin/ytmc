@@ -4,6 +4,8 @@ import fs from 'fs';
 import path from 'path';
 import { DEFAULT_DEMO_TRACKS, DOWNLOADS_DIR } from '../config.js';
 import { AudioTagService, MusicTags } from '../services/audioTagService.js';
+import { isFetchableArtworkUrl, readAudioMetadata } from '../services/audioMetadata.js';
+import { CoverUnsupportedError } from '../services/audioWrite.js';
 import {
   AudioEditService,
   EDITABLE_FORMATS,
@@ -183,6 +185,11 @@ apiRouter.post(
         res.status(400).json({ success: false, error: 'Target URL is required' });
         return;
       }
+      let parsedVolume: number | undefined;
+      if (volumeBoost !== undefined && volumeBoost !== null && volumeBoost !== '') {
+        const n = typeof volumeBoost === 'number' ? volumeBoost : parseInt(String(volumeBoost), 10);
+        parsedVolume = Number.isFinite(n) ? n : undefined;
+      }
 
       const job = await ConversionService.startConversion({
         url,
@@ -190,7 +197,7 @@ apiRouter.post(
         bitrate,
         trimStart,
         trimEnd,
-        volumeBoost: volumeBoost ? parseInt(volumeBoost, 10) : undefined,
+        volumeBoost: parsedVolume,
         embedThumbnail: embedThumbnail !== false,
       });
 
@@ -217,6 +224,30 @@ apiRouter.get('/status/:id', (req: Request, res: Response) => {
 apiRouter.get('/jobs', (req: Request, res: Response) => {
   const jobs = JobManager.listRecentJobs();
   res.json({ success: true, jobs });
+});
+
+apiRouter.post('/cancel/:id', (req: Request, res: Response) => {
+  const id = String(req.params.id ?? '');
+  if (!id) {
+    res.status(400).json({ success: false, error: 'Job id is required' });
+    return;
+  }
+  const job = JobManager.getJob(id);
+  if (!job) {
+    res.status(404).json({ success: false, error: 'Job not found' });
+    return;
+  }
+  if (job.status === 'completed' || job.status === 'error') {
+    res.json({ success: true, job });
+    return;
+  }
+  const cancelled = ConversionService.cancelConversion(id);
+  if (!cancelled) {
+    res.status(409).json({ success: false, error: 'Job cannot be cancelled' });
+    return;
+  }
+  const current = JobManager.getJob(id);
+  res.json({ success: true, job: current });
 });
 
 apiRouter.get('/history', (req: Request, res: Response) => {
@@ -367,8 +398,8 @@ apiRouter.post(
     try {
       const result = await CookieService.autoFetchGuestSession();
       const status = CookieService.getStatus();
-      const { ...details } = result;
-      res.json({ success: true, ...details, status });
+      const { success, ...details } = result;
+      res.json({ success, ...details, status });
     } catch (error: any) {
       res.status(500).json({
         success: false,
@@ -401,8 +432,8 @@ apiRouter.post('/cookies', (req: Request, res: Response) => {
       return;
     }
     const result = CookieService.saveCookies(cookies);
-    const { ...details } = result;
-    res.json({ success: true, ...details });
+    const { success, ...details } = result;
+    res.json({ success, ...details });
   } catch (error: any) {
     res.status(400).json({
       success: false,
@@ -454,33 +485,48 @@ apiRouter.post('/settings/reset', (req: Request, res: Response) => {
 apiRouter.get(
   '/library',
   asyncHandler(async (req: Request, res: Response) => {
+    const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1);
+    const pageSize = Math.min(
+      200,
+      Math.max(1, parseInt(String(req.query.pageSize ?? '100'), 10) || 100)
+    );
     let records = LibraryStore.list();
+    const pending: Parameters<typeof LibraryStore.upsertMany>[0] = [];
     for (const record of records) {
-      const tags = record.tags ?? (await AudioTagService.readTags(record.filePath));
+      const needsMeta = !record.tags || record.hasCover === undefined;
+      const meta = needsMeta ? await readAudioMetadata(record.filePath).catch(() => null) : null;
+      const tags = record.tags ?? meta?.tags;
+      const hasCover = record.hasCover ?? (meta?.cover ? true : false);
       const thumbnail = buildArtworkUrl(record.jobId, record.filePath);
       const sourceThumbnail =
         record.sourceThumbnail ??
         (isRemoteArtworkUrl(record.thumbnail) ? record.thumbnail : undefined);
       if (
         !record.tags ||
+        record.hasCover === undefined ||
         thumbnail !== record.thumbnail ||
         sourceThumbnail !== record.sourceThumbnail
       ) {
-        LibraryStore.upsert({ ...record, thumbnail, sourceThumbnail, tags });
+        pending.push({ ...record, thumbnail, sourceThumbnail, tags, hasCover });
       }
     }
-    records = LibraryStore.list();
-    const loose = FileService.scanLibrary().filter(
-      f => !records.some(r => isSameFilePath(r.filePath, f.filePath))
-    );
-    for (const file of loose) {
-      const tags = await AudioTagService.readTags(file.filePath);
-      LibraryStore.upsert({
+    const scanned = FileService.scanLibrary();
+    const known = new Set(records.map(r => r.jobId));
+    for (const file of scanned) {
+      if (
+        records.some(r => isSameFilePath(r.filePath, file.filePath)) ||
+        known.has(`file:${file.fileName}`)
+      ) {
+        continue;
+      }
+      const meta = await readAudioMetadata(file.filePath).catch(() => null);
+      const tags = meta?.tags;
+      pending.push({
         jobId: `file:${file.fileName}`,
         source: 'import',
         videoId: '',
-        title: tags.title || path.basename(file.fileName, path.extname(file.fileName)),
-        author: tags.artist || 'Local file',
+        title: tags?.title || path.basename(file.fileName, path.extname(file.fileName)),
+        author: tags?.artist || 'Local file',
         thumbnail: buildArtworkUrl(`file:${file.fileName}`, file.filePath),
         format: file.ext,
         fileName: file.fileName,
@@ -488,22 +534,31 @@ apiRouter.get(
         fileSizeBytes: file.sizeBytes,
         completedAt: file.mtimeMs,
         tags,
+        hasCover: meta?.cover ? true : false,
       });
     }
-    records = LibraryStore.list();
-    const looseFiles = FileService.scanLibrary().filter(
+    if (pending.length > 0) {
+      LibraryStore.upsertMany(pending);
+      records = LibraryStore.list();
+    }
+    const looseFiles = scanned.filter(
       f => !records.some(r => isSameFilePath(r.filePath, f.filePath))
     );
     const totalSizeBytes =
       records.reduce((sum, r) => sum + r.fileSizeBytes, 0) +
       looseFiles.reduce((sum, f) => sum + f.sizeBytes, 0);
+    const total = records.length;
+    const paged = records.slice((page - 1) * pageSize, page * pageSize);
     res.json({
       success: true,
       data: {
         downloadsDir: FileService.getDownloadsDir(),
-        records,
+        records: paged,
         looseFiles,
         totalSizeBytes,
+        total,
+        page,
+        pageSize,
       },
     });
   })
@@ -930,7 +985,23 @@ apiRouter.post(
         return;
       }
 
-      const result = await AudioTagService.applyTagsToFile(target.filePath, tags);
+      const usableCoverUrl =
+        tags.coverData || isFetchableArtworkUrl(tags.coverUrl) ? tags.coverUrl : undefined;
+      const cleanTags: MusicTags = {
+        ...tags,
+        coverUrl: usableCoverUrl,
+      };
+
+      let result: Awaited<ReturnType<typeof AudioTagService.applyTagsToFile>>;
+      try {
+        result = await AudioTagService.applyTagsToFile(target.filePath, cleanTags);
+      } catch (err: unknown) {
+        if (err instanceof CoverUnsupportedError) {
+          res.status(400).json({ success: false, error: err.message });
+          return;
+        }
+        throw err instanceof Error ? err : new Error('Failed to apply audio tags');
+      }
 
       const newFileName = buildDisplayFileName(tags.artist || 'Unknown', tags.title, target.format);
       const dir = path.dirname(target.filePath);
@@ -951,6 +1022,7 @@ apiRouter.post(
       const nextTitle = tags.title;
       const nextAuthor = tags.artist || target.author;
       const nextThumbnail = buildArtworkUrl(jobId, finalPath);
+      const storedTags: MusicTags = { ...cleanTags, coverData: undefined };
       const existingSource = LibraryStore.list().find(r => r.jobId === jobId)?.source;
       const existingSourceThumbnail = LibraryStore.list().find(
         r => r.jobId === jobId
@@ -966,7 +1038,7 @@ apiRouter.post(
             outputFilePath: finalPath,
             outputFileName: finalName,
             fileSizeBytes: result.fileSizeBytes,
-            tags,
+            tags: storedTags,
           })
         : undefined;
       LibraryStore.upsert({
@@ -982,13 +1054,17 @@ apiRouter.post(
         filePath: finalPath,
         fileSizeBytes: result.fileSizeBytes,
         completedAt: target.completedAt,
-        tags,
+        tags: storedTags,
       });
       PreviewService.invalidate(jobId);
 
       res.json({
         success: true,
-        message: 'Audio tags updated successfully',
+        message: result.coverDropped
+          ? `Tags saved, but cover art was dropped (${result.coverDropReason ?? 'unknown reason'}). Audio is intact.`
+          : 'Audio tags updated successfully',
+        coverDropped: result.coverDropped ?? false,
+        coverDropReason: result.coverDropReason,
         job: updatedJob ?? {
           id: jobId,
           videoId: target.videoId,
@@ -999,7 +1075,7 @@ apiRouter.post(
           outputFilePath: finalPath,
           outputFileName: finalName,
           fileSizeBytes: result.fileSizeBytes,
-          tags,
+          tags: storedTags,
         },
       });
     } catch (error: any) {

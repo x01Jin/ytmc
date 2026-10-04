@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import type { MusicTags } from './audioTagService.js';
@@ -18,6 +19,7 @@ export interface ConversionJob {
   stageMessage: string;
   error?: string;
   errorDetails?: string;
+  tagWarning?: string;
   exitCode?: number | null;
   isBotBlocked?: boolean;
   outputFilePath?: string;
@@ -35,6 +37,7 @@ const CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
 
 export namespace JobManager {
   let jobs: Map<string, ConversionJob> = new Map();
+  let processes: Map<string, ChildProcess> = new Map();
 
   export function createJob(
     id: string,
@@ -80,6 +83,31 @@ export namespace JobManager {
     return Array.from(jobs.values())
       .toSorted((a, b) => b.createdAt - a.createdAt)
       .slice(0, limit);
+  }
+
+  export function activeCount(): number {
+    return processes.size;
+  }
+
+  export function registerProcess(id: string, child: ChildProcess): void {
+    processes.set(id, child);
+  }
+
+  export function clearProcess(id: string): void {
+    processes.delete(id);
+  }
+
+  export function cancelJob(id: string): boolean {
+    const child = processes.get(id);
+    const job = jobs.get(id);
+    if (!child || !job) return false;
+    if (job.status === 'completed' || job.status === 'error') return false;
+    try {
+      child.kill('SIGTERM');
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   export function cleanupOldJobs(): void {

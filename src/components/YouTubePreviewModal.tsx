@@ -29,7 +29,7 @@ export function YouTubePreviewModal({ result, onClose }: YouTubePreviewModalProp
         role="dialog"
         aria-modal="true"
         aria-label={`Video preview: ${result.title}`}
-        className="px-panel w-full max-w-3xl p-3"
+        className="px-panel w-full max-w-3xl p-2"
         onClick={event => event.stopPropagation()}
       >
         <div className="flex min-w-0 items-center gap-2">

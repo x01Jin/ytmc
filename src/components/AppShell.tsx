@@ -61,7 +61,7 @@ export function useHashRoute(): {
 
 export function TitleBar() {
   return (
-    <header className="px-panel flex shrink-0 items-center gap-3 px-3 py-2">
+    <header className="px-panel flex shrink-0 items-center gap-2 px-3 py-2">
       <img
         src="/icon.png"
         alt=""
@@ -192,7 +192,7 @@ export function ShellContent({ children }: { children: ReactNode }) {
   return (
     <main
       id="main"
-      className="min-w-0 flex-1 min-h-0 space-y-3 overflow-x-clip overflow-y-auto overscroll-contain scroll-p-2"
+      className="min-w-0 flex-1 min-h-0 space-y-2 overflow-x-clip overflow-y-auto overscroll-contain scroll-p-2"
     >
       {children}
     </main>

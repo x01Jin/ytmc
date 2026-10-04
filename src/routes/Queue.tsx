@@ -37,11 +37,11 @@ export function QueueRoute() {
   };
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {retryError && (
         <div
           role="alert"
-          className="px-panel flex items-start gap-3 border-px-err p-3 text-xs sm:text-sm"
+          className="px-panel flex items-start gap-2 border-px-err p-2 text-xs sm:text-sm"
         >
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-px-err" aria-hidden="true" />
           <p className="flex-1">{retryError}</p>
@@ -55,7 +55,7 @@ export function QueueRoute() {
           onOpenCookiesModal={() => setIsCookieModalOpen(true)}
         />
       ) : (
-        <section className="px-panel p-6 text-center" aria-label="Queue">
+        <section className="px-panel p-2 text-center" aria-label="Queue">
           <p className="font-display text-xs">QUEUE EMPTY</p>
           <p className="mx-auto mt-2 max-w-sm text-sm text-px-dim">
             Nothing converting right now. Start a conversion and watch it land here.

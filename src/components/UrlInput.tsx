@@ -10,6 +10,10 @@ interface UrlInputProps {
 
 export const UrlInput: React.FC<UrlInputProps> = ({ value, onChange, onSubmit, isLoading }) => {
   const [copiedNotification, setCopiedNotification] = useState(false);
+  const trimmed = value.trim();
+  const isPlausible =
+    /^[a-zA-Z0-9_-]{11}$/.test(trimmed) ||
+    /(?:youtube\.com\/(?:watch|embed|shorts|live)|youtu\.be\/)/i.test(trimmed);
 
   const handlePaste = async () => {
     try {
@@ -23,13 +27,13 @@ export const UrlInput: React.FC<UrlInputProps> = ({ value, onChange, onSubmit, i
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter' && value.trim() && !isLoading) {
+    if (e.key === 'Enter' && trimmed && isPlausible && !isLoading) {
       onSubmit();
     }
   };
 
   return (
-    <section id="url-input-section" className="w-full space-y-3" aria-label="Video source">
+    <section id="url-input-section" className="w-full space-y-2" aria-label="Video source">
       <div className="px-panel-raised flex items-center focus-within:border-px-acc">
         <label htmlFor="youtube-url-input" className="sr-only">
           YouTube link or video ID
@@ -77,7 +81,7 @@ export const UrlInput: React.FC<UrlInputProps> = ({ value, onChange, onSubmit, i
             id="submit-url-btn"
             type="button"
             onClick={onSubmit}
-            disabled={!value.trim() || isLoading}
+            disabled={!trimmed || !isPlausible || isLoading}
             className="px-btn px-btn-primary inline-flex items-center justify-center gap-1.5 !py-2 text-xs md:text-sm"
           >
             {isLoading ? (

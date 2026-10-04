@@ -5,6 +5,7 @@ import path from 'path';
 import { FFPROBE_PATH, FFMPEG_PATH } from '../config.js';
 import { buildAudioFilters, codecForTarget } from './audioFilterService.js';
 import { AudioTagService, embedOpusPicture } from './audioTagService.js';
+import { readAudioMetadata } from './audioMetadata.js';
 
 export const EDITABLE_FORMATS = ['mp3', 'm4a', 'opus', 'flac', 'wav'] as const;
 export type EditableFormat = (typeof EDITABLE_FORMATS)[number];
@@ -72,26 +73,13 @@ function runTool(
 }
 
 async function sourceHasCover(filePath: string): Promise<boolean> {
-  try {
-    const { stdout } = await runTool(
-      ffprobeCmd(),
-      ['-v', 'quiet', '-print_format', 'json', '-show_streams', filePath],
-      15000
-    );
-    const parsed = JSON.parse(stdout) as {
-      streams?: Array<{ codec_type?: string; tags?: Record<string, string> }>;
-    };
-    if ((parsed.streams ?? []).some(s => s.codec_type === 'video')) return true;
-    const audioTags = parsed.streams?.find(s => s.codec_type === 'audio')?.tags ?? {};
-    return Object.keys(audioTags).some(k => k.toUpperCase() === 'METADATA_BLOCK_PICTURE');
-  } catch {
-    return false;
-  }
+  const meta = await readAudioMetadata(filePath).catch(() => null);
+  return meta?.cover !== null && meta?.cover !== undefined;
 }
 
 async function sourceCoverBytes(filePath: string): Promise<Buffer | null> {
-  const art = await AudioTagService.getEmbeddedArtwork(filePath).catch(() => null);
-  return art ? Buffer.from(art.data) : null;
+  const meta = await readAudioMetadata(filePath).catch(() => null);
+  return meta?.cover ? Buffer.from(meta.cover.data) : null;
 }
 
 export namespace AudioEditService {
@@ -163,8 +151,10 @@ export namespace AudioEditService {
         args.push('-map', '0:a', '-map_metadata', '0', ...audioArgs, tmp);
       }
       await runTool(ffmpegCmd(), args, 120000);
+      let coverDropped = false;
       if (isOpusTrim && trimCover) {
-        await embedOpusPicture(tmp, trimCover).catch(() => false);
+        const ok = await embedOpusPicture(tmp, trimCover).catch(() => false);
+        if (!ok) coverDropped = true;
       }
       fs.copyFileSync(tmp, filePath);
       const stat = fs.statSync(filePath);
@@ -173,6 +163,7 @@ export namespace AudioEditService {
         fileName: path.basename(filePath),
         fileSizeBytes: stat.size,
         format: ext,
+        ...(coverDropped ? { coverDropped: true as const } : {}),
       };
     } finally {
       if (fs.existsSync(tmp)) {

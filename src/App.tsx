@@ -26,7 +26,7 @@ const SettingsRoute = lazy(() =>
 
 function RouteFallback() {
   return (
-    <div className="px-panel p-4" aria-label="Loading section">
+    <div className="px-panel p-2" aria-label="Loading section">
       <p className="text-sm text-px-dim">Loading…</p>
     </div>
   );
@@ -44,18 +44,7 @@ import {
   useSettings,
 } from './store/appStore';
 import { ApiClient } from './services/apiClient';
-
-const BYTES_PER_MB = 1024 * 1024;
-const MB_PER_GB = 1024;
-
-function formatTotal(bytes: number): string {
-  const mb = bytes / BYTES_PER_MB;
-  const formatted = new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: 1,
-  });
-  if (mb >= MB_PER_GB) return `${formatted.format(mb / MB_PER_GB)} GB`;
-  return `${formatted.format(mb)} MB`;
-}
+import { formatFileSize } from './utils/format';
 
 function ShellChrome() {
   const { route, navigate } = useHashRoute();
@@ -71,7 +60,9 @@ function ShellChrome() {
   const folderLabel =
     settingsState.settings?.downloadsDir ?? libraryState.library?.downloadsDir ?? 'Library folder…';
   const fileCount = libraryState.library ? libraryState.library.records.length : null;
-  const totalSize = libraryState.library ? formatTotal(libraryState.library.totalSizeBytes) : null;
+  const totalSize = libraryState.library
+    ? formatFileSize(libraryState.library.totalSizeBytes)
+    : null;
 
   const handleRevealFolder = () => {
     const first = libraryState.library?.records[0];

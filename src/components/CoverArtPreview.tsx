@@ -28,7 +28,7 @@ export function CoverArtPreview({ src, title, subtitle, onClose }: CoverArtPrevi
         role="dialog"
         aria-modal="true"
         aria-label={`Cover art preview: ${title}`}
-        className="px-panel w-full max-w-md p-3"
+        className="px-panel w-full max-w-md p-2"
         onClick={event => event.stopPropagation()}
       >
         <TrackArtwork

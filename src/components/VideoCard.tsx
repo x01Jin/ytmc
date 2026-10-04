@@ -11,8 +11,8 @@ const viewCountFormatter = new Intl.NumberFormat('en-US');
 
 export const VideoCard: React.FC<VideoCardProps> = ({ metadata, onOpenCookiesModal }) => {
   return (
-    <article id="video-preview-card" className="px-panel w-full p-3" aria-label="Video preview">
-      <div className="flex flex-col gap-3 sm:flex-row">
+    <article id="video-preview-card" className="px-panel w-full p-2" aria-label="Video preview">
+      <div className="flex flex-col gap-2 sm:flex-row">
         <div className="relative aspect-video w-full shrink-0 overflow-hidden border-2 border-px-line bg-px-bg sm:w-48">
           <img
             id="video-thumbnail-img"

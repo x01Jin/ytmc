@@ -22,20 +22,16 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
   const [previewFallback, setPreviewFallback] = useState(false);
 
   const jobKey = `${job?.id ?? ''}|${job?.streamUrl ?? ''}`;
-  const [prevJobKey, setPrevJobKey] = useState(jobKey);
   const syncedKeyRef = useRef(jobKey);
-  if (jobKey !== prevJobKey) {
-    setPrevJobKey(jobKey);
+
+  useEffect(() => {
+    if (syncedKeyRef.current === jobKey) return;
+    syncedKeyRef.current = jobKey;
     setIsPlaying(false);
     setCurrentTime(0);
     setDuration(0);
     setLoadError(null);
     setPreviewFallback(false);
-  }
-
-  useEffect(() => {
-    if (syncedKeyRef.current === jobKey) return;
-    syncedKeyRef.current = jobKey;
     const audio = audioRef.current;
     audio?.pause();
     audio?.load();
@@ -51,16 +47,11 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
 
   useEffect(() => {
     if (!isPlaying) return;
-
-    let frame = 0;
-    const syncPlaybackPosition = () => {
+    const interval = setInterval(() => {
       const audio = audioRef.current;
       if (audio) setCurrentTime(audio.currentTime);
-      frame = requestAnimationFrame(syncPlaybackPosition);
-    };
-    frame = requestAnimationFrame(syncPlaybackPosition);
-
-    return () => cancelAnimationFrame(frame);
+    }, 250);
+    return () => clearInterval(interval);
   }, [isPlaying]);
 
   const togglePlay = () => {
@@ -120,7 +111,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
       <article
         id="audio-player-component"
         aria-label="Audio preview player"
-        className="px-panel flex min-h-12 items-center px-3 py-2 text-xs text-px-dim"
+        className="px-panel flex min-h-12 items-center p-2 text-xs text-px-dim"
       >
         Select a track to load it into the player.
       </article>

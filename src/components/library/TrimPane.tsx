@@ -35,10 +35,12 @@ export function TrimPane() {
   const [mediaNonce, setMediaNonce] = useState(0);
 
   const [prevJobId, setPrevJobId] = useState(record.jobId);
-  if (record.jobId !== prevJobId) {
-    setPrevJobId(record.jobId);
-    setIsProbing(true);
-  }
+  useEffect(() => {
+    if (record.jobId !== prevJobId) {
+      setPrevJobId(record.jobId);
+      setIsProbing(true);
+    }
+  }, [record.jobId, prevJobId]);
 
   useEffect(() => {
     return probeDuration(record.jobId, seconds => {
@@ -125,7 +127,7 @@ export function TrimPane() {
   const previewSrc = `${previewBase}${previewBase.includes('?') ? '&' : '?'}v=${mediaNonce}`;
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       <audio
         ref={audioRef}
         key={`${record.jobId}:${mediaNonce}`}
@@ -154,7 +156,7 @@ export function TrimPane() {
         </span>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <div>
           <label
             htmlFor={`trim-start-${record.jobId}`}
@@ -271,7 +273,7 @@ export function TrimPane() {
         type="button"
         onClick={() => void handleApply()}
         disabled={isSaving}
-        className={`px-btn flex w-full items-center justify-center gap-2 !py-2.5 text-sm font-bold ${
+        className={`px-btn flex w-full items-center justify-center gap-2 !py-2 text-sm font-bold ${
           confirmArmed ? '!border-px-err !bg-px-err !text-[#0b0b12]' : ''
         }`}
       >

@@ -150,7 +150,7 @@ export function AdvancedPane() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 border-t border-px-line pt-3 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2 border-t border-px-line pt-2 sm:grid-cols-2">
         <div>
           <label
             htmlFor={`adv-title-${record.jobId}`}
@@ -216,7 +216,7 @@ export function AdvancedPane() {
         type="button"
         onClick={() => void handleApply()}
         disabled={isSaving || !dirty}
-        className={`px-btn flex w-full items-center justify-center gap-2 !py-2.5 text-sm font-bold ${
+        className={`px-btn flex w-full items-center justify-center gap-2 !py-2 text-sm font-bold ${
           confirmArmed ? '!border-px-err !bg-px-err !text-[#0b0b12]' : ''
         }`}
       >

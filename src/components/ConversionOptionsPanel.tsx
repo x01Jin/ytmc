@@ -42,7 +42,7 @@ export const ConversionOptionsPanel: React.FC<ConversionOptionsPanelProps> = ({
     <section
       id="conversion-options-panel"
       aria-label="Conversion options"
-      className="px-panel w-full space-y-3 p-3"
+      className="px-panel w-full space-y-2 p-2"
     >
       <div
         className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6"

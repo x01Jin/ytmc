@@ -1,4 +1,4 @@
-import { FolderSearch, Import, Pencil, Play, Trash2 } from 'lucide-react';
+import { FolderSearch, Import, Pencil, Play, Square, Trash2 } from 'lucide-react';
 import React, { Suspense, lazy, useMemo, useRef, useState } from 'react';
 import { AudioPlayer } from '../components/AudioPlayer';
 import { CoverArtPreview } from '../components/CoverArtPreview';
@@ -6,6 +6,7 @@ import { TrackArtwork } from '../components/TrackArtwork';
 import { useLibrary } from '../store/appStore';
 import type { ConversionJob, LibraryRecord } from '../types';
 import { previewStreamUrl } from '../utils/audioSupport';
+import { formatFileSize } from '../utils/format';
 
 const LibraryEditPanel = lazy(() =>
   import('../components/library/LibraryEditPanel').then(m => ({
@@ -14,13 +15,6 @@ const LibraryEditPanel = lazy(() =>
 );
 
 type SortKey = 'recent' | 'name' | 'size';
-
-function formatBytes(bytes: number): string {
-  if (!bytes) return '0 MB';
-  const mb = bytes / (1024 * 1024);
-  if (mb >= 1024) return `${(mb / 1024).toFixed(2)} GB`;
-  return `${mb.toFixed(1)} MB`;
-}
 
 function recordToJob(record: LibraryRecord, mediaVersion = 0): ConversionJob {
   const base = previewStreamUrl(record.jobId, record.format);
@@ -125,7 +119,7 @@ export function LibraryRoute() {
 
   if (isLoading && !library) {
     return (
-      <section className="px-panel p-4" aria-label="Library">
+      <section className="px-panel p-2" aria-label="Library">
         <p className="text-sm text-px-dim">Loading your library…</p>
       </section>
     );
@@ -133,7 +127,7 @@ export function LibraryRoute() {
 
   if (error && !library) {
     return (
-      <section className="px-panel border-px-err p-4" role="alert" aria-label="Library">
+      <section className="px-panel border-px-err p-2" role="alert" aria-label="Library">
         <p className="text-sm font-semibold">Library did not load</p>
         <p className="mt-1 text-sm text-px-dim">{error}</p>
         <button
@@ -154,7 +148,7 @@ export function LibraryRoute() {
 
   return (
     <div
-      className="flex h-full min-h-0 flex-col gap-3 overflow-hidden"
+      className="flex h-full min-h-0 flex-col gap-2 overflow-hidden"
       onDragOver={event => {
         event.preventDefault();
         setIsDragging(true);
@@ -169,7 +163,7 @@ export function LibraryRoute() {
       }}
     >
       <section
-        className={`px-panel flex shrink-0 flex-col gap-3 p-3 sm:flex-row sm:items-end ${
+        className={`px-panel flex shrink-0 flex-col gap-2 p-2 sm:flex-row sm:items-end ${
           isDragging ? 'border-px-acc' : ''
         }`}
         aria-label="Library controls"
@@ -234,20 +228,20 @@ export function LibraryRoute() {
       </section>
 
       {isDragging && (
-        <div className="px-panel border-px-acc p-4 text-center text-sm text-px-acc">
+        <div className="px-panel border-px-acc p-2 text-center text-sm text-px-acc">
           Drop audio files to copy them into your library
         </div>
       )}
 
       {actionError && (
-        <div role="alert" className="px-panel border-px-err p-3 text-sm">
+        <div role="alert" className="px-panel border-px-err p-2 text-sm">
           <span className="font-semibold">Action failed: </span>
           <span className="text-px-dim">{actionError}</span>
         </div>
       )}
 
       {records.length === 0 ? (
-        <section className="px-panel p-6 text-center" aria-label="Library">
+        <section className="px-panel flex-1 p-2 text-center" aria-label="Library">
           <p className="font-display text-xs">EMPTY SHELF</p>
           <p className="mx-auto mt-2 max-w-sm text-sm text-px-dim">
             {query
@@ -262,9 +256,10 @@ export function LibraryRoute() {
         >
           {records.map(record => {
             const isEditing = editingId === record.jobId;
+            const isPlaying = playingId === record.jobId;
             return (
               <div key={record.jobId} className="px-row min-w-0">
-                <div className="flex min-w-0 items-center gap-3 p-2.5">
+                <div className="flex min-w-0 items-center gap-2 p-2">
                   <button
                     type="button"
                     onClick={() => setArtPreviewId(record.jobId)}
@@ -281,21 +276,30 @@ export function LibraryRoute() {
                     <p className="truncate text-sm font-semibold">{record.title}</p>
                     <p className="px-tabular truncate text-xs text-px-dim">
                       {record.author} • {record.format.toUpperCase()} •{' '}
-                      {formatBytes(record.fileSizeBytes)}
+                      {formatFileSize(record.fileSizeBytes)}
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">
                     <button
                       type="button"
-                      className="px-btn !px-2 !py-1 text-xs"
+                      className={`px-btn !px-2 !py-1 text-xs ${isPlaying ? '!border-px-acc !bg-px-acc !text-[#0b0b12]' : ''}`}
                       onClick={() => {
-                        setPlayingId(record.jobId);
-                        setPlayNonce(n => n + 1);
+                        if (isPlaying) {
+                          setPlayingId(null);
+                        } else {
+                          setPlayingId(record.jobId);
+                          setPlayNonce(n => n + 1);
+                        }
                       }}
-                      aria-label={`Play ${record.title}`}
-                      title="Play in player"
+                      aria-label={isPlaying ? `Stop ${record.title}` : `Play ${record.title}`}
+                      aria-pressed={isPlaying}
+                      title={isPlaying ? 'Stop and close player' : 'Play in player'}
                     >
-                      <Play className="h-4 w-4" aria-hidden="true" />
+                      {isPlaying ? (
+                        <Square className="h-4 w-4" aria-hidden="true" />
+                      ) : (
+                        <Play className="h-4 w-4" aria-hidden="true" />
+                      )}
                     </button>
                     <button
                       type="button"
@@ -308,16 +312,14 @@ export function LibraryRoute() {
                     </button>
                     <button
                       type="button"
-                      className="px-btn !px-2 !py-1 text-xs"
+                      className={`px-btn !px-2 !py-1 text-xs ${isEditing ? '!border-px-acc !bg-px-acc !text-[#0b0b12]' : ''}`}
                       onClick={() =>
                         setEditingId(cur => (cur === record.jobId ? null : record.jobId))
                       }
-                      aria-expanded={editingId === record.jobId}
+                      aria-expanded={isEditing}
                       aria-controls={`library-edit-${record.jobId}`}
                       aria-label={
-                        editingId === record.jobId
-                          ? `Close editor for ${record.title}`
-                          : `Edit ${record.title}`
+                        isEditing ? `Close editor for ${record.title}` : `Edit ${record.title}`
                       }
                       title="Edit trim, tags and advanced options"
                     >
@@ -351,16 +353,14 @@ export function LibraryRoute() {
         </section>
       )}
 
-      <section className="shrink-0" aria-label="Preview player">
-        <AudioPlayer
-          job={
-            playingRecord
-              ? recordToJob(playingRecord, mediaVersions[playingRecord.jobId] ?? 0)
-              : undefined
-          }
-          autoPlayNonce={playNonce}
-        />
-      </section>
+      {playingRecord && (
+        <section className="shrink-0" aria-label="Preview player">
+          <AudioPlayer
+            job={recordToJob(playingRecord, mediaVersions[playingRecord.jobId] ?? 0)}
+            autoPlayNonce={playNonce}
+          />
+        </section>
+      )}
 
       {artPreviewRecord && (
         <CoverArtPreview

@@ -137,6 +137,7 @@ export namespace CookieService {
           'Accept-Language': 'en-US,en;q=0.9',
           Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         },
+        signal: AbortSignal.timeout(15000),
       });
 
       const rawCookies = response.headers.getSetCookie ? response.headers.getSetCookie() : [];

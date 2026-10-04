@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useRef, useState } from 'react';
+import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { useSession, useSettings } from '../store/appStore';
 
 const CookieModal = lazy(() =>
@@ -19,11 +19,13 @@ export function SettingsRoute() {
   const errorRef = useRef<HTMLDivElement | null>(null);
 
   const [prevSettings, setPrevSettings] = useState(settings);
-  if (settings !== prevSettings) {
-    setPrevSettings(settings);
-    setFolder(settings?.downloadsDir ?? '');
-    setRevealAfterConvert(settings?.revealAfterConvert ?? false);
-  }
+  useEffect(() => {
+    if (settings !== prevSettings) {
+      setPrevSettings(settings);
+      setFolder(settings?.downloadsDir ?? '');
+      setRevealAfterConvert(settings?.revealAfterConvert ?? false);
+    }
+  }, [settings, prevSettings]);
 
   const pickFolder = async () => {
     setSaveError(null);
@@ -37,11 +39,20 @@ export function SettingsRoute() {
   };
 
   const handleSave = async () => {
+    const trimmedFolder = folder.trim();
+    if (!trimmedFolder) {
+      setSaveError('Library folder is required. Pick a folder or enter an absolute path.');
+      return;
+    }
+    if (!/^(?:[a-zA-Z]:\\|\\\\|\/)/.test(trimmedFolder)) {
+      setSaveError('Library folder must be an absolute path.');
+      return;
+    }
     setIsSaving(true);
     setSaveError(null);
     setSavedTick(false);
     try {
-      await actions.save({ downloadsDir: folder, revealAfterConvert });
+      await actions.save({ downloadsDir: trimmedFolder, revealAfterConvert });
       setSavedTick(true);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Could not save settings.');
@@ -65,7 +76,7 @@ export function SettingsRoute() {
 
   if (isLoading && !settings) {
     return (
-      <section className="px-panel p-4" aria-label="Settings">
+      <section className="px-panel p-2" aria-label="Settings">
         <p className="text-sm text-px-dim">Loading settings…</p>
       </section>
     );
@@ -73,7 +84,7 @@ export function SettingsRoute() {
 
   if (error && !settings) {
     return (
-      <section className="px-panel border-px-err p-4" role="alert" aria-label="Settings">
+      <section className="px-panel border-px-err p-2" role="alert" aria-label="Settings">
         <p className="text-sm font-semibold">Settings did not load</p>
         <p className="mt-1 text-sm text-px-dim">{error}</p>
       </section>
@@ -81,8 +92,8 @@ export function SettingsRoute() {
   }
 
   return (
-    <div className="space-y-3">
-      <section className="px-panel space-y-3 p-4" aria-label="Library folder">
+    <div className="space-y-2">
+      <section className="px-panel space-y-2 p-2" aria-label="Library folder">
         <h2 className="font-display text-[11px]">LIBRARY FOLDER</h2>
         <p className="text-sm text-px-dim">
           Finished tracks save straight to this folder. No browser save dialog.
@@ -131,7 +142,7 @@ export function SettingsRoute() {
             ref={errorRef}
             tabIndex={-1}
             role="alert"
-            className="border-2 border-px-err p-3 text-sm"
+            className="border-2 border-px-err p-2 text-sm"
           >
             <span className="font-semibold">Could not save: </span>
             <span className="text-px-dim">{saveError}</span>
@@ -163,7 +174,7 @@ export function SettingsRoute() {
         </div>
       </section>
 
-      <section className="px-panel space-y-2 p-4" aria-label="YouTube session">
+      <section className="px-panel space-y-2 p-2" aria-label="YouTube session">
         <h2 className="font-display text-[11px]">YOUTUBE SESSION</h2>
         <p className="text-sm text-px-dim" aria-live="polite">
           {session.status.configured

@@ -32,7 +32,7 @@ export function useJobPolling(
     const tick = async () => {
       if (stopped) return;
       if (typeof document !== 'undefined' && document.hidden) {
-        if (!stopped) timer = setTimeout(tick, POLL_INTERVAL_MS);
+        if (!stopped) timer = setTimeout(tick, BACKOFF_INTERVAL_MS);
         return;
       }
       try {

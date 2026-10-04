@@ -21,6 +21,7 @@ interface TagEditorProps {
   defaultArtist?: string;
   defaultThumbnail?: string;
   sourceThumbnail?: string;
+  existingArtworkSrc?: string;
   onChange: (tags: MusicTags) => void;
   onSaveToFile?: (tags: MusicTags) => Promise<void>;
   isSavingToFile?: boolean;
@@ -48,6 +49,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
   defaultArtist = '',
   defaultThumbnail = '',
   sourceThumbnail = '',
+  existingArtworkSrc = '',
   onChange,
   onSaveToFile,
   isSavingToFile = false,
@@ -72,10 +74,19 @@ export const TagEditor: React.FC<TagEditorProps> = ({
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [prevInitialTags, setPrevInitialTags] = useState(initialTags);
-  if (initialTags && initialTags !== prevInitialTags) {
-    setPrevInitialTags(initialTags);
-    if (!hasUserEdited) setTags(initialTags);
-  }
+  const [coverError, setCoverError] = useState<string | null>(null);
+  const createdUrlRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (initialTags && initialTags !== prevInitialTags) {
+      setPrevInitialTags(initialTags);
+      if (!hasUserEdited) setTags(initialTags);
+    }
+  }, [initialTags, prevInitialTags, hasUserEdited]);
+  useEffect(() => {
+    return () => {
+      if (createdUrlRef.current) URL.revokeObjectURL(createdUrlRef.current);
+    };
+  }, []);
 
   const performSearch = async (query: string, source: TagSource) => {
     const trimmed = query.trim();
@@ -116,15 +127,17 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     query: string;
     source: TagSource;
   } | null>(null);
-  if (
-    tags.title &&
-    tags.title.trim().length >= 2 &&
-    !lastSearchedQuery &&
-    autoSearch?.query !== tags.title
-  ) {
-    setAutoSearch({ query: tags.title, source: selectedSource });
-    setIsSearching(true);
-  }
+  useEffect(() => {
+    if (
+      tags.title &&
+      tags.title.trim().length >= 2 &&
+      !lastSearchedQuery &&
+      autoSearch?.query !== tags.title
+    ) {
+      setAutoSearch({ query: tags.title, source: selectedSource });
+      setIsSearching(true);
+    }
+  }, [tags.title, lastSearchedQuery, autoSearch, selectedSource]);
 
   useEffect(() => {
     if (!autoSearch) return;
@@ -174,6 +187,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
       trackNumber: candidate.trackNumber || tags.trackNumber || '1',
       coverUrl: candidate.coverUrl || tags.coverUrl,
       coverData: undefined,
+      removeCover: false,
     };
 
     setTags(updated);
@@ -192,11 +206,26 @@ export const TagEditor: React.FC<TagEditorProps> = ({
   };
 
   const handleFieldChange = (field: keyof MusicTags, value: MusicTags[keyof MusicTags]) => {
+    if (field === 'year' && typeof value === 'string' && value !== '' && !/^\d{0,4}$/.test(value)) {
+      return;
+    }
+    if (
+      field === 'trackNumber' &&
+      typeof value === 'string' &&
+      value !== '' &&
+      !/^\d{0,3}(\/\d{0,3})?$/.test(value)
+    ) {
+      return;
+    }
+    if (field === 'coverUrl' && createdUrlRef.current) {
+      URL.revokeObjectURL(createdUrlRef.current);
+      createdUrlRef.current = null;
+    }
     setHasUserEdited(true);
     const updated = {
       ...tags,
       [field]: value,
-      ...(field === 'coverUrl' ? { coverData: undefined } : {}),
+      ...(field === 'coverUrl' ? { coverData: undefined, removeCover: value === '' } : {}),
     };
     setTags(updated);
     onChange(updated);
@@ -211,7 +240,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
   };
 
   return (
-    <div className="min-w-0 space-y-3 text-px-text">
+    <div className="min-w-0 space-y-2 text-px-text">
       <div className="space-y-1.5">
         <div className="flex items-center justify-between">
           <label
@@ -267,7 +296,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
         </div>
       </div>
 
-      <div className="space-y-2 border border-px-line bg-px-bg p-3">
+      <div className="space-y-2 border border-px-line bg-px-bg p-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 text-xs font-medium text-px-text">
             <Sparkles className="h-3.5 w-3.5 text-px-warn" />
@@ -316,7 +345,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
               <div
                 key={c.id}
                 onClick={() => handleApplyCandidate(c)}
-                className="group flex cursor-pointer items-start gap-2.5 border border-px-line bg-px-panel p-2.5 transition-colors hover:border-px-acc hover:bg-px-panel-2"
+                className="group flex cursor-pointer items-start gap-2 border border-px-line bg-px-panel p-2 transition-colors hover:border-px-acc hover:bg-px-panel-2"
                 title="Click to apply these tags"
               >
                 {c.coverUrl ? (
@@ -325,7 +354,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
                     onClick={event => {
                       event.stopPropagation();
                       setArtPreview({
-                        src: c.coverUrl,
+                        src: c.coverUrl ?? '',
                         title: `${c.title} • ${c.artist}`,
                       });
                     }}
@@ -383,7 +412,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
             ))}
           </div>
         ) : (
-          <div className="py-2.5 text-center text-xs text-px-dim">
+          <div className="py-2 text-center text-xs text-px-dim">
             {tags.title.trim()
               ? `No exact matches found for "${tags.title}". You can refine the title above or fill out the tags manually below.`
               : 'Enter a track title above to detect tags from iTunes, Deezer, and MusicBrainz.'}
@@ -391,7 +420,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
         <div className="space-y-1">
           <label htmlFor="tag-artist" className="text-xs font-semibold text-px-text">
             Artist / Performer
@@ -480,7 +509,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
       <div className="space-y-2 border-t border-px-line pt-2">
         <label className="flex items-center justify-between text-xs font-semibold text-px-text">
           <span>Album Cover Artwork</span>
-          {tags.coverUrl && (
+          {tags.coverUrl || existingArtworkSrc ? (
             <button
               type="button"
               onClick={() => handleFieldChange('coverUrl', '')}
@@ -488,16 +517,16 @@ export const TagEditor: React.FC<TagEditorProps> = ({
             >
               <Trash2 className="w-3 h-3" /> Remove Cover
             </button>
-          )}
+          ) : null}
         </label>
 
-        <div className="flex items-center gap-3">
-          {tags.coverUrl ? (
+        <div className="flex items-center gap-2">
+          {tags.coverUrl || existingArtworkSrc ? (
             <button
               type="button"
               onClick={() =>
                 setArtPreview({
-                  src: tags.coverUrl,
+                  src: tags.coverUrl || existingArtworkSrc,
                   title: tags.album || tags.title,
                 })
               }
@@ -505,7 +534,10 @@ export const TagEditor: React.FC<TagEditorProps> = ({
               title="Preview cover art"
               className="shrink-0 cursor-zoom-in border border-px-line transition-colors hover:border-px-acc"
             >
-              <TrackArtwork src={tags.coverUrl} className="block h-14 w-14 bg-px-bg object-cover" />
+              <TrackArtwork
+                src={tags.coverUrl || existingArtworkSrc}
+                className="block h-14 w-14 bg-px-bg object-cover"
+              />
             </button>
           ) : (
             <div className="flex h-14 w-14 shrink-0 items-center justify-center border border-dashed border-px-line bg-px-bg text-px-dim">
@@ -522,15 +554,24 @@ export const TagEditor: React.FC<TagEditorProps> = ({
               onChange={event => {
                 const file = event.target.files?.[0];
                 event.target.value = '';
-                if (!file || file.size > 8 * 1024 * 1024) return;
+                if (!file) return;
+                if (file.size > 8 * 1024 * 1024) {
+                  setCoverError('Cover image exceeds 8 MB. Choose a smaller file.');
+                  return;
+                }
+                setCoverError(null);
                 const reader = new FileReader();
                 reader.addEventListener('load', () => {
                   if (typeof reader.result !== 'string') return;
+                  if (createdUrlRef.current) URL.revokeObjectURL(createdUrlRef.current);
+                  const objectUrl = URL.createObjectURL(file);
+                  createdUrlRef.current = objectUrl;
                   setHasUserEdited(true);
                   const updated = {
                     ...tags,
-                    coverUrl: URL.createObjectURL(file),
+                    coverUrl: objectUrl,
                     coverData: reader.result,
+                    removeCover: false,
                   };
                   setTags(updated);
                   onChange(updated);
@@ -553,6 +594,11 @@ export const TagEditor: React.FC<TagEditorProps> = ({
               placeholder="Cover Art URL (paste image link or use autotagger above)..."
               className="px-input w-full py-1.5 text-xs"
             />
+            {coverError && (
+              <p role="alert" className="text-[11px] text-red-400">
+                {coverError}
+              </p>
+            )}
             {(() => {
               const originalArt =
                 sourceThumbnail || (/^https?:\/\//i.test(defaultThumbnail) ? defaultThumbnail : '');
@@ -573,7 +619,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-px-line pt-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-px-line pt-2">
         <label className="flex cursor-pointer select-none items-center gap-2 text-xs text-px-dim hover:text-px-text">
           <input
             type="checkbox"

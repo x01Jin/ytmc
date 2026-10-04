@@ -17,6 +17,7 @@ export interface LibraryRecord {
   fileSizeBytes: number;
   completedAt: number;
   tags?: MusicTags;
+  hasCover?: boolean;
 }
 
 const LIBRARY_FILE = path.join(DATA_DIR, 'library.json');
@@ -54,11 +55,17 @@ function keyOf(p: string): string {
 
 export namespace LibraryStore {
   export function upsert(record: LibraryRecord): void {
-    const records = readAll().filter(
-      r => r.jobId !== record.jobId && !isSameFilePath(r.filePath, record.filePath)
+    upsertMany([record]);
+  }
+
+  export function upsertMany(recordsToUpsert: LibraryRecord[]): void {
+    if (recordsToUpsert.length === 0) return;
+    const ids = new Set(recordsToUpsert.map(r => r.jobId));
+    const paths = recordsToUpsert.map(r => r.filePath);
+    const existing = readAll().filter(
+      r => !ids.has(r.jobId) && !paths.some(p => isSameFilePath(r.filePath, p))
     );
-    records.unshift(record);
-    writeAll(records);
+    writeAll([...recordsToUpsert, ...existing]);
   }
 
   export function reconcile(): { removed: number } {

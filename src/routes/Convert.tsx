@@ -80,12 +80,14 @@ export function ConvertRoute() {
   }, [activeJob, jobActions, historyActions, libraryActions, resetDraft]);
 
   const [prevInspectUrl, setPrevInspectUrl] = useState<string | null>(null);
-  if (pendingInspectUrl && pendingInspectUrl !== prevInspectUrl) {
-    setPrevInspectUrl(pendingInspectUrl);
-    setUrl(pendingInspectUrl);
-    setIsInspecting(true);
-    setInspectError(null);
-  }
+  useEffect(() => {
+    if (pendingInspectUrl && pendingInspectUrl !== prevInspectUrl) {
+      setPrevInspectUrl(pendingInspectUrl);
+      setUrl(pendingInspectUrl);
+      setIsInspecting(true);
+      setInspectError(null);
+    }
+  }, [pendingInspectUrl, prevInspectUrl, setUrl]);
 
   useEffect(() => {
     if (!pendingInspectUrl) return;
@@ -109,7 +111,7 @@ export function ConvertRoute() {
   }, [pendingInspectUrl, consumeInspectUrl, jobActions, setMetadata]);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {savedTitle && (
         <div
           role="status"
@@ -136,7 +138,7 @@ export function ConvertRoute() {
       {inspectError && (
         <div
           role="alert"
-          className="px-panel flex items-start gap-3 border-px-err p-4 text-xs sm:text-sm"
+          className="px-panel flex items-start gap-2 border-px-err p-2 text-xs sm:text-sm"
         >
           <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-px-err" aria-hidden="true" />
           <div className="flex-1">

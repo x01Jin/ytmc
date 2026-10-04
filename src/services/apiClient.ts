@@ -47,9 +47,16 @@ async function mutatingHeaders(): Promise<Record<string, string>> {
   };
 }
 
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getLoopbackToken();
+  return token ? { 'x-loopback-token': token } : {};
+}
+
 export namespace ApiClient {
   export async function fetchVideoInfo(url: string): Promise<VideoMetadata> {
-    const res = await fetch(`/api/info?url=${encodeURIComponent(url)}`);
+    const res = await fetch(`/api/info?url=${encodeURIComponent(url)}`, {
+      headers: await authHeaders(),
+    });
     const json = await res.json();
     if (!res.ok || !json.success) {
       throw new Error(json.error || 'Failed to fetch video details');
@@ -88,7 +95,8 @@ export namespace ApiClient {
     if (!query || !query.trim()) return [];
     try {
       const res = await fetch(
-        `/api/tags/search?q=${encodeURIComponent(query.trim())}&source=${source}`
+        `/api/tags/search?q=${encodeURIComponent(query.trim())}&source=${source}`,
+        { headers: await authHeaders() }
       );
       const json = await res.json();
       if (res.ok && json.success) {
@@ -100,7 +108,10 @@ export namespace ApiClient {
     }
   }
 
-  export async function applyTags(jobId: string, tags: MusicTags): Promise<ConversionJob> {
+  export async function applyTags(
+    jobId: string,
+    tags: MusicTags
+  ): Promise<{ job: ConversionJob; message: string; coverDropped: boolean }> {
     const res = await fetch(`/api/tags/apply/${encodeURIComponent(jobId)}`, {
       method: 'POST',
       headers: await mutatingHeaders(),
@@ -110,11 +121,17 @@ export namespace ApiClient {
     if (!res.ok || !json.success) {
       throw new Error(json.error || 'Failed to apply tags to audio');
     }
-    return json.job;
+    return {
+      job: json.job,
+      message: json.message || 'Tags saved and file renamed to match.',
+      coverDropped: json.coverDropped === true,
+    };
   }
 
   export async function getJobStatus(jobId: string): Promise<ConversionJob> {
-    const res = await fetch(`/api/status/${encodeURIComponent(jobId)}`);
+    const res = await fetch(`/api/status/${encodeURIComponent(jobId)}`, {
+      headers: await authHeaders(),
+    });
     const json = await res.json();
     if (!res.ok || !json.success) {
       throw new Error(json.error || 'Failed to check conversion status');
@@ -122,9 +139,21 @@ export namespace ApiClient {
     return json.job;
   }
 
+  export async function cancelConversion(jobId: string): Promise<ConversionJob> {
+    const res = await fetch(`/api/cancel/${encodeURIComponent(jobId)}`, {
+      method: 'POST',
+      headers: await mutatingHeaders(),
+    });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || 'Failed to cancel conversion');
+    }
+    return json.job;
+  }
+
   export async function getRecentJobs(): Promise<ConversionJob[]> {
     return dedupedGet('jobs', async () => {
-      const res = await fetch('/api/jobs');
+      const res = await fetch('/api/jobs', { headers: await authHeaders() });
       const json = await res.json();
       if (!res.ok || !json.success) {
         return [];
@@ -135,7 +164,7 @@ export namespace ApiClient {
 
   export async function getHistory(): Promise<HistoryEntry[]> {
     return dedupedGet('history', async () => {
-      const res = await fetch('/api/history');
+      const res = await fetch('/api/history', { headers: await authHeaders() });
       const json = await res.json();
       if (!res.ok || !json.success) {
         return [];
@@ -153,6 +182,7 @@ export namespace ApiClient {
     try {
       res = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&limit=${limit}`, {
         signal,
+        headers: await authHeaders(),
       });
     } catch (err: unknown) {
       if (err instanceof DOMException && err.name === 'AbortError') throw err;
@@ -208,7 +238,7 @@ export namespace ApiClient {
 
   export async function getCookieStatus(): Promise<CookieStatus> {
     return dedupedGet('cookies', async () => {
-      const res = await fetch('/api/cookies');
+      const res = await fetch('/api/cookies', { headers: await authHeaders() });
       const json = await res.json();
       if (!res.ok || !json.success) {
         return {
@@ -288,7 +318,7 @@ export namespace ApiClient {
 
   export async function getSettings(): Promise<AppSettings> {
     return dedupedGet('settings', async () => {
-      const res = await fetch('/api/settings');
+      const res = await fetch('/api/settings', { headers: await authHeaders() });
       const json = await res.json();
       if (!res.ok || !json.success) {
         throw new Error(json.error || 'Failed to load settings');
@@ -324,7 +354,7 @@ export namespace ApiClient {
 
   export async function getLibrary(): Promise<LibraryData> {
     return dedupedGet('library', async () => {
-      const res = await fetch('/api/library');
+      const res = await fetch('/api/library', { headers: await authHeaders() });
       const json = await res.json();
       if (!res.ok || !json.success) {
         throw new Error(json.error || 'Failed to load library');
@@ -354,7 +384,9 @@ export namespace ApiClient {
     format: string;
     sizeBytes: number;
   }> {
-    const res = await fetch(`/api/library/${encodeURIComponent(jobId)}/probe`);
+    const res = await fetch(`/api/library/${encodeURIComponent(jobId)}/probe`, {
+      headers: await authHeaders(),
+    });
     const json = await res.json();
     if (!res.ok || !json.success) {
       throw new Error(json.error || 'Could not read audio duration');

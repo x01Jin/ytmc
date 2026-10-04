@@ -43,7 +43,7 @@ export function HistoryRoute({ onReconvert }: { onReconvert: () => void }) {
 
   if (entries.length === 0) {
     return (
-      <section className="px-panel p-6 text-center" aria-label="History">
+      <section className="px-panel p-2 text-center" aria-label="History">
         <p className="font-display text-xs">NO HISTORY YET</p>
         <p className="mx-auto mt-2 max-w-sm text-sm text-px-dim">
           Finished conversions land here with their YouTube link, so a lost file can always be
@@ -54,9 +54,9 @@ export function HistoryRoute({ onReconvert }: { onReconvert: () => void }) {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
       <section
-        className="px-panel flex min-h-0 w-full flex-1 flex-col space-y-2 p-3"
+        className="px-panel flex min-h-0 w-full flex-1 flex-col space-y-2 p-2"
         aria-label="Conversion history"
       >
         <div className="flex shrink-0 items-center justify-between border-b-2 border-px-line pb-2">
@@ -91,7 +91,7 @@ export function HistoryRoute({ onReconvert }: { onReconvert: () => void }) {
             <div
               key={entry.jobId}
               id={`history-item-${entry.jobId}`}
-              className="px-row flex items-center gap-3 py-2.5"
+              className="px-row flex items-center gap-2 py-2"
             >
               <span className="h-10 w-10 shrink-0 overflow-hidden border-2 border-px-line bg-px-bg">
                 {entry.thumbnail ? (

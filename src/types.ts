@@ -23,6 +23,7 @@ export interface MusicTags {
   trackNumber?: string;
   coverUrl?: string;
   coverData?: string;
+  removeCover?: boolean;
   comment?: string;
   cleanDescription?: boolean;
 }
@@ -84,6 +85,7 @@ export interface ConversionJob {
   stageMessage: string;
   error?: string;
   errorDetails?: string;
+  tagWarning?: string;
   exitCode?: number | null;
   isBotBlocked?: boolean;
   outputFilePath?: string;
@@ -128,6 +130,7 @@ export interface LibraryRecord {
   fileSizeBytes: number;
   completedAt: number;
   tags?: MusicTags;
+  hasCover?: boolean;
 }
 
 export interface LooseLibraryFile {
@@ -144,6 +147,9 @@ export interface LibraryData {
   records: LibraryRecord[];
   looseFiles: LooseLibraryFile[];
   totalSizeBytes: number;
+  total?: number;
+  page?: number;
+  pageSize?: number;
 }
 
 export interface HistoryEntry {

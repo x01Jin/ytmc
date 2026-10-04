@@ -4,6 +4,10 @@ import type { MusicTags } from '../../types';
 import { TagEditor } from '../TagEditor';
 import { useEditPanel } from './LibraryEditPanel';
 
+function remoteArtwork(value: string | undefined): string {
+  return value && /^https?:\/\//i.test(value) ? value : '';
+}
+
 export function TagPane() {
   const { record, onEdited } = useEditPanel();
   const [isSaving, setIsSaving] = useState(false);
@@ -15,8 +19,8 @@ export function TagPane() {
     setNotice(null);
     setError(null);
     try {
-      await ApiClient.applyTags(record.jobId, tags);
-      setNotice('Tags saved and file renamed to match.');
+      const result = await ApiClient.applyTags(record.jobId, tags);
+      setNotice(result.message);
       onEdited();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save tags.');
@@ -45,19 +49,20 @@ export function TagPane() {
         initialTags={{
           title: record.tags?.title || record.title,
           artist: record.tags?.artist || record.author,
-          album: record.tags?.album || record.title,
-          albumArtist: record.tags?.albumArtist || record.author,
+          album: record.tags?.album || '',
+          albumArtist: record.tags?.albumArtist || '',
           year: record.tags?.year || '',
-          genre: record.tags?.genre || 'Music',
-          trackNumber: record.tags?.trackNumber || '1',
-          coverUrl: record.tags?.coverUrl || record.thumbnail,
+          genre: record.tags?.genre || '',
+          trackNumber: record.tags?.trackNumber || '',
+          coverUrl: remoteArtwork(record.tags?.coverUrl),
           cleanDescription: record.tags?.cleanDescription ?? true,
-          comment: record.tags?.comment || 'YouTube to Music Converter',
+          comment: record.tags?.comment || '',
         }}
         defaultVideoTitle={record.title}
         defaultArtist={record.author}
         defaultThumbnail={record.thumbnail}
         sourceThumbnail={record.sourceThumbnail}
+        existingArtworkSrc={record.thumbnail}
         onChange={() => {}}
         onSaveToFile={handleSave}
         isSavingToFile={isSaving}

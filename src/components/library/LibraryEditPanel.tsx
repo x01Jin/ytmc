@@ -112,7 +112,7 @@ export function LibraryEditPanel({ record, initialTab = 'trim', onEdited }: Libr
 
   return (
     <EditPanelContext value={{ record, tab, baseId, onEdited }}>
-      <div className="min-w-0 border-t-2 border-px-line bg-px-bg p-3">
+      <div className="min-w-0 border-t-2 border-px-line bg-px-bg p-2">
         <div className="mb-1 flex items-center gap-1.5 text-[11px] text-px-dim">
           <Pencil className="h-3 w-3" aria-hidden="true" />
           <span className="truncate">

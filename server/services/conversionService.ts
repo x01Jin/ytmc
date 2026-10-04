@@ -15,8 +15,25 @@ import { PreviewService } from './previewService.js';
 import { MetadataService } from './metadataService.js';
 import { cookiesAllowed, extractorArgsFor, resolveStrategy } from './potService.js';
 import { parseYouTubeInput } from './urlService.js';
-import { ytdlpEnv, ytdlpLaunch } from './ytdlpRunner.js';
-import { buildAudioFilters } from './audioFilterService.js';
+import { ensureYtDlp, ytdlpEnv } from './ytdlpRunner.js';
+import { AUDIO_DSP, buildAudioFilters } from './audioFilterService.js';
+import { readAudioMetadata } from './audioMetadata.js';
+
+const MAX_CONCURRENT_CONVERSIONS = 2;
+const CONVERSION_TIMEOUT_MS = 30 * 60 * 1000;
+
+function isTrimValue(value: string | undefined, allowInf: boolean): boolean {
+  if (value === undefined) return true;
+  const trimmed = value.trim();
+  if (trimmed === '') return true;
+  if (allowInf && trimmed === 'inf') return true;
+  return /^(\d+:)?\d{1,2}:\d{2}(\.\d+)?$/.test(trimmed) || /^\d+(\.\d+)?$/.test(trimmed);
+}
+
+function isVolumeBoost(value: number | undefined): boolean {
+  if (value === undefined) return true;
+  return (AUDIO_DSP.VOLUME.ALLOWED as readonly number[]).includes(value);
+}
 
 export interface ConvertRequestOptions {
   url: string;
@@ -29,7 +46,23 @@ export interface ConvertRequestOptions {
 }
 
 export namespace ConversionService {
+  export function cancelConversion(jobId: string): boolean {
+    return JobManager.cancelJob(jobId);
+  }
+
   export async function startConversion(options: ConvertRequestOptions): Promise<ConversionJob> {
+    if (JobManager.activeCount() >= MAX_CONCURRENT_CONVERSIONS) {
+      throw new Error('Too many concurrent conversions. Wait for one to finish and try again.');
+    }
+    if (!isTrimValue(options.trimStart, false)) {
+      throw new Error('Invalid trim start. Use seconds or MM:SS.');
+    }
+    if (!isTrimValue(options.trimEnd, true)) {
+      throw new Error('Invalid trim end. Use seconds, MM:SS, or leave empty.');
+    }
+    if (!isVolumeBoost(options.volumeBoost)) {
+      throw new Error('Invalid volume boost. Allowed values are 100, 125, 150.');
+    }
     FileService.ensureDownloadsDir();
 
     const parsed = parseYouTubeInput(options.url);
@@ -95,7 +128,10 @@ export namespace ConversionService {
   ): Promise<void> {
     const outputTemplate = path.join(FileService.getDownloadsDir(), `${jobId}.%(ext)s`);
     const cookiesPath = CookieService.getCookiesPath();
-    const launch = ytdlpLaunch();
+    const launch = await ensureYtDlp();
+    if (!launch.version) {
+      throw new Error('yt-dlp is not ready. Check Python launcher or YTDLP_PATH, then retry.');
+    }
     const { strategy } = await resolveStrategy();
     const useCookies = cookiesAllowed(strategy, !!cookiesPath);
 
@@ -196,9 +232,24 @@ export namespace ConversionService {
     const child = spawn(launch.command, args, {
       env: ytdlpEnv(),
     });
+    JobManager.registerProcess(jobId, child);
 
     let stderrBuffer = '';
     let spawnFailed = false;
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      try {
+        child.kill('SIGTERM');
+      } catch {
+        return;
+      }
+      JobManager.updateJob(jobId, {
+        status: 'error',
+        error: 'Conversion timed out after 30 minutes and was stopped.',
+      });
+    }, CONVERSION_TIMEOUT_MS);
+    if (timeout.unref) timeout.unref();
 
     child.stdout.on('data', (chunk: Buffer) => {
       const line = chunk.toString();
@@ -236,7 +287,10 @@ export namespace ConversionService {
     });
 
     child.on('close', async code => {
+      clearTimeout(timeout);
+      JobManager.clearProcess(jobId);
       if (spawnFailed) return;
+      if (timedOut) return;
       if (code !== 0) {
         const isBot =
           /sign in to confirm|not a bot|bot|login_required|cookies-from-browser|403/i.test(
@@ -302,16 +356,28 @@ export namespace ConversionService {
             coverUrl: current?.thumbnail,
             cleanDescription: true,
           };
-          await AudioTagService.applyTagsToFile(finalFile, minimalTags);
+          const tagged = await AudioTagService.applyTagsToFile(finalFile, minimalTags);
+          if (tagged.coverDropped) {
+            JobManager.updateJob(jobId, {
+              tagWarning: `Cover art was dropped (${tagged.coverDropReason ?? 'unknown reason'}). Audio is intact.`,
+            });
+          }
         } catch (tagErr: unknown) {
-          console.warn(
-            `Tagging warning for job ${jobId}:`,
-            tagErr instanceof Error ? tagErr.message : tagErr
-          );
+          const message = tagErr instanceof Error ? tagErr.message : String(tagErr);
+          console.warn(`Tagging warning for job ${jobId}:`, message);
+          JobManager.updateJob(jobId, {
+            tagWarning: `Metadata tagging failed: ${message}. Audio is intact.`,
+          });
         }
       }
 
       const fileStat = fs.statSync(finalFile);
+      const fileMeta = await readAudioMetadata(finalFile).catch(() => null);
+      const fileTitle =
+        fileMeta?.tags.title || JobManager.getJob(jobId)?.title || `Track_${videoId}`;
+      const fileAuthor = fileMeta?.tags.artist || JobManager.getJob(jobId)?.author || 'YouTube';
+      const fileTags = fileMeta?.tags;
+      const fileHasCover = (fileMeta?.cover ?? null) !== null;
 
       const updated = JobManager.updateJob(jobId, {
         status: 'completed',
@@ -320,6 +386,9 @@ export namespace ConversionService {
           format === 'best' || format === 'opus' || format === 'm4a'
             ? `Highest native audio stream extracted bit-for-bit (~${actualExt === 'opus' ? '160k Opus' : '128k AAC'})!`
             : 'Audio converted successfully!',
+        title: fileTitle,
+        author: fileAuthor,
+        tags: fileTags,
         format: actualExt,
         outputFilePath: finalFile,
         outputFileName: finalName,
@@ -335,8 +404,8 @@ export namespace ConversionService {
           jobId,
           source: 'conversion',
           videoId,
-          title: updated.title,
-          author: updated.author,
+          title: fileTitle,
+          author: fileAuthor,
           thumbnail: buildArtworkUrl(jobId, updated.outputFilePath),
           sourceThumbnail: updated.thumbnail,
           format: actualExt,
@@ -344,7 +413,8 @@ export namespace ConversionService {
           filePath: updated.outputFilePath,
           fileSizeBytes: fileStat.size,
           completedAt: updated.completedAt ?? Date.now(),
-          tags: updated.tags,
+          tags: fileTags,
+          hasCover: fileHasCover,
         });
         HistoryStore.add({
           jobId,
@@ -360,6 +430,8 @@ export namespace ConversionService {
     });
 
     child.on('error', err => {
+      clearTimeout(timeout);
+      JobManager.clearProcess(jobId);
       spawnFailed = true;
       JobManager.updateJob(jobId, {
         status: 'error',

@@ -79,8 +79,8 @@ export function YouTubeRoute({ onDownload, active }: { onDownload: () => void; a
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden">
-      <section className="px-panel shrink-0 p-3" aria-label="Search YouTube">
+    <div className="flex h-full min-h-0 flex-col gap-2 overflow-hidden">
+      <section className="px-panel shrink-0 p-2" aria-label="Search YouTube">
         <form onSubmit={event => void handleSearch(event)} className="flex gap-2">
           <label htmlFor="youtube-search" className="sr-only">
             Search YouTube
@@ -114,7 +114,7 @@ export function YouTubeRoute({ onDownload, active }: { onDownload: () => void; a
       </section>
 
       {!hasSearched ? (
-        <section className="px-panel p-6 text-center" aria-label="YouTube">
+        <section className="px-panel p-2 text-center" aria-label="YouTube">
           <p className="font-display text-xs">SEARCH YOUTUBE</p>
           <p className="mx-auto mt-2 max-w-sm text-sm text-px-dim">
             Find a video above, preview the full video, then copy the link, open it in your browser,
@@ -122,7 +122,7 @@ export function YouTubeRoute({ onDownload, active }: { onDownload: () => void; a
           </p>
         </section>
       ) : results.length === 0 && !isSearching && !searchError ? (
-        <section className="px-panel p-6 text-center" aria-label="YouTube results">
+        <section className="px-panel p-2 text-center" aria-label="YouTube results">
           <p className="font-display text-xs">NO RESULTS</p>
           <p className="mx-auto mt-2 max-w-sm text-sm text-px-dim">
             Nothing matched that search. Try different words.
@@ -137,7 +137,7 @@ export function YouTubeRoute({ onDownload, active }: { onDownload: () => void; a
             {results.length} {results.length === 1 ? 'result' : 'results'}
           </p>
           {results.map(result => (
-            <div key={result.id} className="px-row flex items-center gap-3 p-2.5">
+            <div key={result.id} className="px-row flex items-center gap-2 p-2">
               <span className="h-10 w-10 shrink-0 overflow-hidden border-2 border-px-line bg-px-bg">
                 <img
                   src={result.thumbnail}
