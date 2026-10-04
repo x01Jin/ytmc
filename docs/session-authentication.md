@@ -50,11 +50,11 @@ YouTube's web clients increasingly require a Proof-of-Origin token for format UR
 - **Otherwise**: extraction runs in `fallback` mode — no POT args, cookies sent when present, player clients pinned to `default,web_embedded,android_vr`. This covers embeddable / non-kid-targeted content with zero setup.
 - Boot logs which mode is active and warns loudly when the binary is missing. `POST /api/cookies/test` reports the live strategy.
 
-To install the sidecar (pinned, security-checked): use `bgutil-ytdlp-pot-provider` **2.0.0+** (binds to localhost by default; the server already passes `--host 127.0.0.1`), place the server binary at `bin/bgutil-pot`, and restart the app. It ships inside the installer automatically via the existing `bin/` extraResources. Note the upstream release only publishes a plugin zip plus a Docker image — there is no official standalone Windows server exe, so building/obtaining the server binary is currently a manual packaging step (tracked in `web-app-plan.md` §12).
+To install the sidecar: use `bgutil-ytdlp-pot-provider`, place the server binary at `bin/bgutil-pot`, and restart the app. It ships inside the installer automatically via the existing `bin/` extraResources.
 
 ---
 
-## 4. Custom User Account Cookies
+## 5. Custom User Account Cookies
 
 For age-restricted (18+) or private content, users can import their personal YouTube account cookies:
 
@@ -78,8 +78,8 @@ For age-restricted (18+) or private content, users can import their personal You
 
 ---
 
-## 5. Storage & Privacy Policies
+## 6. Storage & Privacy Policies
 
-- **File Path**: User cookies are stored in `data/cookies.txt`, while guest session cookies reside in `data/guest_cookies.txt`.
+- **File Path**: User cookies are stored in `data/cookies.txt`, while guest session cookies reside in `data/guest_cookies.txt`. A fresh guest fetch also mirrors the guest file to `data/cookies.txt` when no user cookies are stored.
 - **Exclusion**: The `data/` directory is ignored in `.gitignore` to prevent credentials from being stored in version control.
 - **Reset**: Clicking **Reset** in Session Settings immediately unlinks and purges all saved cookies from disk (`DELETE /api/cookies`).

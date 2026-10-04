@@ -100,22 +100,19 @@ Initiates an asynchronous audio extraction or conversion job. When `format` is `
   "trimStart": "00:00",
   "trimEnd": "00:30",
   "volumeBoost": 100,
-  "normalizeMode": "off",
   "embedThumbnail": true
 }
 ```
 
-| Field            | Type      | Default    | Description                                                                                                       |
-| ---------------- | --------- | ---------- | ----------------------------------------------------------------------------------------------------------------- |
-| `url`            | `string`  | Required   | YouTube video URL or ID.                                                                                          |
-| `format`         | `string`  | `"best"`   | One of: `"best"`, `"opus"`, `"m4a"`, `"mp3"`, `"flac"`, `"wav"`.                                                  |
-| `bitrate`        | `string`  | `"native"` | One of: `"native"`, `"160k"`, `"128k"`, `"192k"`, `"256k"`, `"320k"`.                                             |
-| `trimStart`      | `string`  | Optional   | Start timestamp (`"MM:SS"` or seconds integer).                                                                   |
-| `trimEnd`        | `string`  | Optional   | End timestamp (`"MM:SS"` or seconds integer).                                                                     |
-| `volumeBoost`    | `number`  | `100`      | Volume percentage. One of `100`, `125`, `150`. Ignored in `loudness` mode.                                        |
-| `normalizeMode`  | `string`  | `"off"`    | One of: `"off"`, `"loudness"` (−14 LUFS uniform gain), `"peak"` (−1 dBTP peak-safe). Invalid values return `400`. |
-| `normalizeAudio` | `boolean` | `false`    | Legacy flag: `true` maps to `"loudness"` when `normalizeMode` is absent.                                          |
-| `embedThumbnail` | `boolean` | `true`     | Embed the YouTube thumbnail as cover art with title/artist tags.                                                  |
+| Field            | Type      | Default    | Description                                                           |
+| ---------------- | --------- | ---------- | --------------------------------------------------------------------- |
+| `url`            | `string`  | Required   | YouTube video URL or ID.                                              |
+| `format`         | `string`  | `"best"`   | One of: `"best"`, `"opus"`, `"m4a"`, `"mp3"`, `"flac"`, `"wav"`.      |
+| `bitrate`        | `string`  | `"native"` | One of: `"native"`, `"160k"`, `"128k"`, `"192k"`, `"256k"`, `"320k"`. |
+| `trimStart`      | `string`  | Optional   | Start timestamp (`"MM:SS"` or seconds integer).                       |
+| `trimEnd`        | `string`  | Optional   | End timestamp (`"MM:SS"` or seconds integer).                         |
+| `volumeBoost`    | `number`  | `100`      | Volume percentage. One of `100`, `125`, `150`.                        |
+| `embedThumbnail` | `boolean` | `true`     | Embed the YouTube thumbnail as cover art with title/artist tags.      |
 
 #### Response (`200 OK`)
 
@@ -175,6 +172,10 @@ Retrieves current progress and status for a specific conversion job.
 ### `GET /api/jobs`
 
 Lists recent live conversion jobs (the Queue view). Finished jobs clear out to Library + History.
+
+### `POST /api/cancel/:id`
+
+Cancels a running conversion job. Sends `SIGTERM` to the job process. Returns the current job on success. `404` when the id is unknown, `409` when the job cannot be cancelled. Cancelling a `completed` or `error` job returns the job unchanged.
 
 ### `GET /api/demo-tracks`
 
@@ -254,7 +255,6 @@ Searches online music databases for track metadata and high-resolution album art
 | Parameter | Type     | Required | Description                                                                       |
 | --------- | -------- | -------- | --------------------------------------------------------------------------------- |
 | `q`       | `string` | Yes      | Track title or search query.                                                      |
-| `artist`  | `string` | No       | Optional artist name to refine results.                                           |
 | `source`  | `string` | No       | Metadata provider: `"all"` (default), `"itunes"`, `"deezer"`, or `"musicbrainz"`. |
 
 #### Response (`200 OK`)
@@ -324,17 +324,24 @@ Restores the default library folder and settings.
 
 Lists persistent conversion records (`data/library.json`) plus unindexed audio files found in the folder, with total size in bytes. Each file on disk has at most one record: folder-scan auto-indexing reuses the existing row when the path is already indexed (matched case-insensitively on Windows), and a boot-time reconcile collapses any duplicate rows and drops rows whose file no longer exists.
 
+#### Query Parameters
+
+| Parameter  | Type     | Default | Description                  |
+| ---------- | -------- | ------- | ---------------------------- |
+| `page`     | `number` | `1`     | Page number, minimum `1`.    |
+| `pageSize` | `number` | `100`   | Page size, clamped to 1–200. |
+
 ### `DELETE /api/library/:id`
 
-Deletes the file from the library folder (behind a confirm step in the UI) and drops its index entry.
+Deletes the file from the library folder (behind a confirm step in the UI) and drops its index entry. When the file is already gone, the index entry is removed and its preview invalidated.
 
 ### `POST /api/library/import`
 
-Copies a local audio file (MP3, M4A, FLAC, WAV, Opus) into the library folder without transcoding. Reads embedded tags with `ffprobe` for the new record.
+Copies a local audio file (MP3, M4A, FLAC, WAV, Opus) into the library folder without transcoding. Reads embedded tags with `ffprobe` for the new record. Accepts a raw `application/octet-stream` body (200 MB limit) with the file name in the `x-file-name` header, or a JSON body with `{ fileName, data }` where `data` is base64.
 
 ### `GET /api/library/:id/artwork`
 
-Serves the embedded cover art of a library track (`Cache-Control: no-cache`). Used for imported-file thumbnails.
+Serves the embedded cover art of a library track (`Cache-Control: public, max-age=31536000, immutable`). Used for imported-file thumbnails.
 
 ### `GET /api/library/:id/probe`
 
@@ -346,11 +353,11 @@ Trims a library track in place, cutting `[start, end)` and overwriting the file.
 
 ### `POST /api/library/:id/edit`
 
-Edits a library track in place: format conversion (`mp3`, `m4a`, `opus`, `flac`, `wav`), DSP options (`normalizeMode`, `volumeBoost`), and identity fields (`title`, `artist`). Title cannot be empty; invalid `normalizeMode` or gain returns `400`.
+Edits a library track in place: format conversion (`mp3`, `m4a`, `opus`, `flac`, `wav`), bitrate selection, volume gain (`volumeBoost`, one of `100`, `125`, `150`), and identity fields (`title`, `artist`). Title cannot be empty; an unsupported format or gain returns `400`.
 
 ### `POST /api/files/reveal`
 
-Opens Explorer with the finished file selected. The path must resolve inside the library folder.
+Opens Explorer with the finished file selected. Body: `{ jobId }`, where `jobId` is a job id or library record id. The resolved path must sit inside the library folder.
 
 ---
 

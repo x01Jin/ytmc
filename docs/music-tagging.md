@@ -41,7 +41,7 @@ The autotagger can search individual sources or aggregate results simultaneously
 
 ### Trigger Behavior
 
-- Autotagging is triggered directly when entering or editing text in the **Track Name** input field (debounced by 450ms).
+- Autotagging is triggered directly when entering or editing text in the **Track Name** input field (debounced by 400ms).
 - Users can choose any matched candidate card with one click to populate all fields and high-resolution cover artwork.
 - Each candidate also offers an artwork-only action when the user wants to change the cover without changing the album or other tags.
 - Users can choose an image from the local computer. The image is sent only with the tag-write request and is not stored in the library index as a data URL.
@@ -60,7 +60,7 @@ The autotagger can search individual sources or aggregate results simultaneously
    - When saved, the editor sends only the fields the user changed (`TagPatch`: absent means keep the file value, an emptied field clears that tag). The server merges the patch with the tags and cover already in the audio container, so untouched fields and existing artwork are never rewritten.
    - Cover art follows keep/replace/strip intent: unchanged means the embedded picture is preserved, a candidate URL or local image replaces it, and only the Remove Cover button strips it. Clearing the cover URL field detaches the remote source without touching the embedded picture.
    - The server runs in-place metadata rewriting via `POST /api/tags/apply/:id`, updating the audio container, artwork, and filename without re-downloading from YouTube. The library record is merged the same way and the editor refreshes from the canonical stored tags.
-   - Artwork can come from a fetched candidate URL or a local image data URL (limited to 8 MB); supported artwork containers are MP3, M4A, and FLAC.
+   - Artwork can come from a fetched candidate URL or a local image data URL (limited to 8 MB); MP3, M4A, FLAC, and Opus carry embedded covers (Opus uses a `METADATA_BLOCK_PICTURE` sidecar). WAV cannot carry embedded cover art and rejects cover replacement.
    - `npx tsx scripts/tag-roundtrip.mts` exercises the merge semantics per format (sparse update preserves, explicit clear clears, cover keep/replace/strip, stale URLs ignored).
 
 ## 5. Local Library Imports

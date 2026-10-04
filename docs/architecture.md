@@ -5,7 +5,7 @@ The YouTube to Music Converter is a Windows desktop app: an Electron shell aroun
 ## Tech Stack
 
 - **Desktop shell**: Electron 44 (Windows-only zip), secure `contextBridge` preload, Express sidecar child process
-- **Frontend**: React 19, TypeScript, Vite 6, Tailwind CSS 4 (dark-only pixel theme), Lucide Icons
+- **Frontend**: React 19, TypeScript, Vite 8, Tailwind CSS 4 (dark-only pixel theme), Lucide Icons
 - **Backend**: Node.js, Express 4, `yt-dlp`, FFmpeg
 - **Persistence**: In-memory job state machine, `data/settings.json`, `data/library.json`, `data/history.json`, on-disk audio library
 
@@ -34,9 +34,13 @@ The YouTube to Music Converter is a Windows desktop app: an Electron shell aroun
 │  /api/youtube/search - In-app YouTube search           │
 │  /api/convert     - Audio extraction & FFmpeg queue    │
 │  /api/status/:id  - Real-time job polling & progress   │
+│  /api/cancel/:id  - Cancel a running job (SIGTERM)     │
 │  /api/stream/:id  - Partial Content (HTTP 206) audio   │
 │  /api/download/:id- Attachment file streaming          │
 │  /api/cookies     - Netscape session cookie storage    │
+│  /api/tags/*      - Autotagger search & in-place apply  │
+│  /api/library/*   - On-disk library, import, trim, edit│
+│  /api/settings    - Library folder settings            │
 │  /api/history     - Persistent conversion log + delete │
 └──────────────────────────┬─────────────────────────────┘
                            │ Child Process Execution
@@ -56,26 +60,32 @@ The YouTube to Music Converter is a Windows desktop app: an Electron shell aroun
 
 The backend codebase adheres strictly to the single-purpose pattern:
 
-| File                                   | Purpose                                                                                                                                                                                                                 |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `server/config.ts`                     | Centralized constants, binary paths, output directories, and supported formats.                                                                                                                                         |
-| `server/services/urlService.ts`        | Pure URL and ID parsing, extraction, and canonicalization.                                                                                                                                                              |
-| `server/services/youtubeService.ts`    | In-app YouTube search via `yt-dlp` flat-playlist JSON (`ytsearch<N>`), query sanitize/limit clamp, bot-block detection.                                                                                                 |
-| `server/services/metadataService.ts`   | Video metadata retrieval combining YouTube oEmbed and yt-dlp inspection.                                                                                                                                                |
-| `server/services/tagFetcherService.ts` | Multi-source music autotagging querying iTunes, Deezer, and MusicBrainz.                                                                                                                                                |
-| `server/services/audioTagService.ts`   | ID3, Vorbis, MP4 atom, and RIFF metadata injection with cover artwork using FFmpeg.                                                                                                                                     |
-| `server/services/conversionService.ts` | Audio extraction pipeline orchestrating `yt-dlp` and `ffmpeg`.                                                                                                                                                          |
-| `server/services/jobManager.ts`        | In-memory job state machine, progress tracking, and file lifecycle cleanup.                                                                                                                                             |
-| `server/services/cookieService.ts`     | Netscape/JSON cookie parsing, verification, and file persistence.                                                                                                                                                       |
-| `server/services/settingsService.ts`   | Library-folder settings in `data/settings.json` with Windows path validation.                                                                                                                                           |
-| `server/services/fileService.ts`       | Library dir resolution, on-disk scan, `.part` sweep.                                                                                                                                                                    |
-| `server/services/previewService.ts`    | Cached 320 kbps MP3 previews for Opus/M4A playback; on-demand transcode, mtime validation, invalidation.                                                                                                                |
-| `server/services/libraryStore.ts`      | Persistent `data/library.json` index for converted and imported library files; one row per file on disk, boot-time reconcile.                                                                                           |
-| `server/services/historyStore.ts`      | Append-only `data/history.json` log of finished conversions with frozen original title, channel, thumbnail, and canonical URL.                                                                                          |
-| `server/utils/filename.ts`             | Windows-safe filename sanitizer, display names, dedupe.                                                                                                                                                                 |
-| `server/utils/mime.ts`                 | Fast audio MIME-type resolution for streaming and downloads.                                                                                                                                                            |
-| `server/routes/api.ts`                 | Express router exposing the public REST API surface.                                                                                                                                                                    |
-| `server.ts`                            | Application entry point exporting `startServer()`; loopback-only + token guard; listens first, then runs engine probes, part-file sweep, and library reconcile in the background while `/api/health` reports readiness. |
+| File                                    | Purpose                                                                                                                                                                                                                 |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `server/config.ts`                      | Centralized constants, binary paths, output directories, and supported formats.                                                                                                                                         |
+| `server/services/urlService.ts`         | Pure URL and ID parsing, extraction, and canonicalization.                                                                                                                                                              |
+| `server/services/youtubeService.ts`     | In-app YouTube search via `yt-dlp` flat-playlist JSON (`ytsearch<N>`), query sanitize/limit clamp, bot-block detection.                                                                                                 |
+| `server/services/metadataService.ts`    | Video metadata retrieval combining YouTube oEmbed and yt-dlp inspection.                                                                                                                                                |
+| `server/services/tagFetcherService.ts`  | Multi-source music autotagging querying iTunes, Deezer, and MusicBrainz.                                                                                                                                                |
+| `server/services/audioTagService.ts`    | ID3, Vorbis, MP4 atom, and RIFF metadata injection with cover artwork using FFmpeg.                                                                                                                                     |
+| `server/services/conversionService.ts`  | Audio extraction pipeline orchestrating `yt-dlp` and `ffmpeg`, plus job cancellation.                                                                                                                                   |
+| `server/services/jobManager.ts`         | In-memory job state machine, progress tracking, process registry, and file lifecycle cleanup.                                                                                                                           |
+| `server/services/audioFilterService.ts` | Volume-gain filter builder (`volume=1.25/1.50`) and per-format encoder mapping shared by convert and library edit.                                                                                                      |
+| `server/services/audioEditService.ts`   | In-place library trim, format conversion, and gain/id edits with cover retry.                                                                                                                                           |
+| `server/services/audioMetadata.ts`      | Embedded tag and cover reads, 8 MB cover limit.                                                                                                                                                                         |
+| `server/services/audioWrite.ts`         | Format-specific tag writes (attached pictures, Opus picture block, WAV cover rejection).                                                                                                                                |
+| `server/services/cookieService.ts`      | Netscape/JSON cookie parsing, verification, and file persistence.                                                                                                                                                       |
+| `server/services/settingsService.ts`    | Library-folder settings in `data/settings.json` with Windows path validation.                                                                                                                                           |
+| `server/services/fileService.ts`        | Library dir resolution, on-disk scan, `.part` sweep.                                                                                                                                                                    |
+| `server/services/previewService.ts`     | Cached VBR MP3 previews (`libmp3lame -q:a 0`) for Opus/M4A playback; on-demand transcode, mtime validation, invalidation.                                                                                               |
+| `server/services/potService.ts`         | PO token strategy choke point (`pot` vs `fallback`) and sidecar reachability.                                                                                                                                           |
+| `server/services/ytdlpRunner.ts`        | yt-dlp binary resolution and launch config.                                                                                                                                                                             |
+| `server/services/libraryStore.ts`       | Persistent `data/library.json` index for converted and imported library files; one row per file on disk, boot-time reconcile.                                                                                           |
+| `server/services/historyStore.ts`       | Append-only `data/history.json` log of finished conversions with frozen original title, channel, thumbnail, and canonical URL.                                                                                          |
+| `server/utils/filename.ts`              | Windows-safe filename sanitizer, display names, dedupe.                                                                                                                                                                 |
+| `server/utils/mime.ts`                  | Fast audio MIME-type resolution for streaming and downloads.                                                                                                                                                            |
+| `server/routes/api.ts`                  | Express router exposing the public REST API surface.                                                                                                                                                                    |
+| `server.ts`                             | Application entry point exporting `startServer()`; loopback-only + token guard; listens first, then runs engine probes, part-file sweep, and library reconcile in the background while `/api/health` reports readiness. |
 
 ---
 
@@ -83,8 +93,8 @@ The backend codebase adheres strictly to the single-purpose pattern:
 
 - The backend binds `127.0.0.1` only and rejects non-loopback `Host` headers (DNS-rebinding defense).
 - Mutating `/api` calls must echo the per-process `x-loopback-token` published by `/api/health`.
-- Renderer has no Node access (`contextIsolation`, `sandbox`); `preload.cjs` exposes only `window.desktop` (`pickFolder`, `revealInExplorer`, `openFile`, `getBackendPort`).
-- Strict Content-Security-Policy set as a response header via `session.defaultSession.webRequest.onHeadersReceived` (`electron/main.cts`), scoped to loopback origins: `script-src 'self'` everywhere (no inline or remote scripts); `style-src` keeps `'unsafe-inline'` because React sets style attributes (progress-bar width); images/media open to `https:`/`data:`/`blob:` for thumbnails, autotagger covers, and same-origin streams; `frame-src` allows `youtube-nocookie.com` and `youtube.com` for the YouTube preview modal.
+- Renderer has no Node access (`contextIsolation`, `sandbox`); `preload.cjs` exposes only `window.desktop` (`getDownloadsDefault`, `pickFolder`, `revealInExplorer`, `openFile`, `getBackendPort`, `getAppVersion`) and `window.splash.onStatus` for splash status messages.
+- Strict Content-Security-Policy set as a response header via `session.defaultSession.webRequest.onHeadersReceived` (`electron/main.cts`), scoped to loopback origins: `script-src 'self'` everywhere (no inline or remote scripts); `style-src` keeps `'unsafe-inline'` because React sets style attributes (progress-bar width); images open to `https:`/`data:` plus self, media to `self` plus `blob:` for same-origin streams, `connect-src` to loopback; `frame-src` allows `youtube-nocookie.com` and `youtube.com` for the YouTube preview modal.
 - Quit kills the whole backend tree via `taskkill /T /F` so no `yt-dlp`/FFmpeg orphans linger.
 
 ## Frontend Architecture
@@ -92,7 +102,7 @@ The backend codebase adheres strictly to the single-purpose pattern:
 Pixel-art dark-only UI (`src/index.css` `@theme` tokens, `Press Start 2P` + `IBM Plex Mono` self-hosted, no remote font requests, thin square scrollbars, lucide iconography throughout):
 
 - **`components/AppShell.tsx`**: TitleBar, SideNav, StatusBar + hash routing (`#/convert`, `#/youtube`, `#/library`, `#/history`, `#/queue`, `#/settings`).
-- **`store/appStore.tsx`**: `JobsProvider` (owns `useJobPolling` with `startTransition`, backoff, and hidden-tab pause), `ConvertDraftProvider` (inspect state, options, and one-shot re-convert URLs), `LibraryProvider` (sequence-guarded refresh), `HistoryProvider` (persistent log with optimistic delete/clear, mount fetch deferred to idle), `SettingsProvider`, `SessionProvider` (guest auto-fetch deferred to idle).
+- **`store/appStore.tsx`**: `SettingsProvider` > `SessionProvider` > `JobsProvider` (owns `useJobPolling` with `startTransition`, backoff, and hidden-tab pause) > `ConvertDraftProvider` (inspect state, options, and one-shot re-convert URLs) > `LibraryProvider` (sequence-guarded refresh) > `HistoryProvider` (persistent log with optimistic delete/clear, mount fetch deferred to idle). `SessionProvider` guest auto-fetch deferred to idle.
 - The Convert route loads eagerly; YouTube, Library, History, Queue, and Settings load on demand with a skeleton fallback. The CookieModal, YouTube preview modal, and library edit panel load only when opened. Identical GETs within two seconds share one request.
 - **`routes/Convert.tsx`**: inspect → options → convert flow. When a job completes, the route refreshes history and the library, clears the active job and draft, and reports success through a floating bottom-right notification.
 - **`routes/YouTube.tsx`**: in-app search results with per-row preview toggle, link copy, Send-to-Convert handoff (queues a one-shot inspect URL on the convert draft), and open-in-browser. `components/YouTubePreviewModal.tsx` plays the selected result as a sandboxed `youtube-nocookie.com` embed.
@@ -106,8 +116,8 @@ The frontend is constructed with focused React components:
 - **`Header.tsx`**: Removed in the desktop rewrite; replaced by `AppShell` TitleBar + SideNav.
 - **`UrlInput.tsx`**: Input field for YouTube video URLs, clipboard paste action, and quick demo track buttons.
 - **`VideoCard.tsx`**: Preview card displaying video thumbnail, creator information, view counts, and stream readiness.
-- **`ConversionOptionsPanel.tsx`**: Single-section conversion panel: format grid, audio enhancement controls (loudness normalization, volume gain), album-cover/ID3 embed toggle, and the convert action.
+- **`ConversionOptionsPanel.tsx`**: Single-section conversion panel: format grid, volume gain (100/125/150), album-cover/ID3 embed toggle, and the convert action. Bitrate stays native for best/opus/m4a.
 - **`TagEditor.tsx`**: Music metadata editor and autotagger interface. Automatically searches online sources as the track name is typed, allowing one-click tag application and cover art selection.
 - **`ConversionProgress.tsx`**: Real-time progress bar reflecting conversion steps (stream download, audio extraction, metadata embedding).
-- **`AudioPlayer.tsx`**: Custom HTML5 audio player supporting play/pause, time scrubbing, volume adjustments, and loop repeat. Opus and M4A tracks play via their cached 320 kbps MP3 preview stream (`?preview=mp3`); all other formats stream natively.
+- **`AudioPlayer.tsx`**: Custom HTML5 audio player supporting play/pause, time scrubbing, volume adjustments, and loop repeat. Opus and M4A tracks play via their cached VBR MP3 preview stream (`?preview=mp3`); all other formats stream natively.
 - **`CookieModal.tsx`**: Configuration modal for YouTube session cookies to bypass bot detection.

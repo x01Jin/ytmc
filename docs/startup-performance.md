@@ -2,7 +2,7 @@
 
 ## Instant window
 
-The desktop shell opens one window as the first act of `boot()`, before IPC registration, CSP setup, or any backend work. It paints the splash immediately, then the backend spawns only after splash paint, so engine processes never contend with first paint. When `waitForServer()` resolves, the same window navigates to the app URL. A backend failure keeps the window open on the failure status and also raises the standard error box.
+The desktop shell opens one window as the first act of `boot()`, before IPC registration, CSP setup, or any backend work. It paints the splash immediately, then the backend spawns only after splash paint (or a 5s paint timeout), so engine processes never contend with first paint. When `waitForServer()` resolves, the same window navigates to the app URL. A backend failure reports the failure text on the splash status line and quits the app.
 
 ## Splash screen
 

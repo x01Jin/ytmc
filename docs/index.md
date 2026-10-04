@@ -11,8 +11,8 @@ Explore the documentation guides below:
 1. **[Architecture Overview](architecture.md)**  
    Detailed breakdown of the full-stack architecture, modular service design, single-purpose scripting patterns, and lifecycle management.
 
-2. **[API Reference](api-reference.md)**  
-   Complete specifications for all REST API endpoints (`/api/info`, `/api/youtube/search`, `/api/convert`, `/api/status`, `/api/jobs`, `/api/stream`, `/api/download`, `/api/cookies`, `/api/demo-tracks`, `/api/library`, `/api/history`).
+2. **[API Reference](api-reference.md)**
+   Complete specifications for all REST API endpoints (`/api/info`, `/api/youtube/search`, `/api/convert`, `/api/status`, `/api/cancel`, `/api/jobs`, `/api/stream`, `/api/download`, `/api/cookies`, `/api/demo-tracks`, `/api/library`, `/api/tags`, `/api/settings`, `/api/files/reveal`, `/api/history`).
 
 3. **[Audio Conversion Engine](audio-engine.md)**  
    How the audio pipeline processes streams, executes FFmpeg encoding, manages variable/constant bitrates, cuts segments, and injects ID3 tags and album cover art.
@@ -29,5 +29,11 @@ Explore the documentation guides below:
 7. **[YouTube Search & Preview](youtube-search.md)**  
    How in-app YouTube search, embed preview, link copy, Convert handoff, and open-in-browser work.
 
-8. **[Startup & Performance](startup-performance.md)**  
+8. **[Startup & Performance](startup-performance.md)**
    How the instant splash window, listen-first backend boot, readiness flags, lazy routes, and deferred provider fetches keep cold start and runtime cost low.
+
+9. **[Job Lifecycle & Queue](job-lifecycle.md)**
+   How conversion jobs move through queued, downloading, converting, completed, and error states, with polling, cancellation, and retention.
+
+10. **[Library Management](library-management.md)**
+    How the on-disk library index, pagination, import, trim, edit, artwork, and reveal flows work.
