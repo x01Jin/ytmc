@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { ApiClient } from '../services/apiClient';
-import { MusicTagCandidate, MusicTags, TagSource } from '../types';
+import { MusicTagCandidate, MusicTags, TagPatch, TagSource } from '../types';
 import { CoverArtPreview } from './CoverArtPreview';
 import { TrackArtwork } from './TrackArtwork';
 
@@ -23,7 +23,7 @@ interface TagEditorProps {
   sourceThumbnail?: string;
   existingArtworkSrc?: string;
   onChange: (tags: MusicTags) => void;
-  onSaveToFile?: (tags: MusicTags) => Promise<void>;
+  onSaveToFile?: (tags: TagPatch) => Promise<void>;
   isSavingToFile?: boolean;
   mode?: 'pre-convert' | 'post-convert';
 }
@@ -41,6 +41,49 @@ function buildDefaultTags(title: string, artist: string, thumbnail: string): Mus
     cleanDescription: true,
     comment: 'YouTube to Music Converter',
   };
+}
+
+const DIRTY_TEXT_KEYS = [
+  'title',
+  'artist',
+  'album',
+  'albumArtist',
+  'year',
+  'genre',
+  'trackNumber',
+  'comment',
+  'coverUrl',
+] as const;
+
+function normalizeSnapshot(tags: MusicTags): MusicTags {
+  return {
+    ...tags,
+    album: tags.album ?? '',
+    albumArtist: tags.albumArtist ?? '',
+    year: tags.year ?? '',
+    genre: tags.genre ?? '',
+    trackNumber: tags.trackNumber ?? '',
+    comment: tags.comment ?? '',
+    coverUrl: tags.coverUrl ?? '',
+  };
+}
+
+function buildPatch(current: MusicTags, snapshot: MusicTags): TagPatch {
+  const patch: TagPatch = {};
+  for (const key of DIRTY_TEXT_KEYS) {
+    const value = current[key] ?? '';
+    if (value !== (snapshot[key] ?? '')) {
+      (patch as Record<string, string>)[key] = value;
+    }
+  }
+  if ((current.coverData ?? undefined) !== (snapshot.coverData ?? undefined)) {
+    patch.coverData = current.coverData;
+  }
+  if (current.cleanDescription !== snapshot.cleanDescription) {
+    patch.cleanDescription = current.cleanDescription;
+  }
+  if (current.removeCover === true) patch.removeCover = true;
+  return patch;
 }
 
 export const TagEditor: React.FC<TagEditorProps> = ({
@@ -75,18 +118,18 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
   const [prevInitialTags, setPrevInitialTags] = useState(initialTags);
   const [coverError, setCoverError] = useState<string | null>(null);
-  const createdUrlRef = useRef<string | null>(null);
+  const snapshotRef = useRef<MusicTags>(
+    normalizeSnapshot(
+      initialTags || buildDefaultTags(defaultVideoTitle, defaultArtist, defaultThumbnail)
+    )
+  );
   useEffect(() => {
     if (initialTags && initialTags !== prevInitialTags) {
       setPrevInitialTags(initialTags);
+      snapshotRef.current = normalizeSnapshot(initialTags);
       if (!hasUserEdited) setTags(initialTags);
     }
   }, [initialTags, prevInitialTags, hasUserEdited]);
-  useEffect(() => {
-    return () => {
-      if (createdUrlRef.current) URL.revokeObjectURL(createdUrlRef.current);
-    };
-  }, []);
 
   const performSearch = async (query: string, source: TagSource) => {
     const trimmed = query.trim();
@@ -189,7 +232,6 @@ export const TagEditor: React.FC<TagEditorProps> = ({
       coverData: undefined,
       removeCover: false,
     };
-
     setTags(updated);
     onChange(updated);
     setAppliedSource(
@@ -200,7 +242,15 @@ export const TagEditor: React.FC<TagEditorProps> = ({
 
   const handleApplyCandidateCover = (candidate: MusicTagCandidate) => {
     if (!candidate.coverUrl) return;
-    handleFieldChange('coverUrl', candidate.coverUrl);
+    setHasUserEdited(true);
+    const updated = {
+      ...tags,
+      coverUrl: candidate.coverUrl,
+      coverData: undefined,
+      removeCover: false,
+    };
+    setTags(updated);
+    onChange(updated);
     setAppliedSource(`${candidate.source.toUpperCase()} artwork selected`);
     setTimeout(() => setAppliedSource(null), 4000);
   };
@@ -217,15 +267,23 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     ) {
       return;
     }
-    if (field === 'coverUrl' && createdUrlRef.current) {
-      URL.revokeObjectURL(createdUrlRef.current);
-      createdUrlRef.current = null;
-    }
     setHasUserEdited(true);
     const updated = {
       ...tags,
       [field]: value,
-      ...(field === 'coverUrl' ? { coverData: undefined, removeCover: value === '' } : {}),
+      ...(field === 'coverUrl' ? { coverData: undefined } : {}),
+    };
+    setTags(updated);
+    onChange(updated);
+  };
+
+  const handleRemoveCover = () => {
+    setHasUserEdited(true);
+    const updated = {
+      ...tags,
+      coverUrl: '',
+      coverData: undefined,
+      removeCover: true,
     };
     setTags(updated);
     onChange(updated);
@@ -238,6 +296,8 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     setHasUserEdited(false);
     performSearch(defaultVideoTitle, selectedSource);
   };
+
+  const artSrc = tags.coverData || tags.coverUrl || existingArtworkSrc;
 
   return (
     <div className="min-w-0 space-y-2 text-px-text">
@@ -509,10 +569,10 @@ export const TagEditor: React.FC<TagEditorProps> = ({
       <div className="space-y-2 border-t border-px-line pt-2">
         <label className="flex items-center justify-between text-xs font-semibold text-px-text">
           <span>Album Cover Artwork</span>
-          {tags.coverUrl || existingArtworkSrc ? (
+          {artSrc ? (
             <button
               type="button"
-              onClick={() => handleFieldChange('coverUrl', '')}
+              onClick={handleRemoveCover}
               className="flex items-center gap-1 text-[11px] text-px-acc hover:text-px-text"
             >
               <Trash2 className="w-3 h-3" /> Remove Cover
@@ -521,12 +581,12 @@ export const TagEditor: React.FC<TagEditorProps> = ({
         </label>
 
         <div className="flex items-center gap-2">
-          {tags.coverUrl || existingArtworkSrc ? (
+          {artSrc ? (
             <button
               type="button"
               onClick={() =>
                 setArtPreview({
-                  src: tags.coverUrl || existingArtworkSrc,
+                  src: artSrc,
                   title: tags.album || tags.title,
                 })
               }
@@ -534,10 +594,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
               title="Preview cover art"
               className="shrink-0 cursor-zoom-in border border-px-line transition-colors hover:border-px-acc"
             >
-              <TrackArtwork
-                src={tags.coverUrl || existingArtworkSrc}
-                className="block h-14 w-14 bg-px-bg object-cover"
-              />
+              <TrackArtwork src={artSrc} className="block h-14 w-14 bg-px-bg object-cover" />
             </button>
           ) : (
             <div className="flex h-14 w-14 shrink-0 items-center justify-center border border-dashed border-px-line bg-px-bg text-px-dim">
@@ -563,13 +620,10 @@ export const TagEditor: React.FC<TagEditorProps> = ({
                 const reader = new FileReader();
                 reader.addEventListener('load', () => {
                   if (typeof reader.result !== 'string') return;
-                  if (createdUrlRef.current) URL.revokeObjectURL(createdUrlRef.current);
-                  const objectUrl = URL.createObjectURL(file);
-                  createdUrlRef.current = objectUrl;
                   setHasUserEdited(true);
                   const updated = {
                     ...tags,
-                    coverUrl: objectUrl,
+                    coverUrl: '',
                     coverData: reader.result,
                     removeCover: false,
                   };
@@ -607,7 +661,17 @@ export const TagEditor: React.FC<TagEditorProps> = ({
                 tags.coverUrl !== originalArt && (
                   <button
                     type="button"
-                    onClick={() => handleFieldChange('coverUrl', originalArt)}
+                    onClick={() => {
+                      setHasUserEdited(true);
+                      const updated = {
+                        ...tags,
+                        coverUrl: originalArt,
+                        coverData: undefined,
+                        removeCover: false,
+                      };
+                      setTags(updated);
+                      onChange(updated);
+                    }}
                     className="text-[11px] text-px-dim underline hover:text-px-text"
                   >
                     Use original YouTube thumbnail
@@ -634,7 +698,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           <button
             type="button"
             disabled={isSavingToFile}
-            onClick={() => onSaveToFile(tags)}
+            onClick={() => onSaveToFile(buildPatch(tags, snapshotRef.current))}
             className="px-btn px-btn-primary inline-flex items-center gap-1.5 !px-3 !py-1.5 text-xs disabled:opacity-50"
           >
             {isSavingToFile ? (

@@ -1,7 +1,7 @@
 import { readAudioMetadata, type EmbeddedCover, type MusicTags } from './audioMetadata.js';
-import { embedOpusPicture, writeAudioTags } from './audioWrite.js';
+import { embedOpusPicture, writeAudioTags, type WriteResult } from './audioWrite.js';
 
-export type { MusicTags };
+export type { MusicTags, WriteResult };
 export { embedOpusPicture };
 
 export namespace AudioTagService {
@@ -23,17 +23,7 @@ export namespace AudioTagService {
     return { data: Buffer.from(cover.data), mimeType: cover.mimeType };
   }
 
-  export async function applyTagsToFile(
-    filePath: string,
-    tags: MusicTags
-  ): Promise<{
-    success: boolean;
-    filePath: string;
-    fileSizeBytes: number;
-    coverDropped?: boolean;
-    coverDropReason?: string;
-    error?: string;
-  }> {
+  export async function applyTagsToFile(filePath: string, tags: MusicTags): Promise<WriteResult> {
     return writeAudioTags(filePath, tags);
   }
 }

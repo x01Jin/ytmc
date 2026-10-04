@@ -6,7 +6,7 @@ import type {
   HistoryEntry,
   LibraryData,
   MusicTagCandidate,
-  MusicTags,
+  TagPatch,
   TagSource,
   VideoMetadata,
   YouTubeSearchResult,
@@ -110,7 +110,7 @@ export namespace ApiClient {
 
   export async function applyTags(
     jobId: string,
-    tags: MusicTags
+    tags: TagPatch
   ): Promise<{ job: ConversionJob; message: string; coverDropped: boolean }> {
     const res = await fetch(`/api/tags/apply/${encodeURIComponent(jobId)}`, {
       method: 'POST',

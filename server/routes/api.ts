@@ -944,7 +944,14 @@ apiRouter.post(
       const jobId = req.params.id;
       const { tags } = req.body as { tags: MusicTags };
 
-      if (!tags || !tags.title) {
+      if (!tags || typeof tags !== 'object') {
+        res.status(400).json({
+          success: false,
+          error: 'Valid music tags are required',
+        });
+        return;
+      }
+      if (tags.title !== undefined && !tags.title.trim()) {
         res.status(400).json({
           success: false,
           error: 'Valid music tags with at least a title are required',
@@ -991,6 +998,10 @@ apiRouter.post(
         ...tags,
         coverUrl: usableCoverUrl,
       };
+      const storedBefore = LibraryStore.list().find(r => r.jobId === jobId);
+      const previousStored = storedBefore?.tags;
+      const existingSource = storedBefore?.source;
+      const existingSourceThumbnail = storedBefore?.sourceThumbnail;
 
       let result: Awaited<ReturnType<typeof AudioTagService.applyTagsToFile>>;
       try {
@@ -1003,7 +1014,12 @@ apiRouter.post(
         throw err instanceof Error ? err : new Error('Failed to apply audio tags');
       }
 
-      const newFileName = buildDisplayFileName(tags.artist || 'Unknown', tags.title, target.format);
+      const effective = result.tags;
+      const newFileName = buildDisplayFileName(
+        effective.artist || 'Unknown',
+        effective.title || 'Unknown',
+        target.format
+      );
       const dir = path.dirname(target.filePath);
       const currentBase = path.basename(target.filePath);
       const finalName =
@@ -1019,14 +1035,27 @@ apiRouter.post(
         return;
       }
 
-      const nextTitle = tags.title;
-      const nextAuthor = tags.artist || target.author;
+      const nextTitle = effective.title || target.title;
+      const nextAuthor = effective.artist || target.author;
       const nextThumbnail = buildArtworkUrl(jobId, finalPath);
-      const storedTags: MusicTags = { ...cleanTags, coverData: undefined };
-      const existingSource = LibraryStore.list().find(r => r.jobId === jobId)?.source;
-      const existingSourceThumbnail = LibraryStore.list().find(
-        r => r.jobId === jobId
-      )?.sourceThumbnail;
+      const patchDefined = Object.fromEntries(
+        Object.entries(cleanTags).filter(([, value]) => value !== undefined)
+      ) as Partial<MusicTags>;
+      const storedTags: MusicTags = {
+        ...previousStored,
+        ...patchDefined,
+        title: effective.title || previousStored?.title || target.title,
+        artist: effective.artist || previousStored?.artist || target.author,
+        coverData: undefined,
+        removeCover: undefined,
+        coverUrl:
+          cleanTags.coverData || cleanTags.removeCover
+            ? undefined
+            : (patchDefined.coverUrl ?? previousStored?.coverUrl),
+      };
+      if (storedTags.coverUrl && !isFetchableArtworkUrl(storedTags.coverUrl)) {
+        storedTags.coverUrl = undefined;
+      }
       const nextSourceThumbnail =
         existingSourceThumbnail ??
         (isRemoteArtworkUrl(target.thumbnail) ? target.thumbnail : undefined);

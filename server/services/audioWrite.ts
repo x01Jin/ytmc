@@ -6,6 +6,7 @@ import { FFMPEG_PATH } from '../config.js';
 import {
   COVER_MAX_BYTES,
   detectImageMime,
+  isFetchableArtworkUrl,
   readAudioMetadata,
   resolveCoverInput,
   type CoverResolveStatus,
@@ -20,12 +21,82 @@ export interface WriteResult {
   fileSizeBytes: number;
   coverDropped?: boolean;
   coverDropReason?: string;
+  tags: MusicTags;
 }
 
-interface ResolvedCover {
-  buffer: Buffer | null;
-  requested: boolean;
-  status: CoverResolveStatus;
+type TextField =
+  | 'title'
+  | 'artist'
+  | 'album'
+  | 'albumArtist'
+  | 'year'
+  | 'genre'
+  | 'trackNumber'
+  | 'comment';
+
+const TEXT_FIELDS: TextField[] = [
+  'title',
+  'artist',
+  'album',
+  'albumArtist',
+  'year',
+  'genre',
+  'trackNumber',
+  'comment',
+];
+
+type CoverPlan = { mode: 'replace'; buffer: Buffer } | { mode: 'keep' } | { mode: 'remove' };
+
+interface ResolvedPatch {
+  tags: MusicTags;
+  cleared: Set<TextField>;
+  cover: CoverPlan;
+  coverStatus: CoverResolveStatus;
+  existingCover: Buffer | null;
+}
+
+async function resolveEffectiveTags(filePath: string, patch: MusicTags): Promise<ResolvedPatch> {
+  const current = await readAudioMetadata(filePath).catch(() => ({
+    tags: { title: '', artist: '', cleanDescription: false } as MusicTags,
+    cover: null,
+  }));
+  const pick = (field: TextField): string | undefined => {
+    if (patch[field] !== undefined) {
+      return defined(patch[field]) ? (patch[field] as string) : undefined;
+    }
+    const existing = current.tags[field];
+    return defined(existing) ? (existing as string) : undefined;
+  };
+  const cleared = new Set<TextField>();
+  for (const field of TEXT_FIELDS) {
+    if (patch[field] !== undefined && !defined(patch[field])) cleared.add(field);
+  }
+  const tags: MusicTags = {
+    title: pick('title') ?? '',
+    artist: pick('artist') ?? '',
+    album: pick('album'),
+    albumArtist: pick('albumArtist'),
+    year: pick('year'),
+    genre: pick('genre'),
+    trackNumber: pick('trackNumber'),
+    comment: patch.comment !== undefined ? patch.comment : current.tags.comment,
+    cleanDescription: patch.cleanDescription !== false,
+  };
+  const removeCover = patch.removeCover === true;
+  let cover: CoverPlan = { mode: 'keep' };
+  let coverStatus: CoverResolveStatus = 'absent';
+  if (removeCover) {
+    cover = { mode: 'remove' };
+  } else if (patch.coverData || isFetchableArtworkUrl(patch.coverUrl)) {
+    const resolved = await resolveCoverInput(patch);
+    if (resolved.cover) {
+      cover = { mode: 'replace', buffer: Buffer.from(resolved.cover.data) };
+      coverStatus = 'ok';
+    } else {
+      coverStatus = resolved.status;
+    }
+  }
+  return { tags, cleared, cover, coverStatus, existingCover: current.cover?.data ?? null };
 }
 
 function defined(v: unknown): v is string {
@@ -82,7 +153,7 @@ function writeOpusMetadataFile(
   push('TITLE', tags.title);
   push('ARTIST', tags.artist);
   push('ALBUM', tags.album);
-  push('ALBUMARTIST', tags.albumArtist || tags.artist);
+  push('ALBUMARTIST', tags.albumArtist);
   push('DATE', tags.year);
   push('GENRE', tags.genre);
   push('TRACKNUMBER', tags.trackNumber);
@@ -114,20 +185,24 @@ function runFfmpeg(ffmpegArgs: string[]): Promise<void> {
   });
 }
 
-function textTagArgs(tags: MusicTags): string[] {
+function textTagArgs(tags: MusicTags, cleared: Set<TextField>): string[] {
   const args: string[] = [];
-  if (tags.title) args.push('-metadata', `title=${tags.title}`);
-  if (tags.artist) args.push('-metadata', `artist=${tags.artist}`);
-  if (tags.album) args.push('-metadata', `album=${tags.album}`);
-  if (tags.albumArtist || tags.artist)
-    args.push('-metadata', `album_artist=${tags.albumArtist || tags.artist}`);
-  if (tags.year) {
-    args.push('-metadata', `date=${tags.year}`);
-    args.push('-metadata', `year=${tags.year}`);
-  }
-  if (tags.genre) args.push('-metadata', `genre=${tags.genre}`);
-  if (tags.trackNumber) args.push('-metadata', `track=${tags.trackNumber}`);
+  const emit = (keys: string[], value: string | undefined, field: TextField) => {
+    if (defined(value)) {
+      for (const key of keys) args.push('-metadata', `${key}=${value as string}`);
+    } else if (cleared.has(field)) {
+      for (const key of keys) args.push('-metadata', `${key}=`);
+    }
+  };
+  emit(['title'], tags.title, 'title');
+  emit(['artist'], tags.artist, 'artist');
+  emit(['album'], tags.album, 'album');
+  emit(['album_artist'], tags.albumArtist, 'albumArtist');
+  emit(['date', 'year'], tags.year, 'year');
+  emit(['genre'], tags.genre, 'genre');
+  emit(['track'], tags.trackNumber, 'trackNumber');
   if (tags.comment !== undefined) args.push('-metadata', `comment=${tags.comment}`);
+  else if (cleared.has('comment')) args.push('-metadata', 'comment=');
   if (tags.cleanDescription !== false) {
     args.push('-metadata', 'description=');
     args.push('-metadata', 'synopsis=');
@@ -162,30 +237,32 @@ async function writeAttached(
   filePath: string,
   ext: string,
   tags: MusicTags,
-  cover: ResolvedCover,
+  cleared: Set<TextField>,
+  cover: CoverPlan,
+  coverStatus: CoverResolveStatus,
   ctx: { tempCoverFile: string | null; tempOutputFile: string }
 ): Promise<{ dropped: boolean; reason?: string }> {
-  const removeCover = tags.removeCover === true;
-  if (cover.buffer && !removeCover) {
+  const replacing = cover.mode === 'replace';
+  const removing = cover.mode === 'remove';
+  if (replacing) {
     fs.writeFileSync(ctx.tempCoverFile as string, cover.buffer);
   }
-  const withCover = cover.buffer !== null && !removeCover;
   const args: string[] = ['-y', '-i', filePath];
-  if (withCover) args.push('-i', ctx.tempCoverFile as string);
-  args.push(...attachedArgs(ext, withCover, removeCover));
-  if (withCover) args.push(...coverStreamArgs(ext));
-  args.push(...textTagArgs(tags));
+  if (replacing) args.push('-i', ctx.tempCoverFile as string);
+  args.push(...attachedArgs(ext, replacing, removing));
+  if (replacing) args.push(...coverStreamArgs(ext));
+  args.push(...textTagArgs(tags, cleared));
   args.push(ctx.tempOutputFile);
   try {
     await runFfmpeg(args);
-    return withCover || !cover.requested || removeCover
-      ? { dropped: false }
-      : { dropped: true, reason: cover.status };
+    return cover.mode === 'keep' && coverStatus !== 'absent'
+      ? { dropped: true, reason: coverStatus }
+      : { dropped: false };
   } catch {
-    if (withCover) {
+    if (replacing) {
       const fallback: string[] = ['-y', '-i', filePath];
       fallback.push(...attachedArgs(ext, false, false));
-      fallback.push(...textTagArgs(tags));
+      fallback.push(...textTagArgs(tags, cleared));
       fallback.push(ctx.tempOutputFile);
       await runFfmpeg(fallback);
       return { dropped: true, reason: 'embed-failed' };
@@ -197,39 +274,25 @@ async function writeAttached(
 async function writeOpus(
   filePath: string,
   tags: MusicTags,
-  cover: ResolvedCover,
+  cover: CoverPlan,
+  coverStatus: CoverResolveStatus,
+  existingCover: Buffer | null,
   ctx: { tempOutputFile: string; dir: string; tempId: string }
 ): Promise<{ dropped: boolean; reason?: string }> {
-  const current = (await readAudioMetadata(filePath).catch(() => null)) ?? {
-    tags: { title: '', artist: '' },
-    cover: null,
-  };
-  const merged: MusicTags = {
-    title: defined(tags.title) ? tags.title : (current.tags.title ?? ''),
-    artist: defined(tags.artist) ? tags.artist : (current.tags.artist ?? ''),
-    album: defined(tags.album) ? tags.album : current.tags.album,
-    albumArtist: defined(tags.albumArtist) ? tags.albumArtist : current.tags.albumArtist,
-    year: defined(tags.year) ? tags.year : current.tags.year,
-    genre: defined(tags.genre) ? tags.genre : current.tags.genre,
-    trackNumber: defined(tags.trackNumber) ? tags.trackNumber : current.tags.trackNumber,
-    comment: defined(tags.comment) ? tags.comment : current.tags.comment,
-    cleanDescription: tags.cleanDescription,
-  };
-  const removeCover = tags.removeCover === true;
-  const existing = removeCover ? null : (current.cover?.data ?? null);
-  const coverBuffer = removeCover ? null : (cover.buffer ?? existing);
+  const coverBuffer =
+    cover.mode === 'replace' ? cover.buffer : cover.mode === 'remove' ? null : existingCover;
   let dropped = false;
   let reason: string | undefined;
-  if (cover.requested && !cover.buffer && !removeCover) {
+  if (cover.mode === 'keep' && coverStatus !== 'absent') {
     dropped = true;
-    reason = cover.status;
+    reason = coverStatus;
   }
   const attempt = async (withCover: boolean): Promise<void> => {
     if (fs.existsSync(ctx.tempOutputFile)) fs.rmSync(ctx.tempOutputFile, { force: true });
     const metaPath = writeOpusMetadataFile(
       ctx.dir,
       ctx.tempId,
-      merged,
+      tags,
       withCover ? coverBuffer : null
     );
     try {
@@ -271,7 +334,7 @@ async function writeOpus(
   return { dropped, reason };
 }
 
-export async function writeAudioTags(filePath: string, tags: MusicTags): Promise<WriteResult> {
+export async function writeAudioTags(filePath: string, patch: MusicTags): Promise<WriteResult> {
   if (!fs.existsSync(filePath)) {
     throw new Error(`Target audio file does not exist: ${filePath}`);
   }
@@ -280,54 +343,49 @@ export async function writeAudioTags(filePath: string, tags: MusicTags): Promise
   const tempId = crypto.randomUUID();
   const tempOutputFile = path.join(dir, `temp_tagged_${tempId}.${ext}`);
   const tempCoverFile = path.join(dir, `temp_cover_${tempId}.jpg`);
-  const requested = Boolean(tags.coverData || tags.coverUrl);
-  const resolved = requested ? await resolveCoverInput(tags) : null;
-  const cover: ResolvedCover = {
-    buffer: resolved?.cover?.data ?? null,
-    requested,
-    status: resolved?.status ?? 'absent',
-  };
-  if (cover.buffer && cover.buffer.length > COVER_MAX_BYTES) {
-    return {
-      success: false,
-      filePath,
-      fileSizeBytes: fs.statSync(filePath).size,
-      coverDropped: true,
-      coverDropReason: 'too-large',
-    };
-  }
+  const { tags, cleared, cover, coverStatus, existingCover } = await resolveEffectiveTags(
+    filePath,
+    patch
+  );
   const commit = (): WriteResult => {
     if (fs.existsSync(tempOutputFile)) {
       fs.copyFileSync(tempOutputFile, filePath);
       fs.unlinkSync(tempOutputFile);
     }
-    return { success: true, filePath, fileSizeBytes: fs.statSync(filePath).size };
+    return { success: true, filePath, fileSizeBytes: fs.statSync(filePath).size, tags };
   };
   try {
     if (ext === 'opus' || ext === 'ogg' || ext === 'oga') {
-      const out = await writeOpus(filePath, tags, cover, { tempOutputFile, dir, tempId });
+      const out = await writeOpus(filePath, tags, cover, coverStatus, existingCover, {
+        tempOutputFile,
+        dir,
+        tempId,
+      });
       const tagged = commit();
       return out.dropped ? { ...tagged, coverDropped: true, coverDropReason: out.reason } : tagged;
     }
     if (ext === 'wav' || ext === 'wave') {
-      if (cover.requested && (cover.buffer || !tags.removeCover)) {
+      if (cover.mode === 'replace') {
         throw new CoverUnsupportedError(
           'WAV cannot carry embedded cover art. Tags were not written.'
         );
       }
       const args: string[] = ['-y', '-i', filePath];
       args.push(
-        ...(tags.removeCover === true
+        ...(cover.mode === 'remove'
           ? ['-map', '0:a:0', '-map_metadata', '0', '-c', 'copy']
           : ['-map', '0:a:0', '-map', '0:v?', '-map_metadata', '0', '-c', 'copy'])
       );
-      args.push(...textTagArgs(tags));
+      args.push(...textTagArgs(tags, cleared));
       args.push(tempOutputFile);
       await runFfmpeg(args);
-      return commit();
+      const tagged = commit();
+      return cover.mode === 'keep' && coverStatus !== 'absent'
+        ? { ...tagged, coverDropped: true, coverDropReason: coverStatus }
+        : tagged;
     }
     if (ext === 'mp3' || ext === 'm4a' || ext === 'flac') {
-      const out = await writeAttached(filePath, ext, tags, cover, {
+      const out = await writeAttached(filePath, ext, tags, cleared, cover, coverStatus, {
         tempCoverFile,
         tempOutputFile,
       });

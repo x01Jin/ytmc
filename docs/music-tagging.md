@@ -57,8 +57,11 @@ The autotagger can search individual sources or aggregate results simultaneously
 
 2. **Post-Conversion Tagging**:
    - In the Library tab, expanding a track's Edit panel opens the tag editor, including the multi-source autotagger.
-   - When saved, the server runs in-place metadata rewriting via `POST /api/tags/apply/:id`, updating the audio container, artwork, and filename without re-downloading from YouTube.
+   - When saved, the editor sends only the fields the user changed (`TagPatch`: absent means keep the file value, an emptied field clears that tag). The server merges the patch with the tags and cover already in the audio container, so untouched fields and existing artwork are never rewritten.
+   - Cover art follows keep/replace/strip intent: unchanged means the embedded picture is preserved, a candidate URL or local image replaces it, and only the Remove Cover button strips it. Clearing the cover URL field detaches the remote source without touching the embedded picture.
+   - The server runs in-place metadata rewriting via `POST /api/tags/apply/:id`, updating the audio container, artwork, and filename without re-downloading from YouTube. The library record is merged the same way and the editor refreshes from the canonical stored tags.
    - Artwork can come from a fetched candidate URL or a local image data URL (limited to 8 MB); supported artwork containers are MP3, M4A, and FLAC.
+   - `npx tsx scripts/tag-roundtrip.mts` exercises the merge semantics per format (sparse update preserves, explicit clear clears, cover keep/replace/strip, stale URLs ignored).
 
 ## 5. Local Library Imports
 

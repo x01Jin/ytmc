@@ -28,6 +28,8 @@ export interface MusicTags {
   cleanDescription?: boolean;
 }
 
+export type TagPatch = Partial<MusicTags>;
+
 export interface MusicTagCandidate {
   id: string;
   source: 'itunes' | 'deezer' | 'musicbrainz';

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ApiClient } from '../../services/apiClient';
-import type { MusicTags } from '../../types';
+import type { TagPatch } from '../../types';
 import { TagEditor } from '../TagEditor';
 import { useEditPanel } from './LibraryEditPanel';
 
@@ -13,14 +13,16 @@ export function TagPane() {
   const [isSaving, setIsSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [savedCount, setSavedCount] = useState(0);
 
-  const handleSave = async (tags: MusicTags) => {
+  const handleSave = async (patch: TagPatch) => {
     setIsSaving(true);
     setNotice(null);
     setError(null);
     try {
-      const result = await ApiClient.applyTags(record.jobId, tags);
+      const result = await ApiClient.applyTags(record.jobId, patch);
       setNotice(result.message);
+      setSavedCount(count => count + 1);
       onEdited();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not save tags.');
@@ -46,6 +48,7 @@ export function TagPane() {
         </p>
       )}
       <TagEditor
+        key={`${record.jobId}:${record.fileName}:${record.fileSizeBytes}:${savedCount}`}
         initialTags={{
           title: record.tags?.title || record.title,
           artist: record.tags?.artist || record.author,
