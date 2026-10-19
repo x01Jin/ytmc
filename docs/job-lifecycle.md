@@ -16,4 +16,4 @@ The Queue and Convert routes poll `GET /api/status/:id` every second (`src/hooks
 
 ## Handoff and retention
 
-When a job completes, the Convert route refreshes History and the Library, clears the active job and draft, and shows a floating confirmation. Jobs older than two hours are swept every 30 minutes (`JOB_RETENTION_MS`, `CLEANUP_INTERVAL_MS` in `server/services/jobManager.ts`); the sweep also removes stale output files from the downloads folder.
+When a job completes, the Convert route refreshes History and the Library, clears the active job and draft, and shows a floating confirmation. Jobs older than two hours are pruned from the in-memory job map every 30 minutes (`JOB_RETENTION_MS`, `CLEANUP_INTERVAL_MS` in `server/services/jobManager.ts`). The cleanup timer never deletes library audio files; removal happens only through the explicit delete action.

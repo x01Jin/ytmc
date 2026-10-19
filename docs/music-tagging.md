@@ -41,7 +41,9 @@ The autotagger can search individual sources or aggregate results simultaneously
 
 ### Trigger Behavior
 
-- Autotagging is triggered directly when entering or editing text in the **Track Name** input field (debounced by 400ms).
+- Autotagging is triggered directly when entering or editing text in the **Track Name** input field (debounced by 400ms). Editing the artist field re-runs the same debounced search.
+- The search query combines the title and artist when the artist is populated, and falls back to the title alone when it is empty.
+- The first item in the match list is a Google search using `what are the tags and album art of this song: <title> by <artist>`, or `what are the tags and album art of this song: <title>` when the artist is empty. It opens in the system browser and does not modify tags or cover art.
 - Users can choose any matched candidate card with one click to populate all fields and high-resolution cover artwork.
 - Each candidate also offers an artwork-only action when the user wants to change the cover without changing the album or other tags.
 - Users can choose an image from the local computer. The image is sent only with the tag-write request and is not stored in the library index as a data URL.

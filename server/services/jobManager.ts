@@ -1,8 +1,5 @@
 import type { ChildProcess } from 'child_process';
-import fs from 'fs';
-import path from 'path';
 import type { MusicTags } from './audioTagService.js';
-import { FileService } from './fileService.js';
 
 export type JobStatus = 'queued' | 'downloading' | 'converting' | 'completed' | 'error';
 
@@ -114,36 +111,7 @@ export namespace JobManager {
     const twoHoursAgo = Date.now() - JOB_RETENTION_MS;
     for (const [id, job] of jobs.entries()) {
       if (job.createdAt < twoHoursAgo) {
-        if (job.outputFilePath && fs.existsSync(job.outputFilePath)) {
-          try {
-            fs.unlinkSync(job.outputFilePath);
-          } catch (err: unknown) {
-            console.warn(
-              `cleanup: could not delete ${job.outputFilePath}:`,
-              err instanceof Error ? err.message : err
-            );
-          }
-        }
         jobs.delete(id);
-      }
-    }
-
-    const downloadsDir = FileService.getDownloadsDir();
-    if (fs.existsSync(downloadsDir)) {
-      try {
-        const files = fs.readdirSync(downloadsDir);
-        for (const file of files) {
-          const filePath = path.join(downloadsDir, file);
-          const stat = fs.statSync(filePath);
-          if (stat.mtimeMs < twoHoursAgo) {
-            fs.unlinkSync(filePath);
-          }
-        }
-      } catch (err: unknown) {
-        console.warn(
-          `cleanup: could not sweep ${downloadsDir}:`,
-          err instanceof Error ? err.message : err
-        );
       }
     }
   }

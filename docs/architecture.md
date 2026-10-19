@@ -117,7 +117,7 @@ The frontend is constructed with focused React components:
 - **`UrlInput.tsx`**: Input field for YouTube video URLs, clipboard paste action, and quick demo track buttons.
 - **`VideoCard.tsx`**: Preview card displaying video thumbnail, creator information, view counts, and stream readiness.
 - **`ConversionOptionsPanel.tsx`**: Single-section conversion panel: format grid, volume gain (100/125/150), album-cover/ID3 embed toggle, and the convert action. Bitrate stays native for best/opus/m4a.
-- **`TagEditor.tsx`**: Music metadata editor and autotagger interface. Automatically searches online sources as the track name is typed, allowing one-click tag application and cover art selection.
+- **`TagEditor.tsx`**: Music metadata editor and autotagger interface. Automatically searches online sources as the track name or artist changes, allowing one-click tag application and cover art selection.
 - **`ConversionProgress.tsx`**: Real-time progress bar reflecting conversion steps (stream download, audio extraction, metadata embedding).
 - **`AudioPlayer.tsx`**: Custom HTML5 audio player supporting play/pause, time scrubbing, volume adjustments, and loop repeat. Opus and M4A tracks play via their cached VBR MP3 preview stream (`?preview=mp3`); all other formats stream natively.
 - **`CookieModal.tsx`**: Configuration modal for YouTube session cookies to bypass bot detection.

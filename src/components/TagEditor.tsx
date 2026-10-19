@@ -1,6 +1,7 @@
 import {
   Check,
   Disc3,
+  ExternalLink,
   Image as ImageIcon,
   Loader2,
   Music,
@@ -86,6 +87,23 @@ function buildPatch(current: MusicTags, snapshot: MusicTags): TagPatch {
   return patch;
 }
 
+const GOOGLE_TAG_SEARCH_PROMPT = 'what are the tags and album art of this song';
+
+function buildTagSearchQuery(title: string, artist: string): string {
+  const trimmedTitle = title.trim();
+  const trimmedArtist = artist.trim();
+  return trimmedArtist ? `${trimmedTitle} ${trimmedArtist}` : trimmedTitle;
+}
+
+function buildGoogleTagSearch(title: string, artist: string): { query: string; url: string } {
+  const trimmedTitle = title.trim();
+  const trimmedArtist = artist.trim();
+  const query = trimmedArtist
+    ? `${GOOGLE_TAG_SEARCH_PROMPT}: ${trimmedTitle} by ${trimmedArtist}`
+    : `${GOOGLE_TAG_SEARCH_PROMPT}: ${trimmedTitle}`;
+  return { query, url: `https://www.google.com/search?q=${encodeURIComponent(query)}` };
+}
+
 export const TagEditor: React.FC<TagEditorProps> = ({
   initialTags,
   defaultVideoTitle = '',
@@ -115,6 +133,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
   } | null>(null);
 
   const debounceTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const artistDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [prevInitialTags, setPrevInitialTags] = useState(initialTags);
   const [coverError, setCoverError] = useState<string | null>(null);
@@ -162,7 +181,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     }
 
     debounceTimeoutRef.current = setTimeout(() => {
-      performSearch(newName, selectedSource);
+      performSearch(buildTagSearchQuery(newName, tags.artist), selectedSource);
     }, 400);
   };
 
@@ -171,16 +190,12 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     source: TagSource;
   } | null>(null);
   useEffect(() => {
-    if (
-      tags.title &&
-      tags.title.trim().length >= 2 &&
-      !lastSearchedQuery &&
-      autoSearch?.query !== tags.title
-    ) {
-      setAutoSearch({ query: tags.title, source: selectedSource });
+    const query = buildTagSearchQuery(tags.title, tags.artist);
+    if (tags.title.trim().length >= 2 && !lastSearchedQuery && autoSearch?.query !== query) {
+      setAutoSearch({ query, source: selectedSource });
       setIsSearching(true);
     }
-  }, [tags.title, lastSearchedQuery, autoSearch, selectedSource]);
+  }, [tags.title, tags.artist, lastSearchedQuery, autoSearch, selectedSource]);
 
   useEffect(() => {
     if (!autoSearch) return;
@@ -207,13 +222,16 @@ export const TagEditor: React.FC<TagEditorProps> = ({
       if (debounceTimeoutRef.current) {
         clearTimeout(debounceTimeoutRef.current);
       }
+      if (artistDebounceRef.current) {
+        clearTimeout(artistDebounceRef.current);
+      }
     };
   }, []);
 
   const handleSourceChange = (newSource: TagSource) => {
     setSelectedSource(newSource);
     if (tags.title.trim()) {
-      performSearch(tags.title, newSource);
+      performSearch(buildTagSearchQuery(tags.title, tags.artist), newSource);
     }
   };
 
@@ -277,6 +295,18 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     onChange(updated);
   };
 
+  const handleArtistInputChange = (newArtist: string) => {
+    handleFieldChange('artist', newArtist);
+    if (artistDebounceRef.current) {
+      clearTimeout(artistDebounceRef.current);
+    }
+    artistDebounceRef.current = setTimeout(() => {
+      if (tags.title.trim().length >= 2) {
+        performSearch(buildTagSearchQuery(tags.title, newArtist), selectedSource);
+      }
+    }, 400);
+  };
+
   const handleRemoveCover = () => {
     setHasUserEdited(true);
     const updated = {
@@ -294,10 +324,12 @@ export const TagEditor: React.FC<TagEditorProps> = ({
     setTags(reset);
     onChange(reset);
     setHasUserEdited(false);
-    performSearch(defaultVideoTitle, selectedSource);
+    performSearch(buildTagSearchQuery(defaultVideoTitle, defaultArtist), selectedSource);
   };
 
   const artSrc = tags.coverData || tags.coverUrl || existingArtworkSrc;
+  const googleSearch =
+    tags.title.trim().length >= 2 ? buildGoogleTagSearch(tags.title, tags.artist) : null;
 
   return (
     <div className="min-w-0 space-y-2 text-px-text">
@@ -387,11 +419,42 @@ export const TagEditor: React.FC<TagEditorProps> = ({
           </div>
         </div>
 
+        <p className="text-[10px] text-px-dim">Tip: include the artist for accurate results.</p>
+
         {appliedSource && (
           <div className="flex items-center gap-1.5 border border-px-ok bg-px-bg p-2 text-xs text-px-ok">
             <Check className="h-3.5 w-3.5" />
             <span>Tags and artwork auto-populated from {appliedSource}</span>
           </div>
+        )}
+
+        {googleSearch && (
+          <a
+            href={googleSearch.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group flex items-start gap-2 border border-px-line bg-px-panel p-2 transition-colors hover:border-px-acc hover:bg-px-panel-2"
+            title="Open a Google search for this song's tags and album art"
+          >
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center border border-px-line bg-px-panel-2 text-px-acc">
+              <Search className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-1">
+                <p className="truncate text-xs font-semibold text-px-text group-hover:text-px-acc">
+                  Search Google for tags and album art
+                </p>
+                <span className="border border-px-line bg-px-panel-2 px-1 text-[9px] font-bold uppercase tracking-wider text-px-warn">
+                  Google
+                </span>
+              </div>
+              <p className="truncate text-[11px] text-px-dim">{googleSearch.query}</p>
+              <p className="mt-1 inline-flex items-center gap-1 text-[10px] text-px-acc">
+                <ExternalLink className="h-3 w-3" aria-hidden="true" />
+                Opens in your browser
+              </p>
+            </div>
+          </a>
         )}
 
         {isSearching ? (
@@ -474,7 +537,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
         ) : (
           <div className="py-2 text-center text-xs text-px-dim">
             {tags.title.trim()
-              ? `No exact matches found for "${tags.title}". You can refine the title above or fill out the tags manually below.`
+              ? `No exact matches found for "${tags.title}". Try the Google search above, refine the title, or fill out the tags manually below.`
               : 'Enter a track title above to detect tags from iTunes, Deezer, and MusicBrainz.'}
           </div>
         )}
@@ -489,7 +552,7 @@ export const TagEditor: React.FC<TagEditorProps> = ({
             id="tag-artist"
             type="text"
             value={tags.artist}
-            onChange={e => handleFieldChange('artist', e.target.value)}
+            onChange={e => handleArtistInputChange(e.target.value)}
             placeholder="Artist name..."
             className="px-input w-full py-1.5 text-xs"
           />
