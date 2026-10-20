@@ -60,6 +60,7 @@ Thumbs.db
 # Editors / IDEs — local editor state stays untracked
 .vscode/
 .codegraph/
+.playwright-mcp/
 .idea/
 *.suo
 *.ntvs*

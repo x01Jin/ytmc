@@ -1,6 +1,6 @@
 # Conversion History
 
-The History tab is the recoverable record of every finished conversion. If a library file is lost or deleted, its source can always be found here and converted again.
+The History tab is the record of recent finished conversions. Its source URL stays available for another conversion even if the library file is removed.
 
 ## Row contents
 
@@ -16,7 +16,7 @@ A **Clear** button in the header removes all entries behind a two-step confirm.
 
 ## Data source
 
-Rows come from the history endpoint (`GET /api/history`), backed by the persistent log at `data/history.json`. One entry is appended when a Convert-tab conversion finishes, capturing the original YouTube title, channel, thumbnail, and canonical URL. The entry is frozen at that point: retagging, trimming, or reformatting the library file never alters it, and imported local files are never recorded. Deleting a library file keeps its History entry, so the source can still be re-converted.
+Rows come from the history endpoint (`GET /api/history`), backed by the persistent log at `data/history.json`. One entry is appended when a Convert-tab conversion finishes, capturing the original YouTube title, channel, thumbnail, and canonical URL. The log keeps the newest 200 entries. The entry is frozen at that point: retagging, trimming, or reformatting the library file never alters it, and imported local files are never recorded. Deleting a library file keeps its History entry, so the source can still be re-converted.
 
 ## Re-convert handoff
 

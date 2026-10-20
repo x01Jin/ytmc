@@ -27,7 +27,7 @@ Default for best/opus/m4a with no filters. The engine pulls the native YouTube a
 | **Opus**          | `.opus`          | Direct Streamcopy or `libopus` | ~160 kbps (48 kHz)                     | Direct streamcopy of YouTube format 251. |
 | **M4A**           | `.m4a`           | Direct Streamcopy or `aac`     | ~128 kbps (44.1 kHz)                   | Direct streamcopy of YouTube format 140. |
 | **MP3**           | `.mp3`           | `libmp3lame`                   | Native (~160k), 128k, 192k, 256k, 320k | Universal legacy player compatibility.   |
-| **FLAC**          | `.flac`          | `flac`                         | Lossless Master (Level 0)              | Archival, lossless audiophile playback.  |
+| **FLAC**          | `.flac`          | `flac`                         | Lossless Master (Level 0)              | Archival lossless playback.              |
 | **WAV**           | `.wav`           | `pcm_s16le`                    | Uncompressed Raw PCM                   | Audio production, DAWs, sample editors.  |
 
 Filtered Opus and M4A pin `libopus` at `160k` and `aac` at `128k` with the gain filter appended. Filtered MP3 pins `libmp3lame` with the gain filter and no explicit `-b:a`.
@@ -87,7 +87,7 @@ Single source of truth: `server/services/audioFilterService.ts` (`AUDIO_DSP.VOLU
 
 ## 6. Metadata & Album Artwork
 
-Each conversion pulls track title, channel name, and hi-res thumbnail. MP3/M4A/FLAC take native attached pictures. Opus needs a workaround: the Ogg muxer rejects mapped video streams, so the engine writes a `METADATA_BLOCK_PICTURE` sidecar (base64 FLAC Picture block through ffmetadata, dodging command-line length limits). The muxer stores it as an `attached_pic` mjpeg stream.
+Each conversion pulls track title, channel name, and hi-res thumbnail. MP3/M4A/FLAC take native attached pictures. Opus needs a workaround: the Ogg muxer rejects mapped video streams, so the engine writes a `METADATA_BLOCK_PICTURE` sidecar (base64 FLAC Picture block through ffmetadata, dodging command-line length limits).
 
 Library edits (format change, trim, gain) keep tags with `-map_metadata 0` plus explicit title/artist overrides, and forward cover art. An unmuxable cover retries audio-only and reports `coverDropped: true` instead of failing. WAV cannot carry embedded cover art: replacing cover art on a WAV file returns a `CoverUnsupportedError` and writes nothing. Cover images larger than 8 MB (`COVER_MAX_BYTES` in `server/services/audioMetadata.ts`) are rejected.
 
@@ -99,10 +99,10 @@ Library trim cuts `[start, end)` with FFmpeg `-ss`/`-to` and re-encodes the segm
 
 Stored files and previews split duties. Opus and M4A stay native on disk. Downloads (`GET /api/download/:id`), tag edits, and trims touch originals only.
 
-Browsers and the Electron shell cannot decode those containers, so those two formats get a cached MP3 for the player (`GET /api/stream/:id?preview=mp3`). MP3, FLAC, and WAV stream natively with no preview involved.
+The player requests a cached MP3 preview for those two formats (`GET /api/stream/:id?preview=mp3`). MP3, FLAC, and WAV stream natively with no preview involved.
 
 Preview encoding runs raw: `libmp3lame -q:a 0` (VBR, highest quality mode), audio stream only. No cover art, no filters, no resampling. A listening copy that keeps second-generation loss minimal.
 
-The cache lives at `data/previews/<sha1(jobId)>.preview.mp3`, built on first playback. Mtime/size validation against the source regenerates it after trims, retags, format changes, and reconversion. Deleting a track removes its preview.
+The cache lives at `data/previews/<sha1(jobId)>.preview.mp3`, built on first playback. Mtime validation against the source regenerates it after trims, retags, format changes, and reconversion. Deleting a track removes its preview.
 
 This section covers playback of converted library files only. Previewing remote YouTube videos before conversion is a separate embed player described in [YouTube Search & Preview](youtube-search.md).

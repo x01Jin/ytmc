@@ -30,7 +30,7 @@ Each result row shows the thumbnail, title, author, and duration, plus four butt
 - **Preview video** (`Play`/`X` toggle): opens or closes the preview modal for that row.
 - **Copy YouTube link**: writes `https://www.youtube.com/watch?v=<videoId>` to the clipboard and shows a checkmark for 2 seconds.
 - **Send to Convert** (`Download` icon): writes the canonical watch URL into the convert draft, queues it as the one-shot inspect URL, and navigates to `#/convert`. The Convert tab pastes the URL and runs inspection exactly once, then clears the queued URL.
-- **Open in browser**: opens the canonical watch URL through the desktop shell (`window.desktop.openExternal`) when running in Electron, otherwise in a new tab (`noopener,noreferrer`).
+- **Open in browser**: opens the canonical watch URL with `window.open(url, '_blank', 'noopener,noreferrer')`. Electron's window-open handler sends it to the system browser.
 
 ## Preview modal
 

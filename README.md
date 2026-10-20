@@ -11,16 +11,15 @@
 ## Features
 
 - **Multi-Source Music Autotagger**: Automatically detects and fetches official track metadata, album names, release years, genres, track numbers, and high-resolution cover artwork from iTunes, Deezer, and MusicBrainz as you type in the track name and artist fields.
-- **YouTube Search and Preview**: search for music directly in the app, preview playback, copy link, send to Convert for direct download, open in browser.
+- **YouTube Search and Preview**: search for music directly in the app, preview playback, copy link, send a result to Convert, or open it in a browser.
 - **Post-Conversion Tag Editing**: Update tags and artwork in-place on already converted files.
 - **Native Dark Theme**: Pixel-art dark-only desktop UI.
 - **Custom Library Folder**: Finished files save directly to a folder you pick, with Browse/Reset, and Show in Explorer per track.
 - **Multi-Format Audio Extraction**: Export in MP3, M4A (Apple AAC), FLAC (Lossless Master), WAV (Raw PCM), or Opus.
-- **Audio Segment Trimming**: Cut start and end times to download just a song segment or ringtone.
+- **Audio Segment Trimming**: Cut start and end times in the library editor.
 - **Loudness Gain Boost**: Apply volume gain (100%, 125%, 150%) for quiet uploads.
 - **Embedded Cover Art & ID3 Tags**: Encodes ID3v2.3, Vorbis comments, MP4 metadata atoms, and RIFF metadata with attached picture streams.
-- **Direct Attachment Downloads**: 1-click downloads directly to your device with sanitized filenames.
 
 ## Documentation Index
 
-Comprehensive technical documentation is maintained in **[Documentation Index](docs/index.md)**
+Technical documentation is maintained in **[Documentation Index](docs/index.md)**

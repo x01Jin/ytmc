@@ -8,11 +8,11 @@ A conversion job moves from the Convert tab through the live queue into the Libr
 
 ## Polling
 
-The Queue and Convert routes poll `GET /api/status/:id` every second (`src/hooks/useJobPolling.ts`). Repeated failures back off to every three seconds, and polling pauses while the tab is hidden. Identical GETs within two seconds share one request (`src/services/apiClient.ts`).
+A single polling loop in `JobsProvider` (`src/hooks/useJobPolling.ts`) follows the active job every second. Repeated failures back off to every three seconds, and polling pauses while the tab is hidden. Identical jobs, history, and settings GETs share one request while the earlier request is still in flight; the dedupe entry expires after two seconds (`src/services/apiClient.ts`).
 
 ## Cancellation
 
-`POST /api/cancel/:id` cancels a running job by sending `SIGTERM` to its `yt-dlp`/FFmpeg process (`JobManager.cancelJob`). Cancelling a `completed` or `error` job returns the job unchanged. Unknown ids return `404`; a job that cannot be cancelled returns `409`.
+`POST /api/cancel/:id` cancels a running job by terminating its process tree (`JobManager.cancelJob`): `taskkill /T /F` on Windows, `SIGTERM` elsewhere. Cancelling a `completed` or `error` job returns the job unchanged. Unknown ids return `404`; a job that cannot be cancelled returns `409`.
 
 ## Handoff and retention
 

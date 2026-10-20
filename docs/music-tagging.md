@@ -67,7 +67,7 @@ The autotagger can search individual sources or aggregate results simultaneously
 
 ## 5. Local Library Imports
 
-Audio files added from the Library tab are copied without transcoding. The library accepts MP3, M4A, FLAC, WAV, and Opus files, then reads their embedded metadata with `ffprobe` before creating the library record. Existing title, artist, album, album artist, year, genre, track number, and comment values are shown in the tag editor. Saving the editor is the explicit write operation; browsing, importing, trimming, or changing unrelated library settings does not replace the stored tag values.
+Audio files added from the Library tab are copied without transcoding. The library accepts MP3, M4A, FLAC, WAV, and Opus files, then reads their embedded metadata with `music-metadata` before creating the library record. Existing title, artist, album, album artist, year, genre, track number, and comment values are shown in the tag editor. Saving the editor is the explicit write operation; browsing, importing, trimming, or changing unrelated library settings does not replace the stored tag values.
 
 ---
 
@@ -76,7 +76,7 @@ Audio files added from the Library tab are copied without transcoding. The libra
 The audio tag service (`server/services/audioTagService.ts`) handles format-specific metadata mapping:
 
 - **MP3**: Encodes ID3v2.3 tags (`-id3v2_version 3`) for universal player compatibility. If cover artwork is provided, it embeds an attached picture video stream (`-c:v copy -metadata:s:v title="Album cover" -metadata:s:v comment="Cover (front)" -disposition:v:0 attached_pic`).
-- **M4A / AAC**: Encodes standard MP4 metadata atoms (`-movflags +faststart`).
+- **M4A / AAC**: Encodes standard MP4 metadata atoms.
 - **FLAC**: Embeds Vorbis comments with uncompressed stream data.
 - **Opus**: Encodes Ogg Vorbis comment fields.
 - **WAV**: Encodes standard RIFF `INFO` chunks.
@@ -85,4 +85,4 @@ The audio tag service (`server/services/audioTagService.ts`) handles format-spec
 
 ## 7. Dark Theme
 
-The application uses a dark-only pixel-art theme (`color-scheme: dark` in `src/index.css`, pixel tokens plus `Press Start 2P` + `IBM Plex Mono`). There is no light mode or theme toggle.
+The application uses a dark-only pixel-art theme (`color-scheme: dark` in `src/index.css`, pixel tokens, and monospace display and body faces). There is no light mode or theme toggle.

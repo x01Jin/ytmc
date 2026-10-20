@@ -1,10 +1,10 @@
 # Library Management
 
-The Library tab is the on-disk collection of finished tracks. This page describes the index, pagination, import, trim, edit, artwork, and reveal flows.
+The Library tab is the on-disk collection of finished tracks. This page describes the index, import, trim, edit, artwork, and reveal flows.
 
-## Index and pagination
+## Index
 
-`GET /api/library` returns `{ downloadsDir, records, looseFiles, totalSizeBytes, total, page, pageSize }`. `page` defaults to `1`; `pageSize` defaults to `100` and clamps to 1–200. Records persist in `data/library.json` with one row per file on disk. Folder-scan auto-indexing reuses the existing row when the path is already indexed, and a boot-time reconcile collapses duplicates and drops rows whose file no longer exists.
+`GET /api/library` returns `{ downloadsDir, records, totalSizeBytes }`. All records are returned; there is no page window or record cap. Records persist in `data/library.json` with one row per file on disk. Folder-scan auto-indexing reuses the existing row when the path is already indexed, and a boot-time reconcile drops duplicate rows and rows whose file no longer exists.
 
 ## Import
 

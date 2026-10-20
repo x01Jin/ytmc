@@ -1,42 +1,38 @@
 # YouTube to Music Converter Documentation
 
-Welcome to the technical documentation for **YouTube to Music Converter**, an application designed to search YouTube in-app and extract and convert YouTube audio into high-fidelity music formats (MP3, M4A, FLAC, WAV, and Opus) with custom bitrates, trimming, volume normalization, and ID3 tag embedding.
+Technical documentation for **YouTube to Music Converter**, a Windows desktop app that searches YouTube and extracts audio into MP3, M4A, FLAC, WAV, or Opus files with volume gain, library trimming, autotagging, and cover art.
 
----
-
-## Documentation Modules
-
-Explore the documentation guides below:
+## Documentation modules
 
 1. **[Architecture Overview](architecture.md)**  
-   Detailed breakdown of the full-stack architecture, modular service design, single-purpose scripting patterns, and lifecycle management.
+   The Electron shell, Express backend, React frontend, backend modules, and process lifecycle.
 
 2. **[API Reference](api-reference.md)**
-   Complete specifications for all REST API endpoints (`/api/info`, `/api/youtube/search`, `/api/convert`, `/api/status`, `/api/cancel`, `/api/jobs`, `/api/stream`, `/api/download`, `/api/cookies`, `/api/demo-tracks`, `/api/library`, `/api/tags`, `/api/settings`, `/api/files/reveal`, `/api/history`).
+   REST endpoints (`/api/info`, `/api/youtube/search`, `/api/convert`, `/api/status`, `/api/cancel`, `/api/jobs`, `/api/stream`, `/api/download`, `/api/cookies`, `/api/library`, `/api/tags`, `/api/settings`, `/api/files/reveal`, `/api/history`).
 
 3. **[Audio Conversion Engine](audio-engine.md)**  
-   How the audio pipeline processes streams, executes FFmpeg encoding, manages variable/constant bitrates, cuts segments, and injects ID3 tags and album cover art.
+   How the pipeline processes streams, invokes FFmpeg, applies trims and gain, and writes tags and cover art.
 
 4. **[Music Tagging & Autotagger](music-tagging.md)**  
-   Detailed guide to ID3/audio metadata editing, multi-source autotagging (iTunes, Deezer, MusicBrainz), and dark theme implementation.
+   ID3 and audio metadata editing, multi-source autotagging (iTunes, Deezer, MusicBrainz), and the dark theme.
 
 5. **[Session Authentication & Cookie Management](session-authentication.md)**  
-   How the application manages YouTube session cookies to bypass datacenter IP restrictions and ensure consistent audio downloads.
+   How the app manages YouTube session cookies and PO tokens.
 
 6. **[Conversion History](history.md)**  
-   How finished conversions are recorded with cover art and source links, and how the one-click re-convert handoff to the Convert tab works.
+   How finished conversions are recorded with cover art and source links, and how re-convert works.
 
 7. **[YouTube Search & Preview](youtube-search.md)**  
-   How in-app YouTube search, embed preview, link copy, Convert handoff, and open-in-browser work.
+   In-app search, embed preview, link copy, Convert handoff, and open-in-browser.
 
 8. **[Startup & Performance](startup-performance.md)**
-   How the instant splash window, listen-first backend boot, readiness flags, lazy routes, and deferred provider fetches keep cold start and runtime cost low.
+   Splash behavior, backend readiness, lazy routes, and deferred provider fetches.
 
 9. **[Job Lifecycle & Queue](job-lifecycle.md)**
-   How conversion jobs move through queued, downloading, converting, completed, and error states, with polling, cancellation, and retention.
+   Conversion job states, polling, cancellation, and retention.
 
 10. **[Library Management](library-management.md)**
-    How the on-disk library index, pagination, import, trim, edit, artwork, and reveal flows work.
+    The on-disk library index, import, trim, edit, artwork, and reveal flows.
 
 11. **[Desktop Updates](app-updates.md)**
     How the portable Windows build checks GitHub releases, verifies signed archives, swaps the install folder, and rolls back on failure.

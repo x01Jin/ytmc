@@ -13,9 +13,9 @@ YouTube protects video audio streams with layered verification mechanisms:
 3. **Proof-of-Origin (PO) Tokens**: Botguard and GVS integrity tokens validating request legitimacy.
 4. **Account Authentication (Optional)**: Required only for private or age-restricted (18+) tracks.
 
-The converter addresses these challenges through a unified multi-layer engine:
+The converter handles these with:
 
-- **Automatic Guest Session Provisioning**: Fetches fresh visitor cookies directly from YouTube's edge API upon application initialization or user request.
+- **Automatic Guest Session Provisioning**: Fetches visitor cookies from YouTube's homepage response (`Set-Cookie`) at startup or on request.
 - **Node.js JavaScript Challenge Solver**: Executes player challenges natively using Node.js (`--js-runtimes node`).
 - **PO Token Provider Sidecar**: Automatically provides GVS and player PO tokens via the `bgutil-pot` HTTP sidecar service.
 - **Account Cookie Storage**: Allows pasting or uploading user account cookies for age-restricted content.
@@ -27,7 +27,7 @@ The converter addresses these challenges through a unified multi-layer engine:
 Users do not need to install browser extensions or extract cookies for standard conversion:
 
 1. **Initial Mount**: If no session cookie exists on the server, the application automatically requests fresh guest session tokens from YouTube.
-2. **On-Demand Refresh**: Clicking **Auto-Fetch Guest Session** in the Session Settings modal requests new session cookies and reloads the engine.
+2. **On-Demand Refresh**: Clicking **Auto-Fetch Guest Session** in the Session Settings modal requests new session cookies and refreshes the session status.
 3. **API Endpoint**: `POST /api/cookies/auto-fetch` triggers the guest cookie provisioning routine.
 
 ---
@@ -46,11 +46,11 @@ The system provides an integrated connectivity testing tool to verify that the a
 
 YouTube's web clients increasingly require a Proof-of-Origin token for format URLs. The app is sidecar-optional by design (`server/services/potService.ts` is the single choke point):
 
-- **Installed + reachable** (`bin/bgutil-pot` present, `/ping` on `127.0.0.1:4416` answers): extraction runs in `pot` mode — bgutil-http args, **no cookies** (anonymous PO tokens do not validate against cookie sessions server-side).
+- **Installed + reachable** (`bin/bgutil-pot.exe` on Windows or `bin/bgutil-pot` elsewhere; `/ping` on `127.0.0.1:4416` answers): extraction runs in `pot` mode — bgutil-http args, **no cookies** (anonymous PO tokens do not validate against cookie sessions server-side).
 - **Otherwise**: extraction runs in `fallback` mode — no POT args, cookies sent when present, player clients pinned to `default,web_embedded,android_vr`. This covers embeddable / non-kid-targeted content with zero setup.
 - Boot logs which mode is active and warns loudly when the binary is missing. `POST /api/cookies/test` reports the live strategy.
 
-To install the sidecar: use `bgutil-ytdlp-pot-provider`, place the server binary at `bin/bgutil-pot`, and restart the app. It ships inside the installer automatically via the existing `bin/` extraResources.
+To install the sidecar: use `bgutil-ytdlp-pot-provider`, place the server binary at `bin/bgutil-pot.exe` on Windows or `bin/bgutil-pot` elsewhere, and restart the app. The build packages `bin/` into `resources/bin`, so the portable zip includes it.
 
 ---
 
@@ -82,4 +82,4 @@ For age-restricted (18+) or private content, users can import their personal You
 
 - **File Path**: User cookies are stored in `data/cookies.txt`, while guest session cookies reside in `data/guest_cookies.txt`. A fresh guest fetch also mirrors the guest file to `data/cookies.txt` when no user cookies are stored.
 - **Exclusion**: The `data/` directory is ignored in `.gitignore` to prevent credentials from being stored in version control.
-- **Reset**: Clicking **Reset** in Session Settings immediately unlinks and purges all saved cookies from disk (`DELETE /api/cookies`).
+- **Reset**: Clicking **Reset** in Session Settings immediately unlinks all saved cookies from disk (`DELETE /api/cookies`). Guest auto-provisioning runs once per launch when no cookies exist, so the next launch can fetch a fresh guest session again.

@@ -13,7 +13,7 @@ The desktop shell opens one window as the first act of `boot()`, before IPC regi
 - `YouTube to Music Converter` below the animated letters, smaller.
 - App version below the full title, smaller and dimmed. Main passes `app.getVersion()` as the `?v=` query value on `loadFile`; an empty value renders nothing.
 - Stepped indeterminate progress bar plus a status line. Main sends `splash:status` messages (`Starting backend…`, `Probing engine…`, `Loading library…`, or the failure text). The preload bridge exposes `window.splash.onStatus`.
-- The frameless window drags via a `drag` region on the page root.
+- The splash root marks its background as a drag region.
 - `prefers-reduced-motion` disables the letter jump and the bar slide.
 
 ## Packaging and app data
@@ -48,7 +48,7 @@ Packaged runs keep all generated files next to the executable: the main process 
 }
 ```
 
-`ytDlp`, `ffmpeg`, and `pot` are `null` while their probe is still running, `true` when ready, `false` when unavailable. `library` is `false` until the reconcile pass completes. The status bar treats `null` as pending rather than failure. Conversion and inspection paths work before probes finish; they use the cached launch config and the POT fallback strategy when the sidecar is absent.
+`ytDlp`, `ffmpeg`, and `pot` are `null` while their probe is still running, `true` when ready, `false` when unavailable. `library` is `false` until the reconcile pass completes. The status bar shows the engine as available only when `ytDlp` and `ffmpeg` are both `true`; `null` or `false` shows red. Conversion and inspection paths work before probes finish; they use the cached launch config and the POT fallback strategy when the sidecar is absent.
 
 ## Static caching
 
@@ -56,7 +56,7 @@ Hashed production assets serve with long immutable caching and ETags. `index.htm
 
 ## Lazy frontend
 
-The Convert route and the app shell load eagerly. YouTube, Library, History, Queue, and Settings load on first navigation behind a skeleton fallback; the YouTube route stays mounted under `hidden` when inactive. The session cookie modal, the YouTube preview modal, and the library edit panel (with the tag editor) load only when opened.
+The Convert route and the app shell load eagerly. YouTube, Library, History, Queue, and Settings load on first navigation behind a skeleton fallback; the YouTube route stays mounted after its first visit. The session cookie modal, the YouTube preview modal, and the library edit panel (with the tag editor) load only when opened.
 
 ## Deferred provider fetches
 
@@ -64,7 +64,7 @@ The Convert route and the app shell load eagerly. YouTube, Library, History, Que
 - History: mount fetch deferred to idle so first paint never waits for the log.
 - Session: status loads at mount for the status dot; the guest auto-fetch chain waits two seconds.
 - Settings and library: load at mount; settings serve the cached copy first and revalidate.
-- Identical library, history, jobs, settings, and cookie-status GETs within two seconds share a single request.
+- Identical jobs, history, and settings GETs share one request while the earlier request is still in flight; the dedupe entry expires after two seconds. Library and cookie-status GETs always reach the server so deleted files and cleared cookies appear immediately.
 - Job polling ticks every second with backoff to three seconds on repeated failures and pauses while the tab is hidden.
 
 ## Diagnosing a slow start
@@ -73,4 +73,4 @@ The main process writes staged timings to the console and `<userData>/boot-times
 
 ## Lists, headers, and icons
 
-Scrollbars are thin and square in panel-line color, turning accent on hover. Library and YouTube rows share row padding and text sizes inside matching divided panels. Both search headers pin with `sticky` while only their lists scroll. Row and preview actions use lucide icons throughout, with delete on the trash icon.
+Scrollbars are thin and square in panel-line color, turning accent on hover. Library and YouTube rows share row padding and text sizes inside matching divided panels. Row and preview actions use lucide icons throughout, with delete on the trash icon.

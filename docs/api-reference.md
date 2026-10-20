@@ -88,7 +88,7 @@ Searches YouTube and returns lightweight result rows for the YouTube tab. Result
 
 ### `POST /api/convert`
 
-Initiates an asynchronous audio extraction or conversion job. When `format` is `"best"`, `"opus"`, or `"m4a"` (without audio filters), direct streamcopy is used to pull the highest fidelity native YouTube stream with 0% transcoding loss.
+Initiates an asynchronous audio extraction or conversion job. When `format` is `"best"`, `"opus"`, or `"m4a"` and no audio filters are requested, the stream is copied without re-encoding.
 
 #### Request Body
 
@@ -158,11 +158,10 @@ Retrieves current progress and status for a specific conversion job.
     "id": "feb897d7-b7da-4e0e-abb7-552529ff67af",
     "status": "completed",
     "progress": 100,
-    "stageMessage": "Highest native audio stream extracted bit-for-bit (~160k Opus)!",
+    "stageMessage": "Extracted Opus audio.",
     "format": "opus",
     "outputFileName": "Rick Astley - Never Gonna Give You Up.opus",
     "fileSizeBytes": 4210533,
-    "downloadUrl": "/api/download/feb897d7-b7da-4e0e-abb7-552529ff67af",
     "streamUrl": "/api/stream/feb897d7-b7da-4e0e-abb7-552529ff67af",
     "completedAt": 1789325352280
   }
@@ -175,11 +174,7 @@ Lists recent live conversion jobs (the Queue view). Finished jobs clear out to L
 
 ### `POST /api/cancel/:id`
 
-Cancels a running conversion job. Sends `SIGTERM` to the job process. Returns the current job on success. `404` when the id is unknown, `409` when the job cannot be cancelled. Cancelling a `completed` or `error` job returns the job unchanged.
-
-### `GET /api/demo-tracks`
-
-Returns the pre-verified demo track list shown as quick-pick buttons next to the URL input.
+Cancels a running conversion job by terminating its process tree. Returns the current job on success. `404` when the id is unknown, `409` when the job cannot be cancelled. Cancelling a `completed` or `error` job returns the job unchanged.
 
 ---
 
@@ -191,9 +186,9 @@ Streams the extracted audio file for in-browser playback. Supports HTTP Range re
 
 #### Query parameters
 
-| Parameter | Values | Behavior                                                                                                                                                                                                                                                                                                                                                          |
-| --------- | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `preview` | `mp3`  | Serves the cached MP3 preview (raw `libmp3lame -q:a 0` transcode, no filters) instead of the stored file. Applies to Opus and M4A tracks only. Those formats stay native on disk and get previewed as MP3 because browsers cannot decode their containers. MP3 sources serve directly with no transcoding; all other formats ignore the flag and stream natively. |
+| Parameter | Values | Behavior                                                                                                                                                                                                                                                                                                   |
+| --------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `preview` | `mp3`  | Serves a cached MP3 preview (raw `libmp3lame -q:a 0` transcode, no filters) instead of the stored file. Applies to Opus and M4A tracks. Those formats stay native on disk and are previewed as MP3. MP3 sources serve directly with no transcoding; all other formats ignore the flag and stream natively. |
 
 Opus and M4A `streamUrl` values are issued with `?preview=mp3` already appended. Downloads (`GET /api/download/:id`) always serve the original stored file.
 
@@ -228,7 +223,7 @@ Checks current session status and loaded cookie metadata.
 
 ### `POST /api/cookies/auto-fetch`
 
-Automatically provisions fresh guest visitor session cookies directly from YouTube's edge API.
+Automatically provisions guest visitor session cookies by requesting YouTube's homepage and reading the `Set-Cookie` response headers.
 
 ### `POST /api/cookies/test`
 
@@ -288,7 +283,7 @@ Applies custom or fetched music metadata and album cover art in-place to an alre
 
 ## 8. Conversion History
 
-History is an append-only log (`data/history.json`) of finished Convert-tab conversions. Entries freeze the original YouTube title, channel, thumbnail, and canonical URL; library edits never modify them, and deleting a library file keeps its entry.
+History is a bounded log (`data/history.json`, newest 200 entries) of finished Convert-tab conversions. Entries freeze the original YouTube title, channel, thumbnail, and canonical URL; library edits never modify them, and deleting a library file keeps its entry.
 
 ### `GET /api/history`
 
@@ -314,22 +309,15 @@ Returns the library folder settings plus the default folder and whether a custom
 
 ### `PATCH /api/settings`
 
-Validates and saves `{ downloadsDir, filenameTemplate, revealAfterConvert }`. The folder is created if missing, probed for writability, and rejected with a specific message when it contains Windows-forbidden characters, reserved names, trailing dots/spaces, or exceeds path limits.
+Validates and saves `{ downloadsDir }`. The folder is created if missing, probed for writability, and rejected with a specific message when it contains Windows-forbidden characters, reserved names, trailing dots/spaces, or exceeds path limits.
 
 ### `POST /api/settings/reset`
 
-Restores the default library folder and settings.
+Restores the default library folder.
 
 ### `GET /api/library`
 
-Lists persistent conversion records (`data/library.json`) plus unindexed audio files found in the folder, with total size in bytes. Each file on disk has at most one record: folder-scan auto-indexing reuses the existing row when the path is already indexed (matched case-insensitively on Windows), and a boot-time reconcile collapses any duplicate rows and drops rows whose file no longer exists.
-
-#### Query Parameters
-
-| Parameter  | Type     | Default | Description                  |
-| ---------- | -------- | ------- | ---------------------------- |
-| `page`     | `number` | `1`     | Page number, minimum `1`.    |
-| `pageSize` | `number` | `100`   | Page size, clamped to 1–200. |
+Lists all persistent records (`data/library.json`) and indexes audio files found in the folder, with total size in bytes. Each file on disk has at most one record: folder-scan auto-indexing reuses the existing row when the path is already indexed (matched case-insensitively on Windows), and a boot-time reconcile drops duplicate rows and rows whose file no longer exists.
 
 ### `DELETE /api/library/:id`
 
@@ -337,7 +325,7 @@ Deletes the file from the library folder (behind a confirm step in the UI) and d
 
 ### `POST /api/library/import`
 
-Copies a local audio file (MP3, M4A, FLAC, WAV, Opus) into the library folder without transcoding. Reads embedded tags with `ffprobe` for the new record. Accepts a raw `application/octet-stream` body (200 MB limit) with the file name in the `x-file-name` header, or a JSON body with `{ fileName, data }` where `data` is base64.
+Copies a local audio file (MP3, M4A, FLAC, WAV, Opus) into the library folder without transcoding. Reads embedded tags with `music-metadata` for the new record. Accepts a raw `application/octet-stream` body (200 MB limit) with the file name in the `x-file-name` header, or a JSON body with `{ fileName, data }` where `data` is base64.
 
 ### `GET /api/library/:id/artwork`
 
@@ -365,7 +353,7 @@ Opens Explorer with the finished file selected. Body: `{ jobId }`, where `jobId`
 
 ### `GET /api/health`
 
-Open to same-origin GET without a token. Returns server time, the per-process `x-loopback-token` for mutating calls, and boot readiness. The three probe flags are `null` while still running.
+Open to same-origin GET without a token. Returns server time, the per-process `x-loopback-token` for mutating calls, and boot readiness. `ytDlp`, `ffmpeg`, and `pot` are `null` until their probe finishes; `library` starts `false` and becomes `true` after the reconcile step. `ytDlpError` is `null` when yt-dlp launched successfully.
 
 ```json
 {
@@ -374,6 +362,7 @@ Open to same-origin GET without a token. Returns server time, the per-process `x
   "loopbackToken": "<per-process uuid>",
   "readiness": {
     "ytDlp": true,
+    "ytDlpError": null,
     "ffmpeg": true,
     "pot": false,
     "library": true
