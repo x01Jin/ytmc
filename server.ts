@@ -62,6 +62,7 @@ export interface StartedServer {
 
 export interface BootReadiness {
   ytDlp: boolean | null;
+  ytDlpError: string | null;
   ffmpeg: boolean | null;
   pot: boolean | null;
   library: boolean;
@@ -69,6 +70,7 @@ export interface BootReadiness {
 
 export const readiness: BootReadiness = {
   ytDlp: null,
+  ytDlpError: null,
   ffmpeg: null,
   pot: null,
   library: false,
@@ -78,6 +80,7 @@ function runBackgroundProbes(): void {
   void Promise.allSettled([
     ensureYtDlp().then(launch => {
       readiness.ytDlp = launch.version !== null;
+      readiness.ytDlpError = launch.error;
     }),
     ensureFfmpeg().then(version => {
       readiness.ffmpeg = version !== null;

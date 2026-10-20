@@ -130,7 +130,7 @@ export namespace ConversionService {
     const cookiesPath = CookieService.getCookiesPath();
     const launch = await ensureYtDlp();
     if (!launch.version) {
-      throw new Error('yt-dlp is not ready. Check Python launcher or YTDLP_PATH, then retry.');
+      throw new Error('yt-dlp could not start. Reinstall the app or set YTDLP_PATH, then retry.');
     }
     const { strategy } = await resolveStrategy();
     const useCookies = cookiesAllowed(strategy, !!cookiesPath);

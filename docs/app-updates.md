@@ -73,7 +73,7 @@ Applying an update is a rename swap performed by `electron/updater/helper.cts`, 
 1. The app refreshes the safety gates, confirms no conversion is active, re-verifies the archive, writes `pending.json` and `apply.lock`, and spawns the helper with the install path, archive path, digest, signature, update id, nonce, app PID, and backend PID.
 2. The helper waits up to 60 seconds for the app to exit, then kills the app process if it is still running (without `/T`) and kills the backend tree with `/T`.
 3. Digest and signature are re-verified. The archive is extracted to `<install>.new-<updateId>` next to the install folder.
-4. The tree must contain the app executable, `resources/app.asar`, `resources/server.cjs`, and `resources/bin/ffmpeg.exe`, all non-empty.
+4. The tree must contain the app executable, `resources/app.asar`, `resources/server.cjs`, `resources/bin/ffmpeg.exe`, and `resources/bin/yt-dlp.exe`, all non-empty.
 5. The live `data` folder is copied into the new tree, so settings, cookies, and the local database survive.
 6. `<install>` is renamed to `<install>.old-<updateId>`, then the new tree is renamed to `<install>`. If either rename fails, the helper restores the previous layout.
 7. The new executable is launched with `--ytmc-update-id`, `--ytmc-update-version`, `--ytmc-update-nonce`, and `--ytmc-update-report` arguments. `ELECTRON_RUN_AS_NODE` is stripped from the child environment.

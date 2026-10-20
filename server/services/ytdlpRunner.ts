@@ -1,17 +1,26 @@
 import { execFile } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { DATA_DIR, FFMPEG_PATH, PLUGINS_DIR, YTDLP_PATH } from '../config.js';
+import { DATA_DIR, FFMPEG_PATH, PLUGINS_DIR, YTDLP_PATH, YTDLP_SCRIPT_PATH } from '../config.js';
 
 export interface YtDlpLaunch {
   command: string;
   prefixArgs: string[];
   version: string | null;
+  error: string | null;
+}
+
+interface Candidate {
+  command: string;
+  prefixArgs: string[];
 }
 
 let cached: YtDlpLaunch | null = null;
+let cachedAt = 0;
+let pending: Promise<YtDlpLaunch> | null = null;
 
 const YTDLP_VERSION_TIMEOUT_MS = 8000;
+const YTDLP_FAILURE_RETRY_MS = 30_000;
 const FFMPEG_VERSION_TIMEOUT_MS = 5000;
 
 export function ytdlpEnv(): NodeJS.ProcessEnv {
@@ -22,55 +31,117 @@ export function ytdlpEnv(): NodeJS.ProcessEnv {
   };
 }
 
-export async function ensureYtDlp(): Promise<YtDlpLaunch> {
-  if (cached) return cached;
+function describe(candidate: Candidate): string {
+  return [candidate.command, ...candidate.prefixArgs].join(' ');
+}
 
-  const isExe = /\.exe$/i.test(YTDLP_PATH);
-  const candidates: Array<{ command: string; prefixArgs: string[] }> = isExe
-    ? [{ command: YTDLP_PATH, prefixArgs: [] }]
-    : process.platform === 'win32'
-      ? [
-          { command: 'py', prefixArgs: [YTDLP_PATH] },
-          { command: 'python', prefixArgs: [YTDLP_PATH] },
-          { command: YTDLP_PATH, prefixArgs: [] },
-        ]
-      : [
-          { command: YTDLP_PATH, prefixArgs: [] },
-          { command: 'python3', prefixArgs: [YTDLP_PATH] },
-        ];
+function serverLog(message: string): void {
+  try {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.appendFileSync(
+      path.join(DATA_DIR, 'server.log'),
+      `${new Date().toISOString()} ${message}\n`,
+      'utf8'
+    );
+  } catch (err: unknown) {
+    console.warn('Could not write server.log:', err instanceof Error ? err.message : err);
+  }
+}
 
+function buildCandidates(): Candidate[] {
+  const list: Candidate[] = [];
+  const seen = new Set<string>();
+
+  const add = (command: string, prefixArgs: string[] = []) => {
+    const key = `${command}\0${prefixArgs.join('\0')}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    list.push({ command, prefixArgs });
+  };
+
+  add(YTDLP_PATH);
+
+  const scriptPath = /\.exe$/i.test(YTDLP_PATH) ? YTDLP_SCRIPT_PATH : YTDLP_PATH;
+  if (fs.existsSync(scriptPath)) {
+    if (process.platform === 'win32') {
+      add('py', [scriptPath]);
+      add('python', [scriptPath]);
+    } else {
+      add('python3', [scriptPath]);
+    }
+    add(scriptPath);
+  }
+
+  return list;
+}
+
+function probe(candidate: Candidate): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(
+      candidate.command,
+      [...candidate.prefixArgs, '--version'],
+      { timeout: YTDLP_VERSION_TIMEOUT_MS, env: ytdlpEnv(), windowsHide: true },
+      (err, stdout) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+        const version = String(stdout).trim().split('\n')[0];
+        if (!version) {
+          reject(new Error(`${describe(candidate)} returned an empty version`));
+          return;
+        }
+        resolve(version);
+      }
+    );
+  });
+}
+
+async function probeYtDlp(): Promise<YtDlpLaunch> {
+  const candidates = buildCandidates();
   let lastError = '';
-  for (const c of candidates) {
+
+  for (const candidate of candidates) {
     try {
-      const version = await new Promise<string>((resolve, reject) => {
-        execFile(
-          c.command,
-          [...c.prefixArgs, '--version'],
-          { timeout: YTDLP_VERSION_TIMEOUT_MS, env: ytdlpEnv() },
-          (err, stdout) => {
-            if (err) reject(err);
-            else resolve(String(stdout).trim().split('\n')[0]);
-          }
-        );
-      });
-      cached = { ...c, version };
-      console.log(`yt-dlp ready: ${version} via "${c.command}"`);
-      return cached;
-    } catch (err: any) {
-      lastError = err?.message || String(err);
+      const version = await probe(candidate);
+      const launch: YtDlpLaunch = { ...candidate, version, error: null };
+      cached = launch;
+      cachedAt = Date.now();
+      const message = `yt-dlp ready: ${version} via "${describe(candidate)}"`;
+      console.log(message);
+      serverLog(message);
+      return launch;
+    } catch (err: unknown) {
+      lastError = err instanceof Error ? err.message : String(err);
     }
   }
 
-  console.warn(
-    `WARNING: yt-dlp is not launchable (tried ${candidates.map(c => c.command).join(', ')}; last error: ${lastError}). ` +
-      `Session tests, inspection, and conversion will fail until a working Python launcher or yt-dlp.exe is available.`
-  );
-  cached = { command: YTDLP_PATH, prefixArgs: [], version: null };
-  return cached;
+  const launch: YtDlpLaunch = {
+    command: YTDLP_PATH,
+    prefixArgs: [],
+    version: null,
+    error: lastError,
+  };
+  cached = launch;
+  cachedAt = Date.now();
+  const message =
+    `WARNING: yt-dlp is not launchable (tried ${candidates.map(describe).join(', ')}; ` +
+    `last error: ${lastError}). Session tests, inspection, and conversion will fail until ` +
+    `the bundled yt-dlp or a working Python launcher is available.`;
+  console.warn(message);
+  serverLog(message);
+  return launch;
 }
 
-export function ytdlpLaunch(): YtDlpLaunch {
-  return cached ?? { command: YTDLP_PATH, prefixArgs: [], version: null };
+export async function ensureYtDlp(): Promise<YtDlpLaunch> {
+  if (cached?.version) return cached;
+  if (cached && Date.now() - cachedAt < YTDLP_FAILURE_RETRY_MS) return cached;
+  if (pending) return pending;
+
+  pending = probeYtDlp().finally(() => {
+    pending = null;
+  });
+  return pending;
 }
 
 export async function ensureFfmpeg(): Promise<string | null> {

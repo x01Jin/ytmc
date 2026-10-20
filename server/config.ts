@@ -25,7 +25,10 @@ export const HOST = process.env.HOST || '127.0.0.1';
 export const ROOT_DIR = process.cwd();
 export const BIN_DIR = path.join(ROOT_DIR, 'bin');
 export const PLUGINS_DIR = path.join(ROOT_DIR, 'plugins');
-export const YTDLP_PATH = process.env.YTDLP_PATH || path.join(BIN_DIR, 'yt-dlp');
+export const YTDLP_SCRIPT_PATH = path.join(BIN_DIR, 'yt-dlp');
+export const YTDLP_PATH =
+  process.env.YTDLP_PATH ||
+  path.join(BIN_DIR, process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp');
 export const FFMPEG_PATH =
   process.env.FFMPEG_PATH ||
   path.join(BIN_DIR, process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');

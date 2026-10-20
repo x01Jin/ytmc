@@ -2,7 +2,7 @@ import { execFile } from 'child_process';
 import fs from 'fs';
 import { COOKIES_FILE, DATA_DIR, GUEST_COOKIES_FILE } from '../config.js';
 import { cookiesAllowed, extractorArgsFor, resolveStrategy } from './potService.js';
-import { ytdlpEnv, ytdlpLaunch } from './ytdlpRunner.js';
+import { ensureYtDlp, ytdlpEnv } from './ytdlpRunner.js';
 
 export interface CookieStatus {
   configured: boolean;
@@ -208,7 +208,16 @@ export namespace CookieService {
   export async function testSession(): Promise<SessionTestResult> {
     const cookiesPath = CookieService.getCookiesPath();
     const status = CookieService.getStatus();
-    const launch = ytdlpLaunch();
+    const launch = await ensureYtDlp();
+    if (!launch.version) {
+      return {
+        success: false,
+        isAccountSession: status.isAccountSession,
+        message:
+          'YouTube session test failed: yt-dlp could not start. Reinstall the app or set YTDLP_PATH.',
+        errorDetails: launch.error ?? undefined,
+      };
+    }
     const { strategy, reachable } = await resolveStrategy();
     const useCookies = cookiesAllowed(strategy, !!cookiesPath);
 

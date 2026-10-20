@@ -18,9 +18,10 @@
     "release:keygen": "tsx scripts/generate-signing-key.mts",
     "release:sign": "tsx scripts/sign-release.mts",
     "release:verify": "tsx scripts/verify-release.mts",
+    "fetch:ytdlp": "tsx scripts/fetch-ytdlp.mts",
     "test:updater": "tsc -p electron/tsconfig.json && node --test \"scripts/updater-tests/*.test.mjs\"",
     "electron:dev": "concurrently -k -n \"server,electron\" \"npm run dev\" \"wait-on http-get://127.0.0.1:3000/api/health -t 60s -l && cross-env NODE_ENV=development ELECTRON_DEV_URL=http://127.0.0.1:3000 electron .\"",
-    "electron:build": "npm run build && node -e \"const fs=require('fs'); if (!fs.existsSync('dist/server.cjs')) { console.error('Missing dist/server.cjs. Build the backend before packaging.'); process.exit(1); }\" && tsc -p electron/tsconfig.json && esbuild electron/updater/helper.cts --bundle --platform=node --format=cjs --packages=bundle --target=node20 --outfile=dist-electron/updater-helper.cjs && electron-builder --win zip"
+    "electron:build": "npm run fetch:ytdlp && npm run build && node -e \"const fs=require('fs'); if (!fs.existsSync('dist/server.cjs')) { console.error('Missing dist/server.cjs. Build the backend before packaging.'); process.exit(1); }\" && tsc -p electron/tsconfig.json && esbuild electron/updater/helper.cts --bundle --platform=node --format=cjs --packages=bundle --target=node20 --outfile=dist-electron/updater-helper.cjs && electron-builder --win zip"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",

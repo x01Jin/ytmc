@@ -55,7 +55,12 @@ const APP_EXIT_TIMEOUT_MS = 60_000;
 const DEFAULT_BOOT_TIMEOUT_MS = 300_000;
 const DEFAULT_LIVENESS_MS = 10_000;
 const POLL_INTERVAL_MS = 500;
-const REQUIRED_TREE = ['resources/app.asar', 'resources/server.cjs', 'resources/bin/ffmpeg.exe'];
+const REQUIRED_TREE = [
+  'resources/app.asar',
+  'resources/server.cjs',
+  'resources/bin/ffmpeg.exe',
+  'resources/bin/yt-dlp.exe',
+];
 
 export const realLaunchPort: LaunchPort = {
   launch(executable, args, cwd) {

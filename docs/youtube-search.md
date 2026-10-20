@@ -8,6 +8,8 @@ The search form sends the trimmed query to `GET /api/youtube/search?q=<text>&lim
 
 The backend runs `yt-dlp` with `ytsearch<N>:<query>` in flat-playlist JSON mode (`--dump-json --flat-playlist --no-playlist --skip-download`), using the active extraction strategy and cookies when the strategy allows them. Each output line parses into one result; entries without a valid 11-character video id are dropped.
 
+Packaged builds resolve `bin/yt-dlp.exe` first and fall back to the bundled Python script through `py` or `python`. If no launcher starts, search returns a startup error, `/api/health` reports `readiness.ytDlp: false` with `ytDlpError`, and the probe failure is appended to `data/server.log`. For local development without Python, run `npm run fetch:ytdlp` once to place the same executable in `bin/`.
+
 Each result carries:
 
 | Field                          | Description                                                                             |

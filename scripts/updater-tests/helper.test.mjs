@@ -31,17 +31,19 @@ function makeInstall(root) {
   fs.writeFileSync(path.join(install, 'resources', 'app.asar'), 'old-asar');
   fs.writeFileSync(path.join(install, 'resources', 'server.cjs'), 'old-server');
   fs.writeFileSync(path.join(install, 'resources', 'bin', 'ffmpeg.exe'), 'old-ffmpeg');
+  fs.writeFileSync(path.join(install, 'resources', 'bin', 'yt-dlp.exe'), 'old-ytdlp');
   fs.writeFileSync(path.join(install, 'data', 'settings.json'), '{"keep":true}');
   return install;
 }
 
-function makeArchive(root, includeFfmpeg = true) {
+function makeArchive(root, includeFfmpeg = true, includeYtDlp = true) {
   const entries = [
     { name: EXE, data: 'new-exe' },
     { name: 'resources/app.asar', data: 'new-asar' },
     { name: 'resources/server.cjs', data: 'new-server' },
   ];
   if (includeFfmpeg) entries.push({ name: 'resources/bin/ffmpeg.exe', data: 'new-ffmpeg' });
+  if (includeYtDlp) entries.push({ name: 'resources/bin/yt-dlp.exe', data: 'new-ytdlp' });
   const archive = path.join(root, 'archive.zip');
   fs.writeFileSync(archive, buildZip(entries));
   return archive;
@@ -80,7 +82,11 @@ function fakeLaunch({ report = true, reportVersion = null } = {}) {
 
 async function baseOptions(root, overrides = {}) {
   const install = makeInstall(root);
-  const archive = makeArchive(root, overrides.includeFfmpeg !== false);
+  const archive = makeArchive(
+    root,
+    overrides.includeFfmpeg !== false,
+    overrides.includeYtDlp !== false
+  );
   const digestHex = await hashFileHex(archive);
   return {
     workspace: path.join(root, 'workspace'),
@@ -112,6 +118,10 @@ test('applies the update, copies data, and keeps the old tree', { skip }, () =>
     assert.equal(
       fs.readFileSync(path.join(root, 'app', 'resources', 'bin', 'ffmpeg.exe'), 'utf8'),
       'new-ffmpeg'
+    );
+    assert.equal(
+      fs.readFileSync(path.join(root, 'app', 'resources', 'bin', 'yt-dlp.exe'), 'utf8'),
+      'new-ytdlp'
     );
     assert.equal(
       fs.readFileSync(path.join(root, 'app', 'data', 'settings.json'), 'utf8'),
@@ -175,13 +185,26 @@ test('aborts before touching the install when the archive digest changed', { ski
   })
 );
 
-test('aborts when the extracted tree is incomplete', { skip }, () =>
+test('aborts when the extracted tree is missing ffmpeg', { skip }, () =>
   withRoot(async root => {
     const options = await baseOptions(root, { includeFfmpeg: false });
     const outcome = await runApply(options);
     assert.deepEqual(outcome, {
       outcome: 'aborted',
       reason: 'tree-invalid-resources/bin/ffmpeg.exe',
+    });
+    assert.equal(fs.readFileSync(path.join(root, 'app', EXE), 'utf8'), 'old-exe');
+    assert.equal(fs.existsSync(path.join(root, `app.new-${UPDATE_ID}`)), false);
+  })
+);
+
+test('aborts when the extracted tree is missing yt-dlp', { skip }, () =>
+  withRoot(async root => {
+    const options = await baseOptions(root, { includeYtDlp: false });
+    const outcome = await runApply(options);
+    assert.deepEqual(outcome, {
+      outcome: 'aborted',
+      reason: 'tree-invalid-resources/bin/yt-dlp.exe',
     });
     assert.equal(fs.readFileSync(path.join(root, 'app', EXE), 'utf8'), 'old-exe');
     assert.equal(fs.existsSync(path.join(root, `app.new-${UPDATE_ID}`)), false);

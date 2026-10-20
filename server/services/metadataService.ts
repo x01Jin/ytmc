@@ -2,7 +2,7 @@ import { execFile } from 'child_process';
 import { CookieService } from './cookieService.js';
 import { cookiesAllowed, extractorArgsFor, resolveStrategy } from './potService.js';
 import { parseYouTubeInput } from './urlService.js';
-import { ytdlpEnv, ytdlpLaunch } from './ytdlpRunner.js';
+import { ensureYtDlp, ytdlpEnv } from './ytdlpRunner.js';
 
 export interface NativeAudioStreamInfo {
   formatId: string;
@@ -87,8 +87,13 @@ export namespace MetadataService {
       hasCookiesConfigured: hasCookies,
     };
 
+    const launch = await ensureYtDlp();
+    if (!launch.version) {
+      metadata.probeError =
+        'yt-dlp could not start. Reinstall the app or set YTDLP_PATH, then retry.';
+      return metadata;
+    }
     const { strategy } = await resolveStrategy();
-    const launch = ytdlpLaunch();
     const useCookies = cookiesAllowed(strategy, hasCookies);
     return new Promise(resolve => {
       const args = [

@@ -1,7 +1,7 @@
 import { execFile } from 'child_process';
 import { CookieService } from './cookieService.js';
 import { cookiesAllowed, extractorArgsFor, resolveStrategy } from './potService.js';
-import { ytdlpEnv, ytdlpLaunch } from './ytdlpRunner.js';
+import { ensureYtDlp, ytdlpEnv } from './ytdlpRunner.js';
 
 export interface YouTubeSearchResult {
   id: string;
@@ -98,8 +98,11 @@ export namespace YouTubeService {
     const clean = sanitizeQuery(query);
     if (!clean) throw new Error('Search text is required');
     const count = clampLimit(limit);
+    const launch = await ensureYtDlp();
+    if (!launch.version) {
+      throw new Error('yt-dlp could not start. Reinstall the app or set YTDLP_PATH, then retry.');
+    }
     const { strategy } = await resolveStrategy();
-    const launch = ytdlpLaunch();
     const cookiesPath = CookieService.getCookiesPath();
     const useCookies = cookiesAllowed(strategy, !!cookiesPath);
     const args = [
