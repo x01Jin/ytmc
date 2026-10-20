@@ -15,13 +15,11 @@ import { useJobPolling } from '../hooks/useJobPolling';
 interface JobsContextValue {
   state: {
     activeJob: ConversionJob | null;
-    recentJobs: ConversionJob[];
     isConverting: boolean;
   };
   actions: {
     startConversion: (url: string, options: ConversionOptions) => Promise<void>;
     resetActive: () => void;
-    refreshRecent: () => Promise<void>;
   };
 }
 
@@ -29,49 +27,58 @@ const JobsContext = createContext<JobsContextValue | null>(null);
 
 export function JobsProvider({ children }: { children: ReactNode }) {
   const [activeJob, setActiveJob] = useState<ConversionJob | null>(null);
-  const [recentJobs, setRecentJobs] = useState<ConversionJob[]>([]);
   const [isConverting, setIsConverting] = useState(false);
-
-  const refreshRecent = useCallback(async () => {
-    try {
-      setRecentJobs(await ApiClient.getRecentJobs());
-    } catch {}
-  }, []);
+  const busyRef = useRef(false);
+  const activeJobRef = useRef<ConversionJob | null>(null);
+  const dismissedJobRef = useRef<string | null>(null);
 
   useJobPolling(activeJob?.id ?? null, activeJob?.status, {
-    onUpdate: job => setActiveJob(job),
-    onDone: job => {
+    onUpdate: job => {
+      if (dismissedJobRef.current === job.id) return;
+      activeJobRef.current = job;
+      setActiveJob(job);
+    },
+    onDone: () => {
+      busyRef.current = false;
       setIsConverting(false);
-      if (job.status === 'completed') void refreshRecent();
     },
   });
 
   const startConversion = useCallback(async (url: string, options: ConversionOptions) => {
+    if (busyRef.current) {
+      throw new Error('Another conversion is already running. Wait for it to finish.');
+    }
+    busyRef.current = true;
     setIsConverting(true);
     try {
       const job = await ApiClient.startConversion(url, options);
+      dismissedJobRef.current = null;
+      activeJobRef.current = job;
       setActiveJob(job);
     } catch (err) {
+      busyRef.current = false;
       setIsConverting(false);
       throw err;
     }
   }, []);
 
   const resetActive = useCallback(() => {
+    dismissedJobRef.current = activeJobRef.current?.id ?? null;
+    activeJobRef.current = null;
+    busyRef.current = false;
     setActiveJob(null);
     setIsConverting(false);
   }, []);
 
   const value = useMemo<JobsContextValue>(
     () => ({
-      state: { activeJob, recentJobs, isConverting },
+      state: { activeJob, isConverting },
       actions: {
         startConversion,
         resetActive,
-        refreshRecent,
       },
     }),
-    [activeJob, recentJobs, isConverting, startConversion, resetActive, refreshRecent]
+    [activeJob, isConverting, startConversion, resetActive]
   );
 
   return <JobsContext value={value}>{children}</JobsContext>;

@@ -21,7 +21,7 @@ The YouTube to Music Converter is a Windows desktop app: an Electron shell aroun
                            ▼
 ┌────────────────────────────────────────────────────────┐
 │              React 19 Frontend (AppShell)              │
-│  Convert / YouTube / Library / History / Queue / Settings (hash routes)    │
+│  Convert / YouTube / Library / History / Settings (hash routes)    │
 │  Jobs + Library + Settings + Session providers         │
 └──────────────────────────┬─────────────────────────────┘
                            │ HTTP / JSON / Range Streams
@@ -32,7 +32,7 @@ The YouTube to Music Converter is a Windows desktop app: an Electron shell aroun
 ├────────────────────────────────────────────────────────┤
 │  /api/info        - Metadata extraction & oEmbed       │
 │  /api/youtube/search - In-app YouTube search           │
-│  /api/convert     - Audio extraction & FFmpeg queue    │
+│  /api/convert     - Audio extraction & FFmpeg pipeline │
 │  /api/status/:id  - Real-time job polling & progress   │
 │  /api/cancel/:id  - Cancel a running job (process tree)    │
 │  /api/stream/:id  - Partial Content (HTTP 206) audio   │
@@ -112,14 +112,13 @@ The portable Windows build updates itself from signed GitHub releases; the full 
 
 Pixel-art dark-only UI (`src/index.css` `@theme` tokens, monospace typography, thin square scrollbars, lucide iconography throughout):
 
-- **`components/AppShell.tsx`**: TitleBar, SideNav, StatusBar + hash routing (`#/convert`, `#/youtube`, `#/library`, `#/history`, `#/queue`, `#/settings`).
+- **`components/AppShell.tsx`**: TitleBar, SideNav, StatusBar + hash routing (`#/convert`, `#/youtube`, `#/library`, `#/history`, `#/settings`).
 - **`store/appStore.tsx`**: `SettingsProvider` > `SessionProvider` > `JobsProvider` (owns `useJobPolling` with `startTransition`, backoff, and hidden-tab pause) > `ConvertDraftProvider` (inspect state, options, and one-shot re-convert URLs) > `LibraryProvider` (sequence-guarded refresh) > `HistoryProvider` (persistent log with optimistic delete/clear, mount fetch deferred to idle). `SessionProvider` guest auto-fetch waits two seconds and runs once at startup.
-- The Convert route loads eagerly. YouTube loads on first visit and stays mounted so search state survives tab changes; Library, History, Queue, and Settings mount only while active. The CookieModal, YouTube preview modal, and library edit panel load only when opened.
+- The Convert route loads eagerly. YouTube loads on first visit and stays mounted so search state survives tab changes; Library, History, and Settings mount only while active. The CookieModal, YouTube preview modal, and library edit panel load only when opened.
 - **`routes/Convert.tsx`**: inspect → options → convert flow. When a job completes, the route refreshes history and the library, clears the active job and draft, and shows a saved notice.
 - **`routes/YouTube.tsx`**: in-app search results with per-row preview toggle, link copy, Send-to-Convert handoff (queues a one-shot inspect URL on the convert draft), and open-in-browser. `components/YouTubePreviewModal.tsx` plays the selected result as a sandboxed `youtube-nocookie.com` embed.
 - **`routes/Library.tsx`**: searchable on-disk library with a docked bottom preview player, drag-and-drop/file-picker import, reveal-in-Explorer, edit panels, and delete-behind-confirm. Refreshes automatically when a conversion finishes. Per-track media versions cache-bust the player and trim preview after an edit.
 - **`routes/History.tsx`**: finished conversions with frozen original cover art and title, YouTube link copy, one-click re-convert, per-row remove, and clear-all behind confirm.
-- **`routes/Queue.tsx`**: live view of the in-progress conversion only; finished jobs clear out to Library + History.
 - **`routes/Settings.tsx`**: library folder (Browse/Reset), session cookies, and the update panel.
 
 The frontend is constructed with focused React components:

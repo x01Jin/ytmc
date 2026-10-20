@@ -22,8 +22,11 @@ export function ConvertRoute() {
   const { activeJob, isConverting } = jobs;
   const { url, metadata, options, pendingInspectUrl } = draft;
   const { setUrl, setMetadata, setOptions, consumeInspectUrl, resetDraft } = draftActions;
+  const canStartNew =
+    !activeJob || activeJob.status === 'completed' || activeJob.status === 'error';
   const [isInspecting, setIsInspecting] = useState(false);
   const [inspectError, setInspectError] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
   const [isCookieModalOpen, setIsCookieModalOpen] = useState(false);
   const [savedNotice, setSavedNotice] = useState<{ title: string } | null>(null);
   const completedIdRef = useRef<string | null>(null);
@@ -35,7 +38,7 @@ export function ConvertRoute() {
 
       setIsInspecting(true);
       setInspectError(null);
-      jobActions.resetActive();
+      if (canStartNew) jobActions.resetActive();
 
       try {
         const data = await ApiClient.fetchVideoInfo(targetUrl);
@@ -51,11 +54,12 @@ export function ConvertRoute() {
         setIsInspecting(false);
       }
     },
-    [url, jobActions, setMetadata]
+    [url, jobActions, setMetadata, canStartNew]
   );
 
   const handleStartConversion = useCallback(async () => {
     if (!metadata) return;
+    setCancelError(null);
     try {
       await jobActions.startConversion(ApiClient.youTubeWatchUrl(metadata.id), options);
     } catch (err: unknown) {
@@ -64,6 +68,17 @@ export function ConvertRoute() {
       );
     }
   }, [metadata, jobActions, options]);
+
+  const handleCancel = useCallback(async () => {
+    if (!activeJob) return;
+    setCancelError(null);
+    try {
+      await ApiClient.cancelConversion(activeJob.id);
+      jobActions.resetActive();
+    } catch (err) {
+      setCancelError(err instanceof Error ? err.message : 'Could not cancel the conversion.');
+    }
+  }, [activeJob, jobActions]);
 
   useEffect(() => {
     if (activeJob?.status !== 'completed' || completedIdRef.current === activeJob.id) return;
@@ -97,7 +112,7 @@ export function ConvertRoute() {
     if (!pendingInspectUrl) return;
     const target = pendingInspectUrl;
     consumeInspectUrl();
-    jobActions.resetActive();
+    if (canStartNew) jobActions.resetActive();
     ApiClient.fetchVideoInfo(target)
       .then(data => {
         setMetadata(data);
@@ -112,7 +127,7 @@ export function ConvertRoute() {
         setMetadata(null);
         setIsInspecting(false);
       });
-  }, [pendingInspectUrl, consumeInspectUrl, jobActions, setMetadata]);
+  }, [pendingInspectUrl, consumeInspectUrl, jobActions, setMetadata, canStartNew]);
 
   return (
     <div className="space-y-2">
@@ -163,10 +178,21 @@ export function ConvertRoute() {
         <VideoCard metadata={metadata} onOpenCookiesModal={() => setIsCookieModalOpen(true)} />
       )}
 
+      {cancelError && (
+        <div
+          role="alert"
+          className="px-panel flex items-start gap-2 border-px-err p-2 text-xs sm:text-sm"
+        >
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-px-err" aria-hidden="true" />
+          <p className="flex-1">{cancelError}</p>
+        </div>
+      )}
+
       {activeJob ? (
         <ConversionProgress
           job={activeJob}
           onRetry={handleStartConversion}
+          onCancel={() => void handleCancel()}
           onOpenCookiesModal={() => setIsCookieModalOpen(true)}
         />
       ) : (

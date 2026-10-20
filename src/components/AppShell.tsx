@@ -5,23 +5,21 @@ import {
   Github,
   History,
   LibraryBig,
-  ListMusic,
   Music,
   Settings,
   Youtube,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-export type AppRoute = 'convert' | 'youtube' | 'library' | 'history' | 'queue' | 'settings';
+export type AppRoute = 'convert' | 'youtube' | 'library' | 'history' | 'settings';
 
-const ROUTES: AppRoute[] = ['convert', 'youtube', 'library', 'history', 'queue', 'settings'];
+const ROUTES: AppRoute[] = ['convert', 'youtube', 'library', 'history', 'settings'];
 
 const ROUTE_LABELS: Record<AppRoute, string> = {
   convert: 'Convert',
   youtube: 'YouTube',
   library: 'Library',
   history: 'History',
-  queue: 'Queue',
   settings: 'Settings',
 };
 
@@ -30,7 +28,6 @@ const ROUTE_ICONS: Record<AppRoute, LucideIcon> = {
   youtube: Youtube,
   library: LibraryBig,
   history: History,
-  queue: ListMusic,
   settings: Settings,
 };
 
@@ -91,11 +88,9 @@ export function TitleBar() {
 export function SideNav({
   route,
   onNavigate,
-  queueCount,
 }: {
   route: AppRoute;
   onNavigate: (route: AppRoute) => void;
-  queueCount: number;
 }) {
   return (
     <nav
@@ -117,11 +112,6 @@ export function SideNav({
           >
             <Icon className="h-4 w-4 shrink-0" aria-hidden="true" />
             {ROUTE_LABELS[r]}
-            {r === 'queue' && queueCount > 0 && (
-              <span className="px-tabular ml-auto text-xs" aria-label={`${queueCount} active jobs`}>
-                {queueCount}
-              </span>
-            )}
           </button>
         );
       })}

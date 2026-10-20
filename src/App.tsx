@@ -17,7 +17,6 @@ import {
   LibraryProvider,
   SessionProvider,
   SettingsProvider,
-  useJobs,
   useLibrary,
   useSession,
   useSettings,
@@ -34,7 +33,6 @@ const LibraryRoute = lazy(() =>
 const HistoryRoute = lazy(() =>
   import('./routes/History').then(m => ({ default: m.HistoryRoute }))
 );
-const QueueRoute = lazy(() => import('./routes/Queue').then(m => ({ default: m.QueueRoute })));
 const SettingsRoute = lazy(() =>
   import('./routes/Settings').then(m => ({ default: m.SettingsRoute }))
 );
@@ -49,7 +47,6 @@ function RouteFallback() {
 
 function ShellChrome() {
   const { route, navigate } = useHashRoute();
-  const { state: jobs } = useJobs();
   const { state: libraryState } = useLibrary();
   const { state: settingsState } = useSettings();
   const { state: session } = useSession();
@@ -81,10 +78,6 @@ function ShellChrome() {
     };
   }, []);
 
-  const activeCount =
-    jobs.activeJob && jobs.activeJob.status !== 'completed' && jobs.activeJob.status !== 'error'
-      ? 1
-      : 0;
   const folderLabel =
     settingsState.settings?.downloadsDir ?? libraryState.library?.downloadsDir ?? 'Library folder…';
   const fileCount = libraryState.library ? libraryState.library.records.length : null;
@@ -101,7 +94,7 @@ function ShellChrome() {
     <AppShell>
       <TitleBar />
       <ShellMain>
-        <SideNav route={route} onNavigate={navigate} queueCount={activeCount} />
+        <SideNav route={route} onNavigate={navigate} />
         <ShellContent>
           <UpdateNotice />
           {route === 'convert' && <ConvertRoute />}
@@ -120,11 +113,6 @@ function ShellChrome() {
           {route === 'history' && (
             <Suspense fallback={<RouteFallback />}>
               <HistoryRoute onReconvert={() => navigate('convert')} />
-            </Suspense>
-          )}
-          {route === 'queue' && (
-            <Suspense fallback={<RouteFallback />}>
-              <QueueRoute />
             </Suspense>
           )}
           {route === 'settings' && (

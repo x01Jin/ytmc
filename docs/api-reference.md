@@ -170,7 +170,7 @@ Retrieves current progress and status for a specific conversion job.
 
 ### `GET /api/jobs`
 
-Lists recent live conversion jobs (the Queue view). Finished jobs clear out to Library + History.
+Lists recent conversion jobs. The updater reads it to block a restart while a job is queued, downloading, or converting.
 
 ### `POST /api/cancel/:id`
 

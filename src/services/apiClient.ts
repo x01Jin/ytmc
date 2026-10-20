@@ -164,17 +164,6 @@ export namespace ApiClient {
     return json.job;
   }
 
-  export async function getRecentJobs(): Promise<ConversionJob[]> {
-    return dedupedGet('jobs', async () => {
-      const res = await fetch('/api/jobs', { headers: await authHeaders() });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        return [];
-      }
-      return json.jobs || [];
-    });
-  }
-
   export async function getHistory(): Promise<HistoryEntry[]> {
     return dedupedGet('history', async () => {
       const res = await fetch('/api/history', { headers: await authHeaders() });

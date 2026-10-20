@@ -28,7 +28,7 @@ Technical documentation for **YouTube to Music Converter**, a Windows desktop ap
 8. **[Startup & Performance](startup-performance.md)**
    Splash behavior, backend readiness, lazy routes, and deferred provider fetches.
 
-9. **[Job Lifecycle & Queue](job-lifecycle.md)**
+9. **[Job Lifecycle](job-lifecycle.md)**
    Conversion job states, polling, cancellation, and retention.
 
 10. **[Library Management](library-management.md)**

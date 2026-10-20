@@ -56,15 +56,15 @@ Hashed production assets serve with long immutable caching and ETags. `index.htm
 
 ## Lazy frontend
 
-The Convert route and the app shell load eagerly. YouTube, Library, History, Queue, and Settings load on first navigation behind a skeleton fallback; the YouTube route stays mounted after its first visit. The session cookie modal, the YouTube preview modal, and the library edit panel (with the tag editor) load only when opened.
+The Convert route and the app shell load eagerly. YouTube, Library, History, and Settings load on first navigation behind a skeleton fallback; the YouTube route stays mounted after its first visit. The session cookie modal, the YouTube preview modal, and the library edit panel (with the tag editor) load only when opened.
 
 ## Deferred provider fetches
 
-- Jobs: no mount fetch; the queue refreshes explicitly on conversion events.
+- Jobs: no mount fetch; the active job is polled only while a conversion runs.
 - History: mount fetch deferred to idle so first paint never waits for the log.
 - Session: status loads at mount for the status dot; the guest auto-fetch chain waits two seconds.
 - Settings and library: load at mount; settings serve the cached copy first and revalidate.
-- Identical jobs, history, and settings GETs share one request while the earlier request is still in flight; the dedupe entry expires after two seconds. Library and cookie-status GETs always reach the server so deleted files and cleared cookies appear immediately.
+- Identical history and settings GETs share one request while the earlier request is still in flight; the dedupe entry expires after two seconds. Library and cookie-status GETs always reach the server so deleted files and cleared cookies appear immediately.
 - Job polling ticks every second with backoff to three seconds on repeated failures and pauses while the tab is hidden.
 
 ## Diagnosing a slow start

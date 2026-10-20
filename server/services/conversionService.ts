@@ -19,7 +19,7 @@ import { ensureYtDlp, ytdlpEnv } from './ytdlpRunner.js';
 import { AUDIO_DSP, buildAudioFilters } from './audioFilterService.js';
 import { readAudioMetadata } from './audioMetadata.js';
 
-const MAX_CONCURRENT_CONVERSIONS = 2;
+const MAX_CONCURRENT_CONVERSIONS = 1;
 const CONVERSION_TIMEOUT_MS = 30 * 60 * 1000;
 
 function isTrimValue(value: string | undefined, allowInf: boolean): boolean {
@@ -93,7 +93,7 @@ export namespace ConversionService {
 
     const release = reserveConversion();
     if (!release) {
-      throw new Error('Too many concurrent conversions. Wait for one to finish and try again.');
+      throw new Error('Another conversion is already running. Wait for it to finish.');
     }
 
     try {

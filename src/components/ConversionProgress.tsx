@@ -5,6 +5,7 @@ import { ConversionJob } from '../types';
 interface ConversionProgressProps {
   job: ConversionJob;
   onRetry: () => void;
+  onCancel: () => void;
   onOpenCookiesModal: () => void;
 }
 
@@ -13,6 +14,7 @@ const MIN_BAR_PCT = 4;
 export const ConversionProgress: React.FC<ConversionProgressProps> = ({
   job,
   onRetry,
+  onCancel,
   onOpenCookiesModal,
 }) => {
   const isError = job.status === 'error';
@@ -46,9 +48,21 @@ export const ConversionProgress: React.FC<ConversionProgressProps> = ({
                 : 'Converting Audio…'}
           </h3>
         </div>
-        <span className="px-tabular text-xs font-bold" aria-hidden="true">
-          {job.progress}%
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="px-tabular text-xs font-bold" aria-hidden="true">
+            {job.progress}%
+          </span>
+          {!isError && !isCompleted && (
+            <button
+              id="cancel-conversion-btn"
+              type="button"
+              onClick={onCancel}
+              className="px-btn !px-2 !py-1 text-xs"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
       </div>
 
       <div
