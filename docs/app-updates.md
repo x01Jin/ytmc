@@ -2,7 +2,7 @@
 
 How the portable Windows build checks for, verifies, installs, and rolls back updates.
 
-The updater targets the `x01Jin/ytmc` GitHub repository. Releases carry `ytmc-<version>-win.zip` and a detached `ytmc-<version>-win.zip.sig` signature. The app installs only from that zip; there is no installer, no checksum-only path, and no Authenticode fallback. Version 1.2.0 is the first release that contains the updater, so 1.1.0 and older do a one-time manual replacement. Version 1.2.3 and older also cannot install 1.2.4 automatically because the old helper performs the swap; install 1.2.4 manually once. The first automatic update that can be tested end to end is 1.2.4 to 1.2.5.
+The updater targets the `x01Jin/ytmc` GitHub repository. Releases carry `ytmc-<version>-win.zip` and a detached `ytmc-<version>-win.zip.sig` signature. The app installs only from that zip; there is no installer, no checksum-only path, and no Authenticode fallback. Version 1.2.0 is the first release that contains the updater, so 1.1.0 and older do a one-time manual replacement. Version 1.2.3 and older also cannot install 1.2.4 automatically because the old helper performs the swap; install 1.2.4 manually once. The first automatic update that can be tested end to end is 1.2.4 to 1.3.0.
 
 ---
 
