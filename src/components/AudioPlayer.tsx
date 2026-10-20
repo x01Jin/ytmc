@@ -1,7 +1,7 @@
 import { Pause, Play, Repeat, Volume2, VolumeX } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import { ConversionJob } from '../types';
-import { needsPreviewPlayback, withPreviewForFormat } from '../utils/audioSupport';
+import { withPreviewForFormat } from '../utils/audioSupport';
 import { formatSeconds } from '../utils/time';
 import { TrackArtwork } from './TrackArtwork';
 
@@ -19,7 +19,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
   const [isMuted, setIsMuted] = useState(false);
   const [isLooping, setIsLooping] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [previewFallback, setPreviewFallback] = useState(false);
 
   const jobKey = `${job?.id ?? ''}|${job?.streamUrl ?? ''}`;
   const syncedKeyRef = useRef(jobKey);
@@ -31,7 +30,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
     setCurrentTime(0);
     setDuration(0);
     setLoadError(null);
-    setPreviewFallback(false);
     const audio = audioRef.current;
     audio?.pause();
     audio?.load();
@@ -119,9 +117,7 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
   }
 
   const streamSrc = withPreviewForFormat(
-    previewFallback
-      ? `/api/stream/${encodeURIComponent(job.id)}?preview=mp3`
-      : job.streamUrl || `/api/stream/${encodeURIComponent(job.id)}`,
+    job.streamUrl || `/api/stream/${encodeURIComponent(job.id)}`,
     job.id,
     job.format
   );
@@ -144,10 +140,6 @@ export const AudioPlayer: React.FC<AudioPlayerProps> = ({ job, autoPlayNonce = 0
         onPlay={() => setIsPlaying(true)}
         onPause={() => setIsPlaying(false)}
         onError={() => {
-          if (needsPreviewPlayback(job.format) && !previewFallback) {
-            setPreviewFallback(true);
-            return;
-          }
           setIsPlaying(false);
           setLoadError(
             'This track could not be played. The file may be missing or still processing.'

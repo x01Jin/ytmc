@@ -1,4 +1,4 @@
-import type { ChildProcess } from 'child_process';
+import { spawn, type ChildProcess } from 'child_process';
 import type { MusicTags } from './audioTagService.js';
 
 export type JobStatus = 'queued' | 'downloading' | 'converting' | 'completed' | 'error';
@@ -22,7 +22,6 @@ export interface ConversionJob {
   outputFilePath?: string;
   outputFileName?: string;
   fileSizeBytes?: number;
-  downloadUrl?: string;
   streamUrl?: string;
   createdAt: number;
   completedAt?: number;
@@ -31,6 +30,38 @@ export interface ConversionJob {
 
 const JOB_RETENTION_MS = 2 * 60 * 60 * 1000;
 const CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
+
+function terminateTree(child: ChildProcess): void {
+  const pid = child.pid;
+  if (!pid) {
+    try {
+      child.kill('SIGTERM');
+    } catch (err) {
+      console.warn('Could not signal conversion process:', err);
+    }
+    return;
+  }
+  if (process.platform === 'win32') {
+    const killer = spawn('taskkill', ['/pid', String(pid), '/T', '/F'], {
+      windowsHide: true,
+      stdio: 'ignore',
+    });
+    killer.on('error', err => {
+      console.warn(`Could not terminate process tree ${pid}:`, err);
+      try {
+        child.kill('SIGTERM');
+      } catch (killErr) {
+        console.warn(`Could not signal conversion process ${pid}:`, killErr);
+      }
+    });
+    return;
+  }
+  try {
+    child.kill('SIGTERM');
+  } catch (err) {
+    console.warn(`Could not signal conversion process ${pid}:`, err);
+  }
+}
 
 export namespace JobManager {
   let jobs: Map<string, ConversionJob> = new Map();
@@ -82,10 +113,6 @@ export namespace JobManager {
       .slice(0, limit);
   }
 
-  export function activeCount(): number {
-    return processes.size;
-  }
-
   export function registerProcess(id: string, child: ChildProcess): void {
     processes.set(id, child);
   }
@@ -94,17 +121,18 @@ export namespace JobManager {
     processes.delete(id);
   }
 
-  export function cancelJob(id: string): boolean {
+  export function terminateProcess(id: string): boolean {
     const child = processes.get(id);
+    if (!child) return false;
+    terminateTree(child);
+    return true;
+  }
+
+  export function cancelJob(id: string): boolean {
     const job = jobs.get(id);
-    if (!child || !job) return false;
+    if (!job) return false;
     if (job.status === 'completed' || job.status === 'error') return false;
-    try {
-      child.kill('SIGTERM');
-      return true;
-    } catch {
-      return false;
-    }
+    return terminateProcess(id);
   }
 
   export function cleanupOldJobs(): void {

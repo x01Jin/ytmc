@@ -32,7 +32,6 @@ function recordToJob(record: LibraryRecord, mediaVersion = 0): ConversionJob {
     outputFileName: record.fileName,
     outputFilePath: record.filePath,
     fileSizeBytes: record.fileSizeBytes,
-    downloadUrl: `/api/download/${encodeURIComponent(record.jobId)}`,
     streamUrl: `${base}${base.includes('?') ? '&' : '?'}v=${mediaVersion}`,
     createdAt: record.completedAt,
     completedAt: record.completedAt,

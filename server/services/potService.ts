@@ -3,6 +3,9 @@ import { BGUTIL_PATH, POT_PORT } from '../config.js';
 
 export type PotStrategy = 'pot' | 'fallback';
 
+const REACHABILITY_TTL_MS = 15_000;
+let reachability: { reachable: boolean; at: number } | null = null;
+
 export function potBaseUrl(): string {
   return `http://127.0.0.1:${POT_PORT}`;
 }
@@ -17,18 +20,24 @@ export function isSidecarInstalled(): boolean {
 
 export async function refreshSidecarReachability(): Promise<boolean> {
   if (!isSidecarInstalled()) {
+    reachability = { reachable: false, at: Date.now() };
     return false;
+  }
+  if (reachability && Date.now() - reachability.at < REACHABILITY_TTL_MS) {
+    return reachability.reachable;
   }
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 3000);
     try {
       const res = await fetch(`${potBaseUrl()}/ping`, { signal: ctrl.signal });
+      reachability = { reachable: res.ok, at: Date.now() };
       return res.ok;
     } finally {
       clearTimeout(timer);
     }
   } catch {
+    reachability = { reachable: false, at: Date.now() };
     return false;
   }
 }

@@ -378,38 +378,33 @@ function loadConvertDraft(): Omit<ConvertDraft, 'pendingInspectUrl'> {
   const fallback = {
     url: '',
     metadata: null,
-    options: DEFAULT_CONVERT_OPTIONS,
+    options: { ...DEFAULT_CONVERT_OPTIONS },
   };
   try {
     const raw = localStorage.getItem(CONVERT_DRAFT_KEY);
     if (!raw) return fallback;
     const parsed = JSON.parse(raw) as Partial<ConvertDraft>;
-    if (parsed.options && typeof parsed.options === 'object') {
-      const {
-        tags: _staleTags,
-        normalizeMode: _staleMode,
-        normalizeAudio: _staleAudio,
-        ...rest
-      } = parsed.options as ConversionOptions & {
-        tags?: unknown;
-        normalizeMode?: unknown;
-        normalizeAudio?: unknown;
-      };
-      parsed.options = rest;
-    }
+    const stored = parsed.options as Partial<ConversionOptions> | undefined;
     return {
       url: typeof parsed.url === 'string' ? parsed.url : '',
       metadata:
         parsed.metadata && typeof parsed.metadata === 'object'
           ? (parsed.metadata as VideoMetadata)
           : null,
-      options:
-        parsed.options && typeof parsed.options === 'object'
-          ? {
-              ...DEFAULT_CONVERT_OPTIONS,
-              ...parsed.options,
-            }
-          : DEFAULT_CONVERT_OPTIONS,
+      options: {
+        format: stored?.format ?? DEFAULT_CONVERT_OPTIONS.format,
+        bitrate: stored?.bitrate ?? DEFAULT_CONVERT_OPTIONS.bitrate,
+        trimStart: typeof stored?.trimStart === 'string' ? stored.trimStart : '',
+        trimEnd: typeof stored?.trimEnd === 'string' ? stored.trimEnd : '',
+        volumeBoost:
+          typeof stored?.volumeBoost === 'number'
+            ? stored.volumeBoost
+            : DEFAULT_CONVERT_OPTIONS.volumeBoost,
+        embedThumbnail:
+          typeof stored?.embedThumbnail === 'boolean'
+            ? stored.embedThumbnail
+            : DEFAULT_CONVERT_OPTIONS.embedThumbnail,
+      },
     };
   } catch {
     return fallback;
@@ -502,14 +497,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const refresh = useCallback(async () => {
     try {
-      const next = await ApiClient.getCookieStatus();
-      setStatus(next);
-      if (!next.configured) {
-        try {
-          const res = await ApiClient.autoFetchCookies();
-          setStatus(res.status);
-        } catch {}
-      }
+      setStatus(await ApiClient.getCookieStatus());
     } catch {}
   }, []);
 

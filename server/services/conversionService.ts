@@ -46,14 +46,24 @@ export interface ConvertRequestOptions {
 }
 
 export namespace ConversionService {
+  let activeConversions = 0;
+
+  function reserveConversion(): (() => void) | null {
+    if (activeConversions >= MAX_CONCURRENT_CONVERSIONS) return null;
+    activeConversions += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      activeConversions = Math.max(0, activeConversions - 1);
+    };
+  }
+
   export function cancelConversion(jobId: string): boolean {
     return JobManager.cancelJob(jobId);
   }
 
   export async function startConversion(options: ConvertRequestOptions): Promise<ConversionJob> {
-    if (JobManager.activeCount() >= MAX_CONCURRENT_CONVERSIONS) {
-      throw new Error('Too many concurrent conversions. Wait for one to finish and try again.');
-    }
     if (!isTrimValue(options.trimStart, false)) {
       throw new Error('Invalid trim start. Use seconds or MM:SS.');
     }
@@ -81,40 +91,52 @@ export namespace ConversionService {
         ? options.bitrate
         : 'native';
 
-    const oembed = await MetadataService.fetchOEmbed(canonicalUrl);
-    const rawTitle = oembed?.title || `Track_${videoId}`;
-    const rawAuthor = oembed?.author || 'YouTube';
-    const thumbnail = oembed?.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
+    const release = reserveConversion();
+    if (!release) {
+      throw new Error('Too many concurrent conversions. Wait for one to finish and try again.');
+    }
 
-    const jobId = crypto.randomUUID();
-    const extLabel = format === 'best' ? 'opus' : format;
-    const displayFileName = buildDisplayFileName(rawAuthor, rawTitle, extLabel);
+    try {
+      const oembed = await MetadataService.fetchOEmbed(canonicalUrl);
+      const rawTitle = oembed?.title || `Track_${videoId}`;
+      const rawAuthor = oembed?.author || 'YouTube';
+      const thumbnail = oembed?.thumbnail || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`;
 
-    const job = JobManager.createJob(
-      jobId,
-      videoId,
-      rawTitle,
-      rawAuthor,
-      thumbnail,
-      format,
-      bitrate
-    );
-    void executeYtDlp(
-      jobId,
-      canonicalUrl,
-      videoId,
-      format,
-      bitrate,
-      displayFileName,
-      options
-    ).catch((err: any) => {
-      JobManager.updateJob(jobId, {
-        status: 'error',
-        error: `Conversion setup failed: ${err?.message || err}`,
+      const jobId = crypto.randomUUID();
+      const extLabel = format === 'best' ? 'opus' : format;
+      const displayFileName = buildDisplayFileName(rawAuthor, rawTitle, extLabel);
+
+      const job = JobManager.createJob(
+        jobId,
+        videoId,
+        rawTitle,
+        rawAuthor,
+        thumbnail,
+        format,
+        bitrate
+      );
+      void executeYtDlp(
+        jobId,
+        canonicalUrl,
+        videoId,
+        format,
+        bitrate,
+        displayFileName,
+        options,
+        release
+      ).catch((err: any) => {
+        release();
+        JobManager.updateJob(jobId, {
+          status: 'error',
+          error: `Conversion setup failed: ${err?.message || err}`,
+        });
       });
-    });
 
-    return job;
+      return job;
+    } catch (err) {
+      release();
+      throw err;
+    }
   }
 
   async function executeYtDlp(
@@ -124,7 +146,8 @@ export namespace ConversionService {
     format: string,
     bitrate: string,
     displayFileName: string,
-    options: ConvertRequestOptions
+    options: ConvertRequestOptions,
+    release: () => void
   ): Promise<void> {
     const outputTemplate = path.join(FileService.getDownloadsDir(), `${jobId}.%(ext)s`);
     const cookiesPath = CookieService.getCookiesPath();
@@ -231,6 +254,7 @@ export namespace ConversionService {
 
     const child = spawn(launch.command, args, {
       env: ytdlpEnv(),
+      windowsHide: true,
     });
     JobManager.registerProcess(jobId, child);
 
@@ -239,10 +263,12 @@ export namespace ConversionService {
     let timedOut = false;
     const timeout = setTimeout(() => {
       timedOut = true;
-      try {
-        child.kill('SIGTERM');
-      } catch {
-        return;
+      if (!JobManager.terminateProcess(jobId)) {
+        try {
+          child.kill('SIGTERM');
+        } catch (err) {
+          console.warn(`Could not stop timed-out conversion ${jobId}:`, err);
+        }
       }
       JobManager.updateJob(jobId, {
         status: 'error',
@@ -286,11 +312,25 @@ export namespace ConversionService {
       stderrBuffer += chunk.toString();
     });
 
-    child.on('close', async code => {
+    child.on('close', code => {
       clearTimeout(timeout);
       JobManager.clearProcess(jobId);
-      if (spawnFailed) return;
-      if (timedOut) return;
+      release();
+      if (spawnFailed || timedOut) return;
+      void finishConversion(code).catch(err => {
+        const current = JobManager.getJob(jobId);
+        if (current && current.status !== 'completed') {
+          JobManager.updateJob(jobId, {
+            status: 'error',
+            error: `Conversion finished, but the result could not be indexed: ${err instanceof Error ? err.message : String(err)}`,
+          });
+        } else {
+          console.error(`Post-conversion indexing failed for ${jobId}:`, err);
+        }
+      });
+    });
+
+    async function finishConversion(code: number | null): Promise<void> {
       if (code !== 0) {
         const isBot =
           /sign in to confirm|not a bot|bot|login_required|cookies-from-browser|403/i.test(
@@ -384,7 +424,7 @@ export namespace ConversionService {
         progress: 100,
         stageMessage:
           format === 'best' || format === 'opus' || format === 'm4a'
-            ? `Highest native audio stream extracted bit-for-bit (~${actualExt === 'opus' ? '160k Opus' : '128k AAC'})!`
+            ? `Extracted ${actualExt === 'opus' ? 'Opus' : 'AAC'} audio.`
             : 'Audio converted successfully!',
         title: fileTitle,
         author: fileAuthor,
@@ -393,7 +433,6 @@ export namespace ConversionService {
         outputFilePath: finalFile,
         outputFileName: finalName,
         fileSizeBytes: fileStat.size,
-        downloadUrl: `/api/download/${jobId}`,
         streamUrl: PreviewService.isEligible(actualExt)
           ? `/api/stream/${jobId}?preview=mp3`
           : `/api/stream/${jobId}`,
@@ -427,11 +466,12 @@ export namespace ConversionService {
           completedAt: updated.completedAt ?? Date.now(),
         });
       }
-    });
+    }
 
     child.on('error', err => {
       clearTimeout(timeout);
       JobManager.clearProcess(jobId);
+      release();
       spawnFailed = true;
       JobManager.updateJob(jobId, {
         status: 'error',

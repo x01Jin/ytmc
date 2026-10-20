@@ -93,11 +93,24 @@ export interface ConversionJob {
   outputFilePath?: string;
   outputFileName?: string;
   fileSizeBytes?: number;
-  downloadUrl?: string;
   streamUrl?: string;
   createdAt: number;
   completedAt?: number;
   tags?: MusicTags;
+}
+
+export interface EngineReadiness {
+  ytDlp: boolean | null;
+  ytDlpError: string | null;
+  ffmpeg: boolean | null;
+  pot: boolean | null;
+  library: boolean;
+}
+
+export interface EngineHealth {
+  status: string;
+  time: string;
+  readiness: EngineReadiness;
 }
 
 export interface CookieStatus {
@@ -112,8 +125,6 @@ export interface CookieStatus {
 
 export interface AppSettings {
   downloadsDir: string;
-  filenameTemplate: string;
-  revealAfterConvert: boolean;
   defaultDownloadsDir?: string;
   isCustom?: boolean;
 }
@@ -135,23 +146,10 @@ export interface LibraryRecord {
   hasCover?: boolean;
 }
 
-export interface LooseLibraryFile {
-  id: string;
-  fileName: string;
-  filePath: string;
-  sizeBytes: number;
-  mtimeMs: number;
-  ext: string;
-}
-
 export interface LibraryData {
   downloadsDir: string;
   records: LibraryRecord[];
-  looseFiles: LooseLibraryFile[];
   totalSizeBytes: number;
-  total?: number;
-  page?: number;
-  pageSize?: number;
 }
 
 export interface HistoryEntry {

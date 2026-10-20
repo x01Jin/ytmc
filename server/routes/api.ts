@@ -2,7 +2,7 @@ import express, { NextFunction, Request, Response, Router } from 'express';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import path from 'path';
-import { DEFAULT_DEMO_TRACKS, DOWNLOADS_DIR } from '../config.js';
+import { DOWNLOADS_DIR } from '../config.js';
 import { AudioTagService, MusicTags } from '../services/audioTagService.js';
 import { isFetchableArtworkUrl, readAudioMetadata } from '../services/audioMetadata.js';
 import { CoverUnsupportedError } from '../services/audioWrite.js';
@@ -16,7 +16,7 @@ import { CookieService } from '../services/cookieService.js';
 import { FileService, AUDIO_EXTENSIONS } from '../services/fileService.js';
 import { HistoryStore } from '../services/historyStore.js';
 import { JobManager } from '../services/jobManager.js';
-import { LibraryStore, isSameFilePath } from '../services/libraryStore.js';
+import { LibraryStore, type LibraryRecord } from '../services/libraryStore.js';
 import { MetadataService } from '../services/metadataService.js';
 import { SettingsService } from '../services/settingsService.js';
 import { TagFetcherService } from '../services/tagFetcherService.js';
@@ -37,6 +37,36 @@ function asyncHandler(
   };
 }
 
+async function mapLimit<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results: R[] = [];
+  let next = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const index = next++;
+      if (index >= items.length) return;
+      results[index] = await fn(items[index]);
+    }
+  });
+  await Promise.all(workers);
+  return results;
+}
+
+function settingsPayload(settings: { downloadsDir: string }): {
+  downloadsDir: string;
+  defaultDownloadsDir: string;
+  isCustom: boolean;
+} {
+  return {
+    downloadsDir: settings.downloadsDir,
+    defaultDownloadsDir: DOWNLOADS_DIR,
+    isCustom: path.normalize(settings.downloadsDir) !== path.normalize(DOWNLOADS_DIR),
+  };
+}
+
 function resolveAudioFile(id: string): { filePath: string; fileName: string } | null {
   const job = JobManager.getJob(id);
   if (job?.outputFilePath && fs.existsSync(job.outputFilePath)) {
@@ -45,7 +75,7 @@ function resolveAudioFile(id: string): { filePath: string; fileName: string } | 
       fileName: job.outputFileName || path.basename(job.outputFilePath),
     };
   }
-  const record = LibraryStore.list().find(r => r.jobId === id);
+  const record = LibraryStore.findByJobId(id);
   if (record && fs.existsSync(record.filePath)) {
     return { filePath: record.filePath, fileName: record.fileName };
   }
@@ -63,7 +93,7 @@ function resolveLibraryTarget(id: string): {
   tags?: MusicTags;
 } | null {
   const job = JobManager.getJob(id);
-  const record = LibraryStore.list().find(r => r.jobId === id);
+  const record = LibraryStore.findByJobId(id);
   const filePath =
     job?.outputFilePath && fs.existsSync(job.outputFilePath)
       ? job.outputFilePath
@@ -99,7 +129,7 @@ function syncLibraryIndexes(
   }
 ): void {
   const job = JobManager.getJob(id);
-  const existing = LibraryStore.list().find(record => record.jobId === id);
+  const existing = LibraryStore.findByJobId(id);
   if (job) {
     JobManager.updateJob(id, {
       title: update.title,
@@ -447,31 +477,16 @@ apiRouter.delete('/cookies', (req: Request, res: Response) => {
   res.json(result);
 });
 
-apiRouter.get('/demo-tracks', (req: Request, res: Response) => {
-  res.json({ success: true, data: DEFAULT_DEMO_TRACKS });
-});
-
 apiRouter.get('/settings', (req: Request, res: Response) => {
   const settings = SettingsService.getSettings();
-  res.json({
-    success: true,
-    data: {
-      ...settings,
-      defaultDownloadsDir: DOWNLOADS_DIR,
-      isCustom: path.normalize(settings.downloadsDir) !== path.normalize(DOWNLOADS_DIR),
-    },
-  });
+  res.json({ success: true, data: settingsPayload(settings) });
 });
 
 apiRouter.patch('/settings', (req: Request, res: Response) => {
   try {
-    const { downloadsDir, filenameTemplate, revealAfterConvert } = req.body ?? {};
-    const settings = SettingsService.updateSettings({
-      downloadsDir,
-      filenameTemplate,
-      revealAfterConvert,
-    });
-    res.json({ success: true, data: settings });
+    const { downloadsDir } = req.body ?? {};
+    const settings = SettingsService.updateSettings({ downloadsDir });
+    res.json({ success: true, data: settingsPayload(settings) });
   } catch (error: any) {
     res.status(400).json({ success: false, error: error.message || 'Invalid settings' });
   }
@@ -479,20 +494,16 @@ apiRouter.patch('/settings', (req: Request, res: Response) => {
 
 apiRouter.post('/settings/reset', (req: Request, res: Response) => {
   const settings = SettingsService.resetSettings();
-  res.json({ success: true, data: settings });
+  res.json({ success: true, data: settingsPayload(settings) });
 });
 
 apiRouter.get(
   '/library',
-  asyncHandler(async (req: Request, res: Response) => {
-    const page = Math.max(1, parseInt(String(req.query.page ?? '1'), 10) || 1);
-    const pageSize = Math.min(
-      200,
-      Math.max(1, parseInt(String(req.query.pageSize ?? '100'), 10) || 100)
-    );
-    let records = LibraryStore.list();
-    const pending: Parameters<typeof LibraryStore.upsertMany>[0] = [];
-    for (const record of records) {
+  asyncHandler(async (_req: Request, res: Response) => {
+    const records = LibraryStore.list();
+    const updates = new Map<string, LibraryRecord>();
+
+    await mapLimit(records, 4, async record => {
       const needsMeta = !record.tags || record.hasCover === undefined;
       const meta = needsMeta ? await readAudioMetadata(record.filePath).catch(() => null) : null;
       const tags = record.tags ?? meta?.tags;
@@ -507,18 +518,14 @@ apiRouter.get(
         thumbnail !== record.thumbnail ||
         sourceThumbnail !== record.sourceThumbnail
       ) {
-        pending.push({ ...record, thumbnail, sourceThumbnail, tags, hasCover });
+        updates.set(record.jobId, { ...record, thumbnail, sourceThumbnail, tags, hasCover });
       }
-    }
+    });
+
     const scanned = FileService.scanLibrary();
-    const known = new Set(records.map(r => r.jobId));
-    for (const file of scanned) {
-      if (
-        records.some(r => isSameFilePath(r.filePath, file.filePath)) ||
-        known.has(`file:${file.fileName}`)
-      ) {
-        continue;
-      }
+    const pending: LibraryRecord[] = [];
+    await mapLimit(scanned, 4, async file => {
+      if (LibraryStore.findByPath(file.filePath)) return;
       const meta = await readAudioMetadata(file.filePath).catch(() => null);
       const tags = meta?.tags;
       pending.push({
@@ -536,29 +543,20 @@ apiRouter.get(
         tags,
         hasCover: meta?.cover ? true : false,
       });
+    });
+
+    if (updates.size > 0 || pending.length > 0) {
+      LibraryStore.upsertMany([...updates.values(), ...pending]);
     }
-    if (pending.length > 0) {
-      LibraryStore.upsertMany(pending);
-      records = LibraryStore.list();
-    }
-    const looseFiles = scanned.filter(
-      f => !records.some(r => isSameFilePath(r.filePath, f.filePath))
-    );
-    const totalSizeBytes =
-      records.reduce((sum, r) => sum + r.fileSizeBytes, 0) +
-      looseFiles.reduce((sum, f) => sum + f.sizeBytes, 0);
-    const total = records.length;
-    const paged = records.slice((page - 1) * pageSize, page * pageSize);
+
+    const finalRecords = LibraryStore.list();
+    const totalSizeBytes = finalRecords.reduce((sum, record) => sum + record.fileSizeBytes, 0);
     res.json({
       success: true,
       data: {
         downloadsDir: FileService.getDownloadsDir(),
-        records: paged,
-        looseFiles,
+        records: finalRecords,
         totalSizeBytes,
-        total,
-        page,
-        pageSize,
       },
     });
   })
@@ -623,7 +621,7 @@ apiRouter.post(
 apiRouter.get(
   '/library/:id/artwork',
   asyncHandler(async (req: Request, res: Response) => {
-    const record = LibraryStore.list().find(item => item.jobId === req.params.id);
+    const record = LibraryStore.findByJobId(req.params.id);
     if (!record) {
       res.status(404).end();
       return;
@@ -643,7 +641,7 @@ apiRouter.get(
 
 apiRouter.delete('/library/:id', (req: Request, res: Response) => {
   const id = req.params.id;
-  const record = LibraryStore.list().find(r => r.jobId === id);
+  const record = LibraryStore.findByJobId(id);
   const job = JobManager.getJob(id);
   const filePath = record?.filePath ?? job?.outputFilePath;
   if (!filePath || !fs.existsSync(filePath)) {
@@ -892,16 +890,19 @@ apiRouter.post(
         spawn('explorer', ['/select,', absolute], {
           detached: true,
           stdio: 'ignore',
+          windowsHide: true,
         }).unref();
       } else if (process.platform === 'darwin') {
         spawn('open', ['-R', absolute], {
           detached: true,
           stdio: 'ignore',
+          windowsHide: true,
         }).unref();
       } else {
         spawn('xdg-open', [path.dirname(absolute)], {
           detached: true,
           stdio: 'ignore',
+          windowsHide: true,
         }).unref();
       }
       res.json({ success: true, path: absolute });
@@ -998,7 +999,7 @@ apiRouter.post(
         ...tags,
         coverUrl: usableCoverUrl,
       };
-      const storedBefore = LibraryStore.list().find(r => r.jobId === jobId);
+      const storedBefore = LibraryStore.findByJobId(jobId);
       const previousStored = storedBefore?.tags;
       const existingSource = storedBefore?.source;
       const existingSourceThumbnail = storedBefore?.sourceThumbnail;

@@ -20,6 +20,7 @@ function startPotServer(): void {
       potProcess = spawn(BGUTIL_PATH, ['server', '-p', String(POT_PORT), '--host', '127.0.0.1'], {
         detached: false,
         stdio: 'ignore',
+        windowsHide: true,
       });
       potProcess.on('error', (err: Error) => {
         console.warn('POT sidecar process error:', err.message);
@@ -147,6 +148,10 @@ export async function startServer(): Promise<StartedServer> {
     });
   });
 
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ success: false, error: 'API endpoint not found' });
+  });
+
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
@@ -159,8 +164,23 @@ export async function startServer(): Promise<StartedServer> {
     app.use(vite.middlewares);
   } else {
     const distPath = STATIC_DIR;
-    app.use(express.static(distPath, { maxAge: '1d', etag: true }));
-    app.get('*', (req, res) => {
+    app.use(
+      express.static(distPath, {
+        index: false,
+        maxAge: '1h',
+        setHeaders: (res, filePath) => {
+          const normalized = filePath.replace(/\\/g, '/');
+          if (normalized.includes('/assets/')) {
+            res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+          } else if (normalized.endsWith('.html')) {
+            res.setHeader('Cache-Control', 'no-store');
+          } else {
+            res.setHeader('Cache-Control', 'public, max-age=3600');
+          }
+        },
+      })
+    );
+    app.get('*', (_req, res) => {
       res.set('Cache-Control', 'no-store');
       res.sendFile(path.join(distPath, 'index.html'));
     });

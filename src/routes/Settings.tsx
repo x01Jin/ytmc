@@ -1,4 +1,4 @@
-import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { UpdatePanel } from '../components/UpdatePanel';
 import { useSession, useSettings } from '../store/appStore';
 
@@ -12,7 +12,6 @@ export function SettingsRoute() {
   const { state: session, actions: sessionActions } = useSession();
 
   const [folder, setFolder] = useState('');
-  const [revealAfterConvert, setRevealAfterConvert] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [savedTick, setSavedTick] = useState(false);
@@ -24,7 +23,6 @@ export function SettingsRoute() {
     if (settings !== prevSettings) {
       setPrevSettings(settings);
       setFolder(settings?.downloadsDir ?? '');
-      setRevealAfterConvert(settings?.revealAfterConvert ?? false);
     }
   }, [settings, prevSettings]);
 
@@ -53,7 +51,7 @@ export function SettingsRoute() {
     setSaveError(null);
     setSavedTick(false);
     try {
-      await actions.save({ downloadsDir: trimmedFolder, revealAfterConvert });
+      await actions.save({ downloadsDir: trimmedFolder });
       setSavedTick(true);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : 'Could not save settings.');
@@ -128,16 +126,6 @@ export function SettingsRoute() {
           </p>
         )}
 
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={revealAfterConvert}
-            onChange={e => setRevealAfterConvert(e.target.checked)}
-            className="h-4 w-4 accent-[#7c5cff]"
-          />
-          Show each finished file in Explorer
-        </label>
-
         {saveError && (
           <div
             ref={errorRef}
@@ -195,7 +183,6 @@ export function SettingsRoute() {
             isOpen={isCookieModalOpen}
             onClose={() => {
               setIsCookieModalOpen(false);
-              void sessionActions.refresh();
             }}
             status={session.status}
             onStatusUpdated={next => sessionActions.update(next)}

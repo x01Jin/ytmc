@@ -124,7 +124,25 @@ export async function resolveCoverInput(input: {
         },
       });
       if (!res.ok) return { cover: null, status: 'fetch-failed' };
-      const cover = toCover(Buffer.from(await res.arrayBuffer()));
+      const declared = Number(res.headers.get('content-length'));
+      if (Number.isFinite(declared) && declared > COVER_MAX_BYTES) {
+        return { cover: null, status: 'too-large' };
+      }
+      if (!res.body) return { cover: null, status: 'fetch-failed' };
+      const reader = res.body.getReader();
+      const chunks: Buffer[] = [];
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > COVER_MAX_BYTES) {
+          await reader.cancel();
+          return { cover: null, status: 'too-large' };
+        }
+        chunks.push(Buffer.from(value));
+      }
+      const cover = toCover(Buffer.concat(chunks, total));
       return cover ? { cover, status: 'ok' } : { cover: null, status: 'too-large' };
     } catch {
       return { cover: null, status: 'fetch-failed' };

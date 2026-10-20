@@ -1,10 +1,5 @@
 export interface DesktopBridge {
-  getDownloadsDefault: () => Promise<string>;
   pickFolder: () => Promise<string | null>;
-  revealInExplorer: (absolutePath: string) => Promise<void>;
-  openFile: (absolutePath: string) => Promise<void>;
-  getBackendPort: () => Promise<number | null>;
-  getAppVersion: () => Promise<string>;
 }
 
 export interface SplashBridge {

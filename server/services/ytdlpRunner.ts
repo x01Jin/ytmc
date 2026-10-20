@@ -148,10 +148,19 @@ export async function ensureFfmpeg(): Promise<string | null> {
   const cmd = fs.existsSync(FFMPEG_PATH) ? FFMPEG_PATH : 'ffmpeg';
   try {
     const version: string = await new Promise((resolve, reject) => {
-      execFile(cmd, ['-version'], { timeout: FFMPEG_VERSION_TIMEOUT_MS }, (err, stdout) => {
-        if (err) reject(err);
-        else resolve(String(stdout).split('\n')[0].trim());
-      });
+      execFile(
+        cmd,
+        ['-version'],
+        {
+          timeout: FFMPEG_VERSION_TIMEOUT_MS,
+          windowsHide: true,
+          maxBuffer: 1024 * 1024,
+        },
+        (err, stdout) => {
+          if (err) reject(err);
+          else resolve(String(stdout).split('\n')[0].trim());
+        }
+      );
     });
     console.log(`ffmpeg ready: ${version} via "${cmd}"`);
     return version;

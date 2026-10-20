@@ -250,6 +250,8 @@ export namespace CookieService {
         args,
         {
           timeout: 60000,
+          windowsHide: true,
+          maxBuffer: 16 * 1024 * 1024,
           env: ytdlpEnv(),
         },
         (error, stdout, stderr) => {

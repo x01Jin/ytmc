@@ -30,15 +30,20 @@ function previewPath(jobId: string): string {
 
 function runFfmpeg(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
-    execFile(ffmpegCmd(), args, { timeout: PREVIEW_TIMEOUT_MS }, (err, _stdout, stderr) => {
-      if (err) {
-        const raw = String(stderr || err.message);
-        const tail = raw.length > FFMPEG_ERROR_TAIL ? `…${raw.slice(-FFMPEG_ERROR_TAIL)}` : raw;
-        reject(new Error(`Preview transcode failed: ${tail}`));
-      } else {
-        resolve();
+    execFile(
+      ffmpegCmd(),
+      args,
+      { timeout: PREVIEW_TIMEOUT_MS, windowsHide: true, maxBuffer: 8 * 1024 * 1024 },
+      (err, _stdout, stderr) => {
+        if (err) {
+          const raw = String(stderr || err.message);
+          const tail = raw.length > FFMPEG_ERROR_TAIL ? `…${raw.slice(-FFMPEG_ERROR_TAIL)}` : raw;
+          reject(new Error(`Preview transcode failed: ${tail}`));
+        } else {
+          resolve();
+        }
       }
-    });
+    );
   });
 }
 

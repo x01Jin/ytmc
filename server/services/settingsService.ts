@@ -4,8 +4,6 @@ import { DATA_DIR, DOWNLOADS_DIR } from '../config.js';
 
 export interface AppSettings {
   downloadsDir: string;
-  filenameTemplate: string;
-  revealAfterConvert: boolean;
 }
 
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
@@ -13,9 +11,9 @@ export const WRITE_TEST_FILENAME = '.writetest';
 
 const DEFAULTS: AppSettings = {
   downloadsDir: DOWNLOADS_DIR,
-  filenameTemplate: '{artist} - {title}.{ext}',
-  revealAfterConvert: false,
 };
+
+let cached: AppSettings | null = null;
 
 function hasIllegalSegmentChar(seg: string): boolean {
   for (const ch of seg) {
@@ -83,7 +81,8 @@ function readStored(): Partial<AppSettings> {
     if (!fs.existsSync(SETTINGS_FILE)) return {};
     const raw = fs.readFileSync(SETTINGS_FILE, 'utf8');
     const parsed = JSON.parse(raw) as Partial<AppSettings>;
-    return parsed && typeof parsed === 'object' ? parsed : {};
+    if (!parsed || typeof parsed !== 'object') return {};
+    return typeof parsed.downloadsDir === 'string' ? { downloadsDir: parsed.downloadsDir } : {};
   } catch {
     return {};
   }
@@ -96,18 +95,23 @@ function atomicWriteJson(filePath: string, value: unknown): void {
   fs.renameSync(tmp, filePath);
 }
 
+function currentSettings(): AppSettings {
+  if (!cached) cached = { ...DEFAULTS, ...readStored() };
+  return cached;
+}
+
 export namespace SettingsService {
   export function getSettings(): AppSettings {
-    return { ...DEFAULTS, ...readStored() };
+    return { ...currentSettings() };
   }
 
   export function updateSettings(patch: Partial<AppSettings>): AppSettings {
-    const current = SettingsService.getSettings();
+    if (patch.downloadsDir !== undefined && typeof patch.downloadsDir !== 'string') {
+      throw new Error('Library folder must be a path string.');
+    }
+    const current = currentSettings();
     const next: AppSettings = {
       downloadsDir: (patch.downloadsDir ?? current.downloadsDir).trim(),
-      filenameTemplate:
-        (patch.filenameTemplate ?? current.filenameTemplate).trim() || DEFAULTS.filenameTemplate,
-      revealAfterConvert: patch.revealAfterConvert ?? current.revealAfterConvert,
     };
     const error = validateDownloadsDir(next.downloadsDir);
     if (error) throw new Error(error);
@@ -120,12 +124,14 @@ export namespace SettingsService {
       throw new Error('Folder is not writable. Pick a folder you can write to.');
     }
     atomicWriteJson(SETTINGS_FILE, next);
-    return next;
+    cached = next;
+    return { ...next };
   }
 
   export function resetSettings(): AppSettings {
     atomicWriteJson(SETTINGS_FILE, DEFAULTS);
     fs.mkdirSync(DEFAULTS.downloadsDir, { recursive: true });
-    return { ...DEFAULTS };
+    cached = { ...DEFAULTS };
+    return { ...cached };
   }
 }

@@ -2,7 +2,7 @@
   "name": "youtube-to-music-converter",
   "version": "1.2.4",
   "private": true,
-  "description": "Convert YouTube videos to studio-grade MP3, M4A, FLAC, WAV, or Opus audio with ID3 tagging.",
+  "description": "Convert YouTube videos to MP3, M4A, FLAC, WAV, or Opus audio with ID3 tagging.",
   "license": "GPL-3.0-only",
   "type": "module",
   "main": "dist-electron/main.cjs",
@@ -19,9 +19,10 @@
     "release:sign": "tsx scripts/sign-release.mts",
     "release:verify": "tsx scripts/verify-release.mts",
     "fetch:ytdlp": "tsx scripts/fetch-ytdlp.mts",
+    "verify:binaries": "tsx scripts/verify-binaries.mts",
     "test:updater": "tsc -p electron/tsconfig.json && node --test \"scripts/updater-tests/*.test.mjs\"",
     "electron:dev": "concurrently -k -n \"server,electron\" \"npm run dev\" \"wait-on http-get://127.0.0.1:3000/api/health -t 60s -l && cross-env NODE_ENV=development ELECTRON_DEV_URL=http://127.0.0.1:3000 electron .\"",
-    "electron:build": "npm run fetch:ytdlp && npm run build && node -e \"const fs=require('fs'); if (!fs.existsSync('dist/server.cjs')) { console.error('Missing dist/server.cjs. Build the backend before packaging.'); process.exit(1); }\" && tsc -p electron/tsconfig.json && esbuild electron/updater/helper.cts --bundle --platform=node --format=cjs --packages=bundle --target=node20 --outfile=dist-electron/updater-helper.cjs && electron-builder --win zip"
+    "electron:build": "npm run fetch:ytdlp && npm run verify:binaries && npm run build && node -e \"const fs=require('fs'); if (!fs.existsSync('dist/server.cjs')) { console.error('Missing dist/server.cjs. Build the backend before packaging.'); process.exit(1); }\" && tsc -p electron/tsconfig.json && esbuild electron/updater/helper.cts --bundle --platform=node --format=cjs --packages=bundle --target=node20 --outfile=dist-electron/updater-helper.cjs && electron-builder --win zip"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
@@ -82,6 +83,13 @@
       {
         "from": "dist/server.cjs",
         "to": "server.cjs"
+      },
+      {
+        "from": "plugins/",
+        "to": "plugins",
+        "filter": [
+          "**/*.py"
+        ]
       }
     ],
     "win": {

@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import {
   AppShell,
   ShellContent,
@@ -10,6 +10,20 @@ import {
 } from './components/AppShell';
 import { UpdateNotice } from './components/UpdateNotice';
 import { ConvertRoute } from './routes/Convert';
+import {
+  ConvertDraftProvider,
+  HistoryProvider,
+  JobsProvider,
+  LibraryProvider,
+  SessionProvider,
+  SettingsProvider,
+  useJobs,
+  useLibrary,
+  useSession,
+  useSettings,
+} from './store/appStore';
+import { ApiClient } from './services/apiClient';
+import { formatFileSize } from './utils/format';
 
 const YouTubeRoute = lazy(() =>
   import('./routes/YouTube').then(m => ({ default: m.YouTubeRoute }))
@@ -32,20 +46,6 @@ function RouteFallback() {
     </div>
   );
 }
-import {
-  ConvertDraftProvider,
-  HistoryProvider,
-  JobsProvider,
-  LibraryProvider,
-  SessionProvider,
-  SettingsProvider,
-  useJobs,
-  useLibrary,
-  useSession,
-  useSettings,
-} from './store/appStore';
-import { ApiClient } from './services/apiClient';
-import { formatFileSize } from './utils/format';
 
 function ShellChrome() {
   const { route, navigate } = useHashRoute();
@@ -53,6 +53,33 @@ function ShellChrome() {
   const { state: libraryState } = useLibrary();
   const { state: settingsState } = useSettings();
   const { state: session } = useSession();
+  const [engineOk, setEngineOk] = useState(false);
+  const [youtubeMounted, setYoutubeMounted] = useState(false);
+
+  useEffect(() => {
+    if (route === 'youtube') setYoutubeMounted(true);
+  }, [route]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      ApiClient.getHealth()
+        .then(health => {
+          if (!cancelled) {
+            setEngineOk(health.readiness.ytDlp === true && health.readiness.ffmpeg === true);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setEngineOk(false);
+        });
+    };
+    load();
+    const timer = window.setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, []);
 
   const activeCount =
     jobs.activeJob && jobs.activeJob.status !== 'completed' && jobs.activeJob.status !== 'error'
@@ -78,11 +105,13 @@ function ShellChrome() {
         <ShellContent>
           <UpdateNotice />
           {route === 'convert' && <ConvertRoute />}
-          <div className={route === 'youtube' ? 'contents' : 'hidden'}>
-            <Suspense fallback={<RouteFallback />}>
-              <YouTubeRoute onDownload={() => navigate('convert')} active={route === 'youtube'} />
-            </Suspense>
-          </div>
+          {youtubeMounted && (
+            <div className={route === 'youtube' ? 'contents' : 'hidden'}>
+              <Suspense fallback={<RouteFallback />}>
+                <YouTubeRoute onDownload={() => navigate('convert')} active={route === 'youtube'} />
+              </Suspense>
+            </div>
+          )}
           {route === 'library' && (
             <Suspense fallback={<RouteFallback />}>
               <LibraryRoute />
@@ -106,7 +135,7 @@ function ShellChrome() {
         </ShellContent>
       </ShellMain>
       <StatusBar
-        engineOk={!libraryState.error}
+        engineOk={engineOk}
         sessionOk={session.status.configured}
         folderLabel={folderLabel}
         fileCount={fileCount}

@@ -60,15 +60,20 @@ function runTool(
   timeoutMs: number
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
-    execFile(cmd, args, { timeout: timeoutMs }, (err, stdout, stderr) => {
-      if (err) {
-        const raw = String(stderr || err.message);
-        const tail = raw.length > 800 ? `…${raw.slice(-800)}` : raw;
-        reject(new Error(`${path.basename(cmd)} failed: ${tail}`));
-      } else {
-        resolve({ stdout: String(stdout), stderr: String(stderr) });
+    execFile(
+      cmd,
+      args,
+      { timeout: timeoutMs, windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (err) {
+          const raw = String(stderr || err.message);
+          const tail = raw.length > 800 ? `…${raw.slice(-800)}` : raw;
+          reject(new Error(`${path.basename(cmd)} failed: ${tail}`));
+        } else {
+          resolve({ stdout: String(stdout), stderr: String(stderr) });
+        }
       }
-    });
+    );
   });
 }
 

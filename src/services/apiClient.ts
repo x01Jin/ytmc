@@ -3,6 +3,7 @@ import type {
   ConversionJob,
   ConversionOptions,
   CookieStatus,
+  EngineHealth,
   HistoryEntry,
   LibraryData,
   MusicTagCandidate,
@@ -12,7 +13,8 @@ import type {
   YouTubeSearchResult,
 } from '../types';
 
-let loopbackTokenPromise: Promise<string> | null = null;
+let loopbackToken: { value: string; at: number } | null = null;
+const LOOPBACK_TOKEN_TTL_MS = 60_000;
 
 const getDedup = new Map<string, { at: number; promise: Promise<unknown> }>();
 const GET_DEDUP_TTL_MS = 2000;
@@ -30,13 +32,18 @@ function dedupedGet<T>(key: string, loader: () => Promise<T>): Promise<T> {
 }
 
 async function getLoopbackToken(): Promise<string> {
-  if (!loopbackTokenPromise) {
-    loopbackTokenPromise = fetch('/api/health')
-      .then(res => res.json())
-      .then(json => (typeof json.loopbackToken === 'string' ? json.loopbackToken : ''))
-      .catch(() => '');
+  if (loopbackToken && Date.now() - loopbackToken.at < LOOPBACK_TOKEN_TTL_MS) {
+    return loopbackToken.value;
   }
-  return loopbackTokenPromise;
+  try {
+    const res = await fetch('/api/health');
+    const json = await res.json();
+    const value = typeof json.loopbackToken === 'string' ? json.loopbackToken : '';
+    loopbackToken = { value, at: Date.now() };
+    return value;
+  } catch {
+    return '';
+  }
 }
 
 async function mutatingHeaders(): Promise<Record<string, string>> {
@@ -53,6 +60,12 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 export namespace ApiClient {
+  export async function getHealth(): Promise<EngineHealth> {
+    const res = await fetch('/api/health');
+    if (!res.ok) throw new Error('Backend health check failed');
+    return res.json();
+  }
+
   export async function fetchVideoInfo(url: string): Promise<VideoMetadata> {
     const res = await fetch(`/api/info?url=${encodeURIComponent(url)}`, {
       headers: await authHeaders(),
@@ -202,15 +215,6 @@ export namespace ApiClient {
   }
 
   export function openExternalLink(url: string): void {
-    const desktop = (
-      window as unknown as {
-        desktop?: { openExternal?: (target: string) => void };
-      }
-    ).desktop;
-    if (desktop?.openExternal) {
-      desktop.openExternal(url);
-      return;
-    }
     window.open(url, '_blank', 'noopener,noreferrer');
   }
 
@@ -237,20 +241,18 @@ export namespace ApiClient {
   }
 
   export async function getCookieStatus(): Promise<CookieStatus> {
-    return dedupedGet('cookies', async () => {
-      const res = await fetch('/api/cookies', { headers: await authHeaders() });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        return {
-          configured: false,
-          sizeBytes: 0,
-          lineCount: 0,
-          lastModified: null,
-          sampleDomains: [],
-        };
-      }
-      return json.data;
-    });
+    const res = await fetch('/api/cookies', { headers: await authHeaders() });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      return {
+        configured: false,
+        sizeBytes: 0,
+        lineCount: 0,
+        lastModified: null,
+        sampleDomains: [],
+      };
+    }
+    return json.data;
   }
 
   export async function saveCookies(
@@ -353,14 +355,12 @@ export namespace ApiClient {
   }
 
   export async function getLibrary(): Promise<LibraryData> {
-    return dedupedGet('library', async () => {
-      const res = await fetch('/api/library', { headers: await authHeaders() });
-      const json = await res.json();
-      if (!res.ok || !json.success) {
-        throw new Error(json.error || 'Failed to load library');
-      }
-      return json.data;
-    });
+    const res = await fetch('/api/library', { headers: await authHeaders() });
+    const json = await res.json();
+    if (!res.ok || !json.success) {
+      throw new Error(json.error || 'Failed to load library');
+    }
+    return json.data;
   }
 
   export async function importLibraryFile(file: File): Promise<void> {

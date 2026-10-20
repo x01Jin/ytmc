@@ -401,8 +401,6 @@ function focusWindow(): void {
 }
 
 function registerIpc(): void {
-  ipcMain.handle('desktop:get-downloads-default', () => defaultLibraryDir());
-
   ipcMain.handle('desktop:pick-folder', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openDirectory', 'createDirectory'],
@@ -411,25 +409,6 @@ function registerIpc(): void {
     if (result.canceled || result.filePaths.length === 0) return null;
     return result.filePaths[0];
   });
-
-  ipcMain.handle('desktop:reveal', async (_event, absolutePath: string) => {
-    if (typeof absolutePath !== 'string' || !absolutePath) return;
-    const resolved = path.resolve(absolutePath);
-    if (!fs.existsSync(resolved)) return;
-    shell.showItemInFolder(resolved);
-  });
-
-  ipcMain.handle('desktop:open-file', async (_event, absolutePath: string) => {
-    if (typeof absolutePath !== 'string' || !absolutePath) return;
-    const resolved = path.resolve(absolutePath);
-    if (!fs.existsSync(resolved)) return;
-    const err = await shell.openPath(resolved);
-    if (err) console.error(`openPath failed: ${err}`);
-  });
-
-  ipcMain.handle('desktop:get-backend-port', () => (serverPort > 0 ? serverPort : null));
-
-  ipcMain.handle('desktop:get-app-version', () => app.getVersion());
 }
 
 function updateArgValue(prefix: string): string | null {

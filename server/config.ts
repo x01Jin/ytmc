@@ -1,5 +1,6 @@
-import { config } from 'dotenv';
+import fs from 'fs';
 import path from 'path';
+import { config } from 'dotenv';
 
 config();
 
@@ -35,7 +36,17 @@ export const FFMPEG_PATH =
 export const FFPROBE_PATH =
   process.env.FFPROBE_PATH ||
   path.join(BIN_DIR, process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe');
-export const BGUTIL_PATH = path.join(BIN_DIR, 'bgutil-pot');
+
+function resolveBgutilPath(): string {
+  if (process.env.BGUTIL_PATH) return process.env.BGUTIL_PATH;
+  const names = process.platform === 'win32' ? ['bgutil-pot.exe', 'bgutil-pot'] : ['bgutil-pot'];
+  return (
+    names.map(name => path.join(BIN_DIR, name)).find(candidate => fs.existsSync(candidate)) ??
+    path.join(BIN_DIR, names[0])
+  );
+}
+
+export const BGUTIL_PATH = resolveBgutilPath();
 function resolvePotPort(): number {
   const raw = process.env.POT_PORT;
   if (raw !== undefined && raw !== '') {
@@ -58,15 +69,3 @@ export const GUEST_COOKIES_FILE = path.join(DATA_DIR, 'guest_cookies.txt');
 export const SUPPORTED_FORMATS = ['best', 'opus', 'm4a', 'mp3', 'flac', 'wav'] as const;
 
 export const SUPPORTED_BITRATES = ['native', '160k', '128k', '192k', '256k', '320k'] as const;
-
-export const DEFAULT_DEMO_TRACKS = [
-  {
-    id: 'dQw4w9WgXcQ',
-    title: 'Rick Astley - Never Gonna Give You Up',
-    author: 'Rick Astley',
-    duration: '3:33',
-    thumbnail: 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg',
-    genre: 'Pop / Dance',
-    tag: 'Direct Conversion Verified',
-  },
-];

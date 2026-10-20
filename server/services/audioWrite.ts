@@ -175,13 +175,18 @@ function writeOpusMetadataFile(
 function runFfmpeg(ffmpegArgs: string[]): Promise<void> {
   const cmd = fs.existsSync(FFMPEG_PATH) ? FFMPEG_PATH : 'ffmpeg';
   return new Promise<void>((resolve, reject) => {
-    execFile(cmd, ffmpegArgs, { timeout: 60000 }, (err, _stdout, stderr) => {
-      if (err) {
-        reject(new Error(`FFmpeg tagging failed: ${stderr || err.message}`));
-      } else {
-        resolve();
+    execFile(
+      cmd,
+      ffmpegArgs,
+      { timeout: 60000, windowsHide: true, maxBuffer: 16 * 1024 * 1024 },
+      (err, _stdout, stderr) => {
+        if (err) {
+          reject(new Error(`FFmpeg tagging failed: ${stderr || err.message}`));
+        } else {
+          resolve();
+        }
       }
-    });
+    );
   });
 }
 

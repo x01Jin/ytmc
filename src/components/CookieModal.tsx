@@ -158,23 +158,19 @@ export const CookieModal: React.FC<CookieModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <div
         id="cookie-settings-modal"
-        className="px-panel flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden transition-colors"
+        className="px-panel flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden"
       >
-        <div className="p-4 sm:p-5 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between bg-zinc-50/50 dark:bg-zinc-950/50">
+        <div className="flex items-center justify-between border-b-2 border-px-line bg-px-panel-2 p-4 sm:p-5">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-[2px] bg-amber-50 dark:bg-amber-950/50 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-              <Cookie className="w-5 h-5" />
+            <div className="border-2 border-px-warn/50 bg-px-warn/10 p-2 text-px-warn">
+              <Cookie className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-zinc-900 dark:text-zinc-100">
-                YouTube Session & Authentication
-              </h3>
-              <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Node.js challenge solver & PO Token engine
-              </p>
+              <h3 className="text-base font-bold text-px-text">YouTube Session & Authentication</h3>
+              <p className="text-xs text-px-dim">Node.js challenge solver & PO Token engine</p>
             </div>
           </div>
 
@@ -182,29 +178,29 @@ export const CookieModal: React.FC<CookieModalProps> = ({
             id="close-cookie-modal-btn"
             type="button"
             onClick={onClose}
-            className="p-1.5 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 rounded-[2px] hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            className="px-btn !border-0 !bg-transparent !p-1.5 text-px-dim hover:!bg-px-panel"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
         </div>
 
-        <div className="p-4 sm:p-5 overflow-y-auto overscroll-contain space-y-4 text-xs">
+        <div className="space-y-4 overflow-y-auto overscroll-contain p-4 text-xs sm:p-5">
           <div
-            className={`p-3.5 rounded-[2px] border flex items-center justify-between transition-colors ${
+            className={`flex items-center justify-between border-2 p-3.5 ${
               status.configured
-                ? 'bg-emerald-50/90 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200'
-                : 'bg-zinc-50 dark:bg-zinc-950/60 border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300'
+                ? 'border-px-ok/40 bg-px-ok/10 text-px-text'
+                : 'border-px-line bg-px-bg/60 text-px-dim'
             }`}
           >
             <div className="flex items-start gap-2.5">
               {status.configured ? (
-                <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-px-ok" />
               ) : (
-                <AlertCircle className="w-5 h-5 text-zinc-400 dark:text-zinc-500 shrink-0 mt-0.5" />
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-px-dim" />
               )}
               <div>
                 <div className="flex items-center gap-1.5">
-                  <span className="font-semibold text-sm">
+                  <span className="text-sm font-semibold">
                     {status.configured
                       ? status.isAccountSession
                         ? 'Authenticated Account Session Active'
@@ -212,12 +208,12 @@ export const CookieModal: React.FC<CookieModalProps> = ({
                       : 'No Active Session'}
                   </span>
                   {status.configured && (
-                    <span className="px-1.5 py-0.5 text-[10px] font-medium rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                    <span className="border border-px-ok/40 bg-px-ok/10 px-1.5 py-0.5 text-[10px] font-medium text-px-ok">
                       {status.isAccountSession ? 'Personal Account' : 'Auto Guest'}
                     </span>
                   )}
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+                <p className="mt-0.5 text-[11px] text-px-dim">
                   {status.configured
                     ? `${status.lineCount} session entries loaded • Node.js JS challenge solver active`
                     : 'Click Auto-Fetch Guest Session or paste cookies below'}
@@ -230,9 +226,9 @@ export const CookieModal: React.FC<CookieModalProps> = ({
                 id="clear-cookies-btn"
                 type="button"
                 onClick={handleClear}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 p-1.5 rounded-[2px] hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
+                className="inline-flex items-center gap-1 p-1.5 text-[11px] font-semibold text-px-err hover:bg-px-err/10"
               >
-                <Trash2 className="w-3.5 h-3.5" />
+                <Trash2 className="h-3.5 w-3.5" />
                 <span>Reset</span>
               </button>
             )}
@@ -244,12 +240,12 @@ export const CookieModal: React.FC<CookieModalProps> = ({
               type="button"
               onClick={handleAutoFetch}
               disabled={isAutoFetching}
-              className="flex items-center justify-center gap-2 p-3 rounded-[2px] border border-rose-200 dark:border-rose-900 bg-rose-50/50 dark:bg-rose-950/30 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-rose-700 dark:text-rose-400 font-semibold transition-colors shadow-xs disabled:opacity-50"
+              className="px-btn !border-px-acc/60 !bg-px-acc/10 !p-3"
             >
               {isAutoFetching ? (
-                <Loader2 className="w-4 h-4 animate-spin text-rose-600 dark:text-rose-400" />
+                <Loader2 className="h-4 w-4 animate-spin text-px-acc" />
               ) : (
-                <Sparkles className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                <Sparkles className="h-4 w-4 text-px-acc" />
               )}
               <span>Auto-Fetch Guest Session</span>
             </button>
@@ -259,12 +255,12 @@ export const CookieModal: React.FC<CookieModalProps> = ({
               type="button"
               onClick={handleTestSession}
               disabled={isTesting}
-              className="flex items-center justify-center gap-2 p-3 rounded-[2px] border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-semibold transition-colors shadow-xs disabled:opacity-50"
+              className="px-btn !p-3"
             >
               {isTesting ? (
-                <Loader2 className="w-4 h-4 animate-spin text-zinc-600 dark:text-zinc-400" />
+                <Loader2 className="h-4 w-4 animate-spin text-px-dim" />
               ) : (
-                <RefreshCw className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+                <RefreshCw className="h-4 w-4 text-px-dim" />
               )}
               <span>Test Live Connection</span>
             </button>
@@ -272,43 +268,41 @@ export const CookieModal: React.FC<CookieModalProps> = ({
 
           {testResult && (
             <div
-              className={`p-3 rounded-[2px] border text-xs animate-in fade-in duration-150 ${
+              className={`border-2 p-3 text-xs ${
                 testResult.success
-                  ? 'bg-emerald-50/80 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
-                  : 'bg-rose-50/80 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
+                  ? 'border-px-ok/40 bg-px-ok/10 text-px-text'
+                  : 'border-px-err/40 bg-px-err/10 text-px-text'
               }`}
             >
               <div className="flex items-start gap-2">
                 {testResult.success ? (
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-px-ok" />
                 ) : (
-                  <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-px-err" />
                 )}
                 <div className="space-y-0.5">
                   <p className="font-semibold">{testResult.message}</p>
                   {testResult.title && (
-                    <p className="text-[11px] text-zinc-600 dark:text-zinc-400">
+                    <p className="text-[11px] text-px-dim">
                       Successfully verified stream parsing for:{' '}
-                      <span className="font-medium text-zinc-800 dark:text-zinc-200">
-                        {testResult.title}
-                      </span>
+                      <span className="font-medium text-px-text">{testResult.title}</span>
                     </p>
                   )}
                   {(testResult.strategy || testResult.errorDetails) && (
-                    <p className="text-[11px] text-zinc-600 dark:text-zinc-400">
+                    <p className="text-[11px] text-px-dim">
                       Path:{' '}
-                      <span className="font-medium" translate="no">
+                      <span className="font-medium text-px-text" translate="no">
                         {testResult.strategy === 'pot' ? 'PO Token sidecar' : 'no-POT fallback'}
                       </span>
                       {testResult.cookiesUsed ? ' • cookies sent' : ' • no cookies sent'}
                     </p>
                   )}
                   {testResult.errorDetails && (
-                    <details className="mt-1 rounded-[2px] border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60 p-2">
-                      <summary className="cursor-pointer font-medium text-zinc-700 dark:text-zinc-300">
+                    <details className="mt-1 border-2 border-px-line bg-px-panel p-2">
+                      <summary className="cursor-pointer font-medium text-px-text">
                         Technical details
                       </summary>
-                      <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-zinc-600 dark:text-zinc-400">
+                      <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap break-words font-mono text-[10px] leading-relaxed text-px-dim">
                         {testResult.errorDetails}
                       </pre>
                     </details>
@@ -320,16 +314,16 @@ export const CookieModal: React.FC<CookieModalProps> = ({
 
           {feedback && (
             <div
-              className={`p-3 rounded-[2px] border text-xs flex items-center gap-2 ${
+              className={`flex items-center gap-2 border-2 p-3 text-xs ${
                 feedback.type === 'success'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
-                  : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
+                  ? 'border-px-ok/40 bg-px-ok/10 text-px-text'
+                  : 'border-px-err/40 bg-px-err/10 text-px-text'
               }`}
             >
               {feedback.type === 'success' ? (
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                <CheckCircle2 className="h-4 w-4 shrink-0 text-px-ok" />
               ) : (
-                <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                <AlertCircle className="h-4 w-4 shrink-0 text-px-err" />
               )}
               <span>{feedback.message}</span>
             </div>
@@ -337,16 +331,16 @@ export const CookieModal: React.FC<CookieModalProps> = ({
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <label className="font-semibold text-zinc-800 dark:text-zinc-200">
+              <label className="font-semibold text-px-text">
                 Custom Account Cookies (Netscape / JSON)
               </label>
               <button
                 id="upload-cookie-file-btn"
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="inline-flex items-center gap-1 text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 font-medium text-xs cursor-pointer"
+                className="inline-flex cursor-pointer items-center gap-1 text-xs font-medium text-px-acc hover:text-px-text"
               >
-                <Upload className="w-3.5 h-3.5" />
+                <Upload className="h-3.5 w-3.5" />
                 <span>Upload cookies.txt</span>
               </button>
               <input
@@ -365,7 +359,7 @@ export const CookieModal: React.FC<CookieModalProps> = ({
               }}
               onDragLeave={() => setIsDragging(false)}
               onDrop={handleDrop}
-              className={`relative rounded-[2px] transition-colors ${isDragging ? 'ring-2 ring-rose-500 bg-rose-50/30 dark:bg-rose-950/30' : ''}`}
+              className={`relative ${isDragging ? 'bg-px-acc/10 ring-2 ring-px-acc' : ''}`}
             >
               <textarea
                 id="cookie-textarea"
@@ -373,24 +367,22 @@ export const CookieModal: React.FC<CookieModalProps> = ({
                 value={cookieText}
                 onChange={e => setCookieText(e.target.value)}
                 placeholder="# Netscape HTTP Cookie File&#10;.youtube.com&#9;TRUE&#9;/&#9;TRUE&#9;1789325080&#9;VISITOR_INFO1_LIVE&#9;...&#10;or paste exported JSON from Cookie-Editor / drop cookies.txt here"
-                className="w-full p-3 font-mono text-[11px] rounded-[2px] border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950/60 focus:bg-white dark:focus:bg-zinc-950 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 text-zinc-800 dark:text-zinc-200 resize-none leading-relaxed"
+                className="px-input w-full resize-none font-mono text-[11px] leading-relaxed"
               />
               {isDragging && (
-                <div className="absolute inset-0 flex items-center justify-center bg-rose-500/10 rounded-[2px] pointer-events-none">
-                  <span className="font-semibold text-rose-600 dark:text-rose-400 text-xs">
-                    Drop cookies.txt here
-                  </span>
+                <div className="pointer-events-none absolute inset-0 flex items-center justify-center bg-px-acc/10">
+                  <span className="text-xs font-semibold text-px-acc">Drop cookies.txt here</span>
                 </div>
               )}
             </div>
           </div>
 
-          <div className="p-3 rounded-[2px] bg-zinc-50 dark:bg-zinc-950/60 border border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400 space-y-1.5">
-            <div className="flex items-center gap-1.5 font-semibold text-zinc-800 dark:text-zinc-200">
-              <Cpu className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+          <div className="space-y-1.5 border-2 border-px-line bg-px-bg/60 p-3 text-px-dim">
+            <div className="flex items-center gap-1.5 font-semibold text-px-text">
+              <Cpu className="h-3.5 w-3.5 text-px-dim" />
               <span>How Automatic Sessions Work</span>
             </div>
-            <ul className="space-y-1 text-[11px] leading-relaxed list-disc list-inside text-zinc-600 dark:text-zinc-400">
+            <ul className="list-inside list-disc space-y-1 text-[11px] leading-relaxed">
               <li>
                 <strong>Auto-Fetch Guest Session:</strong> Requests fresh visitor cookies from
                 YouTube's homepage. These identify your session but do not unlock streams by
@@ -413,12 +405,12 @@ export const CookieModal: React.FC<CookieModalProps> = ({
           </div>
         </div>
 
-        <div className="p-4 border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-950/50 flex items-center justify-end gap-2">
+        <div className="flex items-center justify-end gap-2 border-t-2 border-px-line bg-px-panel-2 p-4">
           <button
             id="cancel-cookie-modal-btn"
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-[2px] text-xs font-semibold text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+            className="px-btn text-xs"
           >
             Close
           </button>
@@ -429,11 +421,11 @@ export const CookieModal: React.FC<CookieModalProps> = ({
               type="button"
               onClick={handleSave}
               disabled={isSaving}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[2px] text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 disabled:bg-zinc-300 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-600 disabled:cursor-not-allowed transition-colors shadow-xs"
+              className="px-btn px-btn-primary text-xs"
             >
               {isSaving ? (
                 <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
                   <span>Saving...</span>
                 </>
               ) : (

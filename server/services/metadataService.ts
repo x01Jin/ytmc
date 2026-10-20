@@ -118,6 +118,8 @@ export namespace MetadataService {
         args,
         {
           timeout: 45000,
+          windowsHide: true,
+          maxBuffer: 16 * 1024 * 1024,
           env: ytdlpEnv(),
         },
         (error, stdout, stderr) => {

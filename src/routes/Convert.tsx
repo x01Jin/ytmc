@@ -25,7 +25,7 @@ export function ConvertRoute() {
   const [isInspecting, setIsInspecting] = useState(false);
   const [inspectError, setInspectError] = useState<string | null>(null);
   const [isCookieModalOpen, setIsCookieModalOpen] = useState(false);
-  const [savedTitle, setSavedTitle] = useState<string | null>(null);
+  const [savedNotice, setSavedNotice] = useState<{ title: string } | null>(null);
   const completedIdRef = useRef<string | null>(null);
 
   const handleInspectUrl = useCallback(
@@ -74,10 +74,14 @@ export function ConvertRoute() {
     jobActions.resetActive();
     resetDraft();
     setInspectError(null);
-    setSavedTitle(title);
-    const timer = window.setTimeout(() => setSavedTitle(null), SAVE_BANNER_TIMEOUT_MS);
-    return () => window.clearTimeout(timer);
+    setSavedNotice({ title });
   }, [activeJob, jobActions, historyActions, libraryActions, resetDraft]);
+
+  useEffect(() => {
+    if (!savedNotice) return;
+    const timer = window.setTimeout(() => setSavedNotice(null), SAVE_BANNER_TIMEOUT_MS);
+    return () => window.clearTimeout(timer);
+  }, [savedNotice]);
 
   const [prevInspectUrl, setPrevInspectUrl] = useState<string | null>(null);
   useEffect(() => {
@@ -112,7 +116,7 @@ export function ConvertRoute() {
 
   return (
     <div className="space-y-2">
-      {savedTitle && (
+      {savedNotice && (
         <div
           role="status"
           className="px-panel fixed right-4 bottom-4 z-50 flex w-80 max-w-[calc(100vw-2rem)] items-center gap-3 border-px-ok p-3 text-xs sm:text-sm"
@@ -120,7 +124,7 @@ export function ConvertRoute() {
           <CheckCircle2 className="h-5 w-5 shrink-0 text-px-ok" aria-hidden="true" />
           <p>
             <span className="font-semibold">Saved to library</span>
-            <span className="block truncate text-px-dim">{savedTitle}</span>
+            <span className="block truncate text-px-dim">{savedNotice.title}</span>
           </p>
         </div>
       )}
