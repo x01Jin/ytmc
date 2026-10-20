@@ -17,7 +17,7 @@ contextBridge.exposeInMainWorld('updates', {
   cancelDownload: () => ipcRenderer.invoke('updates:cancel-download'),
   apply: () => ipcRenderer.invoke('updates:apply'),
   openRelease: () => ipcRenderer.invoke('updates:open-release'),
-  revealLog: () => ipcRenderer.invoke('updates:reveal-log'),
+  getReleaseNotes: () => ipcRenderer.invoke('updates:release-notes'),
   notifyRendererReady: () => ipcRenderer.invoke('updates:renderer-ready'),
   onState: (listener: (state: unknown) => void) => {
     ipcRenderer.on('updates:state', (_event, state: unknown) => listener(state));

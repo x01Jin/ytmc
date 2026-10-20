@@ -31,7 +31,6 @@ export interface UpdateState {
   phase: UpdatePhase;
   currentVersion: string;
   latestVersion: string | null;
-  notes: string | null;
   releaseUrl: string | null;
   archiveBytes: number | null;
   receivedBytes: number;
@@ -48,10 +47,14 @@ export interface UpdateState {
     detail?: string;
     restored?: boolean;
   } | null;
-  logPath: string | null;
   canDownload: boolean;
   canApply: boolean;
 }
+
+export type ReleaseNotesResult =
+  | { status: 'ok'; version: string; notes: string }
+  | { status: 'missing'; version: string }
+  | { status: 'error'; reason: string; message: string };
 
 export interface UpdateBridge {
   getState: () => Promise<UpdateState>;
@@ -60,7 +63,7 @@ export interface UpdateBridge {
   cancelDownload: () => Promise<void>;
   apply: () => Promise<void>;
   openRelease: () => Promise<void>;
-  revealLog: () => Promise<void>;
+  getReleaseNotes: () => Promise<ReleaseNotesResult>;
   notifyRendererReady: () => Promise<void>;
   onState: (listener: (state: UpdateState) => void) => void;
 }

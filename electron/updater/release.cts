@@ -11,7 +11,6 @@ export interface ReleaseAsset {
 export interface ReleaseCandidate {
   version: string;
   tag: string;
-  notes: string;
   publishedAt: string;
   archive: ReleaseAsset;
   signature: ReleaseAsset;
@@ -23,6 +22,11 @@ export type ReleaseLookup =
   | { status: 'invalid-release'; version: string; reason: string }
   | { status: 'error'; reason: string; message: string };
 
+export type ReleaseNotesLookup =
+  | { status: 'ok'; version: string; notes: string }
+  | { status: 'missing'; version: string }
+  | { status: 'error'; reason: string; message: string };
+
 export interface ReleaseScanOptions {
   fetchJson: FetchJson;
   currentVersion: string;
@@ -30,11 +34,18 @@ export interface ReleaseScanOptions {
   repo?: string;
 }
 
+export type ReleaseNotesOptions = ReleaseScanOptions;
+
 const DEFAULT_API_BASE = 'https://api.github.com';
 const DEFAULT_REPO = 'x01Jin/ytmc';
 const MAX_PAGES = 3;
 const PAGE_SIZE = 100;
-const NOTES_LIMIT = 4000;
+const NOTES_LIMIT = 20_000;
+const API_HEADERS = {
+  Accept: 'application/vnd.github+json',
+  'X-GitHub-Api-Version': '2022-11-28',
+  'User-Agent': 'ytmc-updater',
+};
 const DIGEST_PATTERN = /^sha256:([0-9a-f]{64})$/;
 const NUMERIC_TAG = /^v?\d{1,5}\.\d{1,5}\.\d{1,5}$/;
 
@@ -114,13 +125,62 @@ function notesOf(release: RawRelease): string {
   return body.length > NOTES_LIMIT ? `${body.slice(0, NOTES_LIMIT)}…` : body;
 }
 
+export async function fetchReleaseNotes(options: ReleaseNotesOptions): Promise<ReleaseNotesLookup> {
+  const apiBase = options.apiBase ?? DEFAULT_API_BASE;
+  const repo = options.repo ?? DEFAULT_REPO;
+  const headers = API_HEADERS;
+  const parsed = parseVersion(options.currentVersion);
+  if (!parsed) return { status: 'missing', version: options.currentVersion };
+  const version = `${parsed.major}.${parsed.minor}.${parsed.patch}`;
+  for (const tag of [`v${version}`, version]) {
+    let response;
+    try {
+      response = await options.fetchJson(`${apiBase}/repos/${repo}/releases/tags/${tag}`, {
+        headers,
+      });
+    } catch (error) {
+      return {
+        status: 'error',
+        reason: 'network',
+        message: error instanceof Error ? error.message : String(error),
+      };
+    }
+    if (response.status === 404) continue;
+    if (response.status !== 200) {
+      return {
+        status: 'error',
+        reason: `http-${response.status}`,
+        message: 'Release notes lookup failed.',
+      };
+    }
+    let payload: unknown;
+    try {
+      payload = JSON.parse(response.body);
+    } catch {
+      return {
+        status: 'error',
+        reason: 'invalid-json',
+        message: 'Release notes lookup returned invalid data.',
+      };
+    }
+    if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
+      return {
+        status: 'error',
+        reason: 'invalid-payload',
+        message: 'Release notes lookup returned invalid data.',
+      };
+    }
+    const release = payload as RawRelease;
+    if (releaseVersionOf(release) !== version) return { status: 'missing', version };
+    return { status: 'ok', version, notes: notesOf(release) };
+  }
+  return { status: 'missing', version };
+}
+
 export async function scanForRelease(options: ReleaseScanOptions): Promise<ReleaseLookup> {
   const apiBase = options.apiBase ?? DEFAULT_API_BASE;
   const repo = options.repo ?? DEFAULT_REPO;
-  const headers = {
-    Accept: 'application/vnd.github+json',
-    'X-GitHub-Api-Version': '2022-11-28',
-  };
+  const headers = API_HEADERS;
   const releases: Array<{ version: string; release: RawRelease }> = [];
   for (let page = 1; page <= MAX_PAGES; page += 1) {
     const url = `${apiBase}/repos/${repo}/releases?per_page=${PAGE_SIZE}&page=${page}`;
@@ -192,7 +252,6 @@ export async function scanForRelease(options: ReleaseScanOptions): Promise<Relea
     release: {
       version: newest.version,
       tag: text(newest.release.tag_name),
-      notes: notesOf(newest.release),
       publishedAt: text(newest.release.published_at),
       archive,
       signature,

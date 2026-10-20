@@ -1,11 +1,17 @@
+import { lazy, Suspense, useState } from 'react';
 import { useJobs } from '../store/appStore';
 import { updateActions, useUpdater } from '../hooks/useUpdater';
 import { formatFileSize } from '../utils/format';
 import { UpdateProgress } from './UpdateProgress';
 
+const ReleaseNotesModal = lazy(() =>
+  import('./ReleaseNotesModal').then(module => ({ default: module.ReleaseNotesModal }))
+);
+
 export function UpdatePanel() {
   const state = useUpdater();
   const jobs = useJobs();
+  const [notesOpen, setNotesOpen] = useState(false);
   if (!state) return null;
 
   const converting = jobs.state.isConverting;
@@ -16,7 +22,15 @@ export function UpdatePanel() {
     <section className="px-panel space-y-2 p-2" aria-label="Updates">
       <h2 className="font-display text-[11px]">UPDATES</h2>
       <p className="text-sm text-px-dim">
-        Installed version <span className="px-tabular">{state.currentVersion}</span>
+        Installed version{' '}
+        <button
+          type="button"
+          className="px-tabular font-semibold text-px-acc underline decoration-px-acc/60 underline-offset-2 hover:decoration-px-acc"
+          onClick={() => setNotesOpen(true)}
+          aria-label={`View release notes for version ${state.currentVersion}`}
+        >
+          {state.currentVersion}
+        </button>
       </p>
 
       {state.phase === 'unsupported' && (
@@ -63,17 +77,10 @@ export function UpdatePanel() {
       )}
 
       {state.phase === 'available' && (
-        <>
-          <p className="text-sm text-px-acc" aria-live="polite">
-            Version <span className="px-tabular">{state.latestVersion}</span> is available
-            {state.archiveBytes ? ` (${formatFileSize(state.archiveBytes)})` : ''}.
-          </p>
-          {state.notes && (
-            <div className="max-h-40 overflow-y-auto border-2 border-px-dim/30 p-2 text-sm whitespace-pre-wrap text-px-dim">
-              {state.notes}
-            </div>
-          )}
-        </>
+        <p className="text-sm text-px-acc" aria-live="polite">
+          Version <span className="px-tabular">{state.latestVersion}</span> is available
+          {state.archiveBytes ? ` (${formatFileSize(state.archiveBytes)})` : ''}.
+        </p>
       )}
 
       {state.phase === 'downloading' && (
@@ -199,16 +206,13 @@ export function UpdatePanel() {
             View Release
           </button>
         )}
-        {state.logPath && (
-          <button
-            type="button"
-            className="px-btn text-sm"
-            onClick={() => void updateActions.revealLog()}
-          >
-            Update Log
-          </button>
-        )}
       </div>
+
+      {notesOpen && (
+        <Suspense fallback={null}>
+          <ReleaseNotesModal version={state.currentVersion} onClose={() => setNotesOpen(false)} />
+        </Suspense>
+      )}
     </section>
   );
 }

@@ -10,7 +10,7 @@ The updater targets the `x01Jin/ytmc` GitHub repository. Releases carry `ytmc-<v
 
 Updates surface in two places:
 
-- **Settings > Updates panel** (`src/components/UpdatePanel.tsx`): installed version, check button, release notes, download progress with cancel, "Restart and Update", "View Release", and "Update Log". During an install it shows the current phase and progress; after a failure it shows the error detail and whether the previous version was restored.
+- **Settings > Updates panel** (`src/components/UpdatePanel.tsx`): installed version as a button that opens a Markdown preview of the installed release's notes, check button, download progress with cancel, "Restart and Update", and "View Release". During an install it shows the current phase and progress; after a failure it shows the error detail and whether the previous version was restored.
 - **Notice banner** (`src/components/UpdateNotice.tsx`): appears on any route when a version is available or ready, with Download / Restart and Update, a Details link to Settings, and Dismiss (remembered per version in `localStorage`). While an update is applying, a global progress banner replaces it and cannot be dismissed.
 
 The main process drives a single state machine (`electron/updater/index.cts`):
@@ -47,7 +47,7 @@ Everything lives under `%LOCALAPPDATA%\YT Music Converter\updater\<installId>\`,
 | `package.zip`        | Verified archive, kept until the update is installed or fails.                                                                                                                         |
 | `package.zip.sig`    | Release signature (base64) fetched alongside the archive.                                                                                                                              |
 | `updater-helper.cjs` | Bundled copy of the helper, refreshed before each apply.                                                                                                                               |
-| `updater.log`        | Append-only log of checks, downloads, applies, and rollbacks.                                                                                                                          |
+| `updater.log`        | Append-only log of checks, downloads, applies, and rollbacks. Kept for diagnostics.                                                                                                    |
 
 The journal also carries extraction totals and byte progress, which the app polls every 200 milliseconds and mirrors to the banner and the Windows taskbar.
 
@@ -55,7 +55,9 @@ The journal also carries extraction totals and byte progress, which the app poll
 
 ## Release lookup and verification
 
-`electron/updater/release.cts` pages `GET /repos/x01Jin/ytmc/releases?per_page=100` up to 3 pages, keeps only published (non-draft, non-prerelease) releases with numeric tags, and sorts by semver. It considers only the highest version and fails closed if that release is not installable: the zip asset must exist exactly once with `state: uploaded`, a safe integer size, a `sha256:` digest from the GitHub API, and an `https://` URL; the `.sig` asset must exist exactly once the same way. There is no walk-down to older releases. Release notes are trimmed to 4000 characters.
+`electron/updater/release.cts` pages `GET /repos/x01Jin/ytmc/releases?per_page=100` up to 3 pages, keeps only published (non-draft, non-prerelease) releases with numeric tags, and sorts by semver. It considers only the highest version and fails closed if that release is not installable: the zip asset must exist exactly once with `state: uploaded`, a safe integer size, a `sha256:` digest from the GitHub API, and an `https://` URL; the `.sig` asset must exist exactly once the same way. There is no walk-down to older releases.
+
+Release notes are not part of the scan. The installed version's notes are fetched on demand from `GET /repos/x01Jin/ytmc/releases/tags/v<version>`, falling back to the unprefixed tag on a 404, and rendered in the Settings preview. Only a published release whose tag matches the installed version is shown, and notes are capped at 20,000 characters for display.
 
 The archive is trusted only after all three checks pass:
 

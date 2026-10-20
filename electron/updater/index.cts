@@ -6,7 +6,7 @@ import { downloadUpdate } from './download.cjs';
 import { archiveInfo } from './extract.cjs';
 import { fetchJson, openStream } from './netClient.cjs';
 import { runPreflight, type PreflightOutcome } from './preflight.cjs';
-import { scanForRelease } from './release.cjs';
+import { fetchReleaseNotes, scanForRelease } from './release.cjs';
 import { hashFileHex, verifyDigestSignature } from './signature.cjs';
 import { isNewerVersion } from './version.cjs';
 import {
@@ -50,7 +50,6 @@ export interface UpdateState {
   phase: UpdatePhase;
   currentVersion: string;
   latestVersion: string | null;
-  notes: string | null;
   releaseUrl: string | null;
   archiveBytes: number | null;
   receivedBytes: number;
@@ -67,7 +66,6 @@ export interface UpdateState {
     detail?: string;
     restored?: boolean;
   } | null;
-  logPath: string | null;
   canDownload: boolean;
   canApply: boolean;
 }
@@ -93,7 +91,6 @@ export interface UpdaterHandle {
 interface PersistedRelease {
   version: string;
   tag: string;
-  notes: string;
   publishedAt: string;
   archiveSize: number;
   digestHex: string;
@@ -168,7 +165,6 @@ function emptyState(currentVersion: string): UpdateState {
     phase: 'idle',
     currentVersion,
     latestVersion: null,
-    notes: null,
     releaseUrl: null,
     archiveBytes: null,
     receivedBytes: 0,
@@ -178,7 +174,6 @@ function emptyState(currentVersion: string): UpdateState {
     errorMessage: null,
     lastCheckedAt: null,
     lastApply: null,
-    logPath: null,
     canDownload: false,
     canApply: false,
   };
@@ -209,7 +204,6 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
   const logPath = path.join(workspace, WORKSPACE_FILES.log);
   const persisted = workspaceReady ? readPersisted(statePath) : readPersisted('');
   const state = emptyState(host.currentVersion);
-  state.logPath = logPath;
 
   let preflight: PreflightOutcome = { ok: true };
   let checkedAt = 0;
@@ -277,7 +271,6 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
   const applyReleaseToState = (release: PersistedRelease) => {
     setState({
       latestVersion: release.version,
-      notes: release.notes,
       releaseUrl: `${RELEASE_PAGE_BASE}${release.tag}`,
       archiveBytes: release.archiveSize,
       errorCode: null,
@@ -668,7 +661,6 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
         persisted.latest = {
           version: release.version,
           tag: release.tag,
-          notes: release.notes,
           publishedAt: release.publishedAt,
           archiveSize: release.archive.size,
           digestHex: release.archive.digestHex,
@@ -690,7 +682,6 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
         setState({
           phase: 'up-to-date',
           latestVersion: null,
-          notes: null,
           releaseUrl: null,
           archiveBytes: null,
           lastCheckedAt: persisted.lastCheckedAt,
@@ -987,10 +978,9 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
   register('updates:open-release', () => {
     if (state.releaseUrl?.startsWith(RELEASE_PAGE_BASE)) void shell.openExternal(state.releaseUrl);
   });
-  register('updates:reveal-log', () => {
-    if (fs.existsSync(logPath)) shell.showItemInFolder(logPath);
-    else if (workspaceReady) shell.openPath(workspace);
-  });
+  register('updates:release-notes', () =>
+    fetchReleaseNotes({ fetchJson, currentVersion: host.currentVersion })
+  );
   register('updates:renderer-ready', () => {
     void writeBootReport();
   });

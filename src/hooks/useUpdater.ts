@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react';
-import type { UpdateState } from '../types/electron';
+import type { ReleaseNotesResult, UpdateState } from '../types/electron';
 
 let snapshot: UpdateState | null = null;
 const listeners = new Set<() => void>();
@@ -46,5 +46,11 @@ export const updateActions = {
   cancelDownload: () => window.updates?.cancelDownload(),
   apply: () => window.updates?.apply(),
   openRelease: () => window.updates?.openRelease(),
-  revealLog: () => window.updates?.revealLog(),
+  getReleaseNotes: (): Promise<ReleaseNotesResult> =>
+    window.updates?.getReleaseNotes() ??
+    Promise.resolve({
+      status: 'error',
+      reason: 'unavailable',
+      message: 'Release notes are unavailable.',
+    }),
 };
