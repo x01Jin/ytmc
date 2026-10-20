@@ -5,6 +5,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { downloadUpdate } from './download.cjs';
 import { archiveInfo } from './extract.cjs';
 import { fetchJson, openStream } from './netClient.cjs';
+import { readCachedReleaseNotes, writeCachedReleaseNotes } from './notesCache.cjs';
 import { runPreflight, type PreflightOutcome } from './preflight.cjs';
 import { fetchReleaseNotes, scanForRelease } from './release.cjs';
 import { hashFileHex, verifyDigestSignature } from './signature.cjs';
@@ -202,6 +203,7 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
   const signaturePath = path.join(workspace, `${WORKSPACE_FILES.archive}.sig`);
   const helperPath = path.join(workspace, WORKSPACE_FILES.helper);
   const logPath = path.join(workspace, WORKSPACE_FILES.log);
+  const notesPath = path.join(workspace, WORKSPACE_FILES.notes);
   const persisted = workspaceReady ? readPersisted(statePath) : readPersisted('');
   const state = emptyState(host.currentVersion);
 
@@ -978,9 +980,23 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
   register('updates:open-release', () => {
     if (state.releaseUrl?.startsWith(RELEASE_PAGE_BASE)) void shell.openExternal(state.releaseUrl);
   });
-  register('updates:release-notes', () =>
-    fetchReleaseNotes({ fetchJson, currentVersion: host.currentVersion })
-  );
+  register('updates:release-notes', async () => {
+    if (workspaceReady) {
+      const cached = readCachedReleaseNotes(notesPath, host.currentVersion);
+      if (cached !== null) return { status: 'ok', version: host.currentVersion, notes: cached };
+    }
+    const result = await fetchReleaseNotes({ fetchJson, currentVersion: host.currentVersion });
+    if (result.status === 'ok' && workspaceReady) {
+      try {
+        writeCachedReleaseNotes(notesPath, result.version, result.notes);
+      } catch (error) {
+        info(
+          `release-notes-cache-write-failed: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
+    }
+    return result;
+  });
   register('updates:renderer-ready', () => {
     void writeBootReport();
   });

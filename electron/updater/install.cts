@@ -10,6 +10,7 @@ export const WORKSPACE_FILES = {
   pending: 'pending.json',
   journal: 'journal.json',
   state: 'state.json',
+  notes: 'release-notes.json',
   lock: 'apply.lock',
   cancel: 'apply.cancel',
   bootOk: 'boot-ok.json',

@@ -22,15 +22,7 @@ export function UpdatePanel() {
     <section className="px-panel space-y-2 p-2" aria-label="Updates">
       <h2 className="font-display text-[11px]">UPDATES</h2>
       <p className="text-sm text-px-dim">
-        Installed version{' '}
-        <button
-          type="button"
-          className="px-tabular font-semibold text-px-acc underline decoration-px-acc/60 underline-offset-2 hover:decoration-px-acc"
-          onClick={() => setNotesOpen(true)}
-          aria-label={`View release notes for version ${state.currentVersion}`}
-        >
-          {state.currentVersion}
-        </button>
+        Installed version <span className="px-tabular">{state.currentVersion}</span>
       </p>
 
       {state.phase === 'unsupported' && (
@@ -206,6 +198,14 @@ export function UpdatePanel() {
             View Release
           </button>
         )}
+        <button
+          type="button"
+          className="px-btn text-sm"
+          onClick={() => setNotesOpen(true)}
+          aria-haspopup="dialog"
+        >
+          Release Notes
+        </button>
       </div>
 
       {notesOpen && (
