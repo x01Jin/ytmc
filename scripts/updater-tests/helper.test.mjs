@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -80,6 +81,23 @@ function fakeLaunch({ report = true, reportVersion = null } = {}) {
   };
 }
 
+function spawnLocker(cwd) {
+  return spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], {
+    cwd,
+    stdio: 'ignore',
+  });
+}
+
+function waitForChild(child) {
+  return new Promise(resolve => {
+    if (child.exitCode !== null || child.signalCode !== null) {
+      resolve();
+      return;
+    }
+    child.once('exit', resolve);
+  });
+}
+
 async function baseOptions(root, overrides = {}) {
   const install = makeInstall(root);
   const archive = makeArchive(
@@ -103,6 +121,7 @@ async function baseOptions(root, overrides = {}) {
     nonce: 'nonce-1',
     bootTimeoutMs: 5000,
     livenessMs: 0,
+    swapRetryMs: 400,
     launch: fakeLaunch(),
     ...overrides,
   };
@@ -135,6 +154,7 @@ test('applies the update, copies data, and keeps the old tree', { skip }, () =>
     assert.equal(fs.existsSync(path.join(options.workspace, 'apply.lock')), false);
     assert.equal(launch.calls.length, 1);
     assert.ok(launch.calls[0].args.includes('--ytmc-update-version=2.0.0'));
+    assert.equal(launch.calls[0].cwd, path.dirname(options.installDir));
   })
 );
 
@@ -162,6 +182,7 @@ test('rolls back and relaunches the old build when boot times out', { skip }, ()
     assert.equal(fs.existsSync(path.join(options.workspace, 'apply.lock')), false);
     assert.equal(launch.calls.length, 2);
     assert.deepEqual(launch.calls[1].args, []);
+    assert.equal(launch.calls[1].cwd, path.dirname(options.installDir));
   })
 );
 
@@ -220,6 +241,127 @@ test('aborts when the extracted tree is missing yt-dlp', { skip }, () =>
     });
     assert.equal(fs.readFileSync(path.join(root, 'app', EXE), 'utf8'), 'old-exe');
     assert.equal(fs.existsSync(path.join(root, `app.new-${UPDATE_ID}`)), false);
+  })
+);
+
+test('does not relaunch while the app is still running on a pre-swap failure', { skip }, () =>
+  withRoot(async root => {
+    const launch = fakeLaunch();
+    const options = await baseOptions(root, {
+      launch,
+      appPid: process.pid,
+      digestHex: 'c'.repeat(64),
+    });
+    const outcome = await runApply(options);
+    assert.deepEqual(outcome, { outcome: 'aborted', reason: 'archive-digest-mismatch' });
+    assert.equal(launch.calls.length, 0);
+    assert.equal(fs.readFileSync(path.join(root, 'app', EXE), 'utf8'), 'old-exe');
+  })
+);
+
+test('reports the swap error and succeeds after the locking process exits', { skip }, () =>
+  withRoot(async root => {
+    const options = await baseOptions(root, { swapRetryMs: 400 });
+    const locker = spawnLocker(options.installDir);
+    try {
+      const first = await runApply(options);
+      assert.deepEqual(first, { outcome: 'aborted', reason: 'swap-failed' });
+      const journal = JSON.parse(
+        fs.readFileSync(path.join(options.workspace, 'journal.json'), 'utf8')
+      );
+      assert.equal(journal.phase, 'failed');
+      assert.equal(journal.reason, 'swap-failed');
+      assert.equal(journal.restored, true);
+      assert.ok(journal.detail);
+      assert.equal(fs.readFileSync(path.join(root, 'app', EXE), 'utf8'), 'old-exe');
+      assert.equal(fs.existsSync(path.join(root, `app.new-${UPDATE_ID}`)), false);
+      locker.kill('SIGKILL');
+      await waitForChild(locker);
+      const second = await runApply(options);
+      assert.deepEqual(second, { outcome: 'applied', pid: FAKE_PID });
+      assert.equal(fs.readFileSync(path.join(root, 'app', EXE), 'utf8'), 'new-exe');
+    } finally {
+      if (locker.exitCode === null && locker.signalCode === null) {
+        locker.kill('SIGKILL');
+        await waitForChild(locker);
+      }
+    }
+  })
+);
+
+test('cancels before the swap when a conversion becomes active', { skip }, () =>
+  withRoot(async root => {
+    const app = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], {
+      stdio: 'ignore',
+    });
+    try {
+      const launch = fakeLaunch();
+      const options = await baseOptions(root, {
+        launch,
+        appPid: app.pid,
+        appExitTimeoutMs: 5000,
+      });
+      const journalPath = path.join(options.workspace, 'journal.json');
+      const cancelPath = path.join(options.workspace, 'apply.cancel');
+      const watcher = setInterval(() => {
+        try {
+          const journal = JSON.parse(fs.readFileSync(journalPath, 'utf8'));
+          if (journal.phase === 'pre-swap') {
+            fs.writeFileSync(cancelPath, JSON.stringify({ reason: 'conversion-active' }));
+          }
+        } catch {}
+      }, 10);
+      const outcome = await runApply(options);
+      clearInterval(watcher);
+      assert.deepEqual(outcome, { outcome: 'aborted', reason: 'conversion-active' });
+      assert.equal(launch.calls.length, 0);
+      assert.equal(fs.readFileSync(path.join(root, 'app', EXE), 'utf8'), 'old-exe');
+      assert.equal(fs.existsSync(path.join(root, `app.new-${UPDATE_ID}`)), false);
+      assert.equal(fs.existsSync(path.join(options.workspace, 'apply.cancel')), false);
+    } finally {
+      app.kill('SIGKILL');
+      await waitForChild(app);
+    }
+  })
+);
+
+test('skips Chromium caches while keeping app data', { skip }, () =>
+  withRoot(async root => {
+    const options = await baseOptions(root);
+    for (const dir of ['Cache', 'Code Cache', 'GPUCache']) {
+      fs.mkdirSync(path.join(options.installDir, 'data', dir), { recursive: true });
+      fs.writeFileSync(path.join(options.installDir, 'data', dir, 'cached.bin'), 'cache');
+    }
+    fs.writeFileSync(path.join(options.installDir, 'data', 'library.json'), '{"keep":true}');
+    const outcome = await runApply(options);
+    assert.deepEqual(outcome, { outcome: 'applied', pid: FAKE_PID });
+    const data = path.join(root, 'app', 'data');
+    assert.equal(fs.readFileSync(path.join(data, 'settings.json'), 'utf8'), '{"keep":true}');
+    assert.equal(fs.readFileSync(path.join(data, 'library.json'), 'utf8'), '{"keep":true}');
+    for (const dir of ['Cache', 'Code Cache', 'GPUCache']) {
+      assert.equal(fs.existsSync(path.join(data, dir)), false);
+    }
+  })
+);
+
+test('writes every install phase to the journal log', { skip }, () =>
+  withRoot(async root => {
+    const lines = [];
+    const options = await baseOptions(root, { log: line => lines.push(line) });
+    const outcome = await runApply(options);
+    assert.deepEqual(outcome, { outcome: 'applied', pid: FAKE_PID });
+    for (const phase of [
+      'verifying',
+      'extracting',
+      'validating',
+      'pre-swap',
+      'copying',
+      'installing',
+      'launched',
+      'boot-ok',
+    ]) {
+      assert.ok(lines.includes(`phase ${phase}`), phase);
+    }
   })
 );
 

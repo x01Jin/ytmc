@@ -1,36 +1,35 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { crc32 as nativeCrc32 } from 'node:zlib';
 import * as yauzl from 'yauzl';
 
 export type ExtractOutcome =
   | { ok: true; entries: number; bytes: number }
   | { ok: false; reason: string; detail?: string };
 
+export interface ArchiveInfo {
+  entries: number;
+  bytes: number;
+}
+
+export interface ExtractProgress {
+  entries: number;
+  totalEntries: number;
+  bytes: number;
+  totalBytes: number;
+}
+
+export interface ExtractOptions {
+  totalEntries?: number;
+  totalBytes?: number;
+  onProgress?: (progress: ExtractProgress) => void;
+}
+
 const MAX_ENTRIES = 20000;
 const MAX_TOTAL_BYTES = 4 * 1024 * 1024 * 1024;
 const MAX_TARGET_LENGTH = 240;
 const RESERVED_NAME = /^(con|prn|aux|nul|com[1-9]|lpt[1-9])(\.|$)/i;
 const TRAILING_DOT_OR_SPACE = /[ .]$/;
-
-const CRC_TABLE = (() => {
-  const table = new Int32Array(256);
-  for (let index = 0; index < 256; index += 1) {
-    let value = index;
-    for (let bit = 0; bit < 8; bit += 1) {
-      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
-    }
-    table[index] = value;
-  }
-  return table;
-})();
-
-function crc32(chunk: Buffer, previous: number): number {
-  let crc = ~previous;
-  for (let index = 0; index < chunk.length; index += 1) {
-    crc = CRC_TABLE[(crc ^ chunk[index]) & 0xff] ^ (crc >>> 8);
-  }
-  return ~crc;
-}
 
 function isSymlink(entry: yauzl.Entry): boolean {
   return ((entry.externalFileAttributes >>> 16) & 0o170000) === 0o120000;
@@ -55,7 +54,11 @@ function targetFor(destination: string, entryName: string): string | null {
   return target;
 }
 
-export function extractArchive(archivePath: string, destination: string): Promise<ExtractOutcome> {
+export function extractArchive(
+  archivePath: string,
+  destination: string,
+  options: ExtractOptions = {}
+): Promise<ExtractOutcome> {
   return new Promise(resolve => {
     yauzl.open(
       archivePath,
@@ -65,8 +68,12 @@ export function extractArchive(archivePath: string, destination: string): Promis
           resolve({ ok: false, reason: 'open-failed' });
           return;
         }
+        const totalBytes = options.totalBytes ?? 0;
+        const totalEntries = options.totalEntries ?? 0;
         const seen = new Set<string>();
         let entries = 0;
+        let completedEntries = 0;
+        let completedBytes = 0;
         let bytes = 0;
         let settled = false;
         const fail = (reason: string, detail?: string) => {
@@ -76,6 +83,19 @@ export function extractArchive(archivePath: string, destination: string): Promis
             zipFile.close();
           } catch {}
           resolve(detail === undefined ? { ok: false, reason } : { ok: false, reason, detail });
+        };
+        const progress = (currentBytes: number) => {
+          if (!options.onProgress) return;
+          try {
+            options.onProgress({
+              entries: completedEntries,
+              totalEntries,
+              bytes: completedBytes + currentBytes,
+              totalBytes,
+            });
+          } catch {
+            fail('progress-failed');
+          }
         };
         zipFile.on('error', (error: Error) => {
           if (
@@ -118,6 +138,8 @@ export function extractArchive(archivePath: string, destination: string): Promis
           }
           if (isDirectory) {
             fs.mkdirSync(target, { recursive: true });
+            completedEntries += 1;
+            progress(0);
             zipFile.readEntry();
             return;
           }
@@ -134,8 +156,9 @@ export function extractArchive(archivePath: string, destination: string): Promis
             let crc = 0;
             let size = 0;
             readStream.on('data', (chunk: Buffer) => {
-              crc = crc32(chunk, crc);
+              crc = nativeCrc32(chunk, crc);
               size += chunk.length;
+              progress(size);
             });
             readStream.on('error', (error: Error) => {
               output.destroy();
@@ -156,6 +179,9 @@ export function extractArchive(archivePath: string, destination: string): Promis
                 fail('entry-crc-mismatch');
                 return;
               }
+              completedEntries += 1;
+              completedBytes += size;
+              progress(0);
               zipFile.readEntry();
             });
             readStream.pipe(output);
@@ -172,16 +198,17 @@ export function extractArchive(archivePath: string, destination: string): Promis
   });
 }
 
-export function archiveUncompressedBytes(archivePath: string): Promise<number | null> {
+export function archiveInfo(archivePath: string): Promise<ArchiveInfo | null> {
   return new Promise(resolve => {
     yauzl.open(archivePath, { lazyEntries: true }, (openError, zipFile) => {
       if (openError || !zipFile) {
         resolve(null);
         return;
       }
-      let total = 0;
+      let entries = 0;
+      let bytes = 0;
       let settled = false;
-      const finish = (value: number | null) => {
+      const finish = (value: ArchiveInfo | null) => {
         if (settled) return;
         settled = true;
         try {
@@ -191,15 +218,21 @@ export function archiveUncompressedBytes(archivePath: string): Promise<number | 
       };
       zipFile.on('error', () => finish(null));
       zipFile.on('entry', (entry: yauzl.Entry) => {
-        total += entry.uncompressedSize;
-        if (total > MAX_TOTAL_BYTES) {
+        entries += 1;
+        bytes += entry.uncompressedSize;
+        if (entries > MAX_ENTRIES || bytes > MAX_TOTAL_BYTES) {
           finish(null);
           return;
         }
         zipFile.readEntry();
       });
-      zipFile.on('end', () => finish(total));
+      zipFile.on('end', () => finish({ entries, bytes }));
       zipFile.readEntry();
     });
   });
+}
+
+export async function archiveUncompressedBytes(archivePath: string): Promise<number | null> {
+  const info = await archiveInfo(archivePath);
+  return info ? info.bytes : null;
 }

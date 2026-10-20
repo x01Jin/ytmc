@@ -1,6 +1,7 @@
 import { useJobs } from '../store/appStore';
 import { updateActions, useUpdater } from '../hooks/useUpdater';
 import { formatFileSize } from '../utils/format';
+import { UpdateProgress } from './UpdateProgress';
 
 export function UpdatePanel() {
   const state = useUpdater();
@@ -113,16 +114,35 @@ export function UpdatePanel() {
       )}
 
       {state.phase === 'applying' && (
-        <p className="text-sm text-px-dim" aria-live="polite">
-          Restarting to install version <span className="px-tabular">{state.latestVersion}</span>…
+        <>
+          <p className="text-sm text-px-dim" aria-live="polite">
+            Installing version <span className="px-tabular">{state.latestVersion}</span>.
+          </p>
+          <UpdateProgress progress={state.applyProgress} />
+        </>
+      )}
+
+      {state.phase === 'ready' && state.errorCode && state.errorMessage && (
+        <p className="text-sm text-px-warn" role="status">
+          {state.errorMessage}
         </p>
       )}
 
       {state.lastApply && !state.lastApply.ok && (
-        <p className="text-sm text-px-warn" role="status">
-          The update to <span className="px-tabular">{state.lastApply.toVersion}</span> did not
-          start ({state.lastApply.reason}). The previous version was restored.
-        </p>
+        <div className="space-y-1" role="status">
+          <p className="text-sm text-px-warn">
+            The update to <span className="px-tabular">{state.lastApply.toVersion}</span> failed (
+            {state.lastApply.reason}).
+          </p>
+          {state.lastApply.detail && (
+            <p className="text-sm break-words text-px-dim">{state.lastApply.detail}</p>
+          )}
+          <p className="text-sm text-px-dim">
+            {state.lastApply.restored === false
+              ? 'The previous version could not be restored automatically.'
+              : 'The previous version is still available.'}
+          </p>
+        </div>
       )}
 
       <div className="flex flex-wrap gap-2">

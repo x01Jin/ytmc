@@ -11,6 +11,7 @@ export const WORKSPACE_FILES = {
   journal: 'journal.json',
   state: 'state.json',
   lock: 'apply.lock',
+  cancel: 'apply.cancel',
   bootOk: 'boot-ok.json',
   log: 'updater.log',
 } as const;
@@ -78,6 +79,29 @@ export function directorySize(dir: string): number {
     }
   }
   return total;
+}
+
+export function staleSiblingTrees(installDir: string, keep: string[] = []): string[] {
+  const resolved = path.resolve(installDir);
+  const parent = path.dirname(resolved);
+  const prefix = `${path.basename(resolved)}.`;
+  const kept = new Set(keep.map(dir => path.resolve(dir)));
+  try {
+    return fs
+      .readdirSync(parent, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => path.join(parent, entry.name))
+      .filter(dir => {
+        const suffix = path.basename(dir).slice(prefix.length);
+        return (
+          path.basename(dir).startsWith(prefix) &&
+          /^(new|old|failed)-.+$/.test(suffix) &&
+          !kept.has(dir)
+        );
+      });
+  } catch {
+    return [];
+  }
 }
 
 export function sanitizedEnv(overrides: Record<string, string> = {}): NodeJS.ProcessEnv {

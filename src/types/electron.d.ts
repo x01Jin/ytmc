@@ -23,6 +23,15 @@ export type UpdatePhase =
   | 'applying'
   | 'error';
 
+export interface ApplyProgress {
+  phase: string;
+  percent: number | null;
+  bytes: number;
+  totalBytes: number | null;
+  entries: number;
+  totalEntries: number | null;
+}
+
 export interface UpdateState {
   phase: UpdatePhase;
   currentVersion: string;
@@ -32,10 +41,18 @@ export interface UpdateState {
   archiveBytes: number | null;
   receivedBytes: number;
   progressPercent: number | null;
+  applyProgress: ApplyProgress | null;
   errorCode: string | null;
   errorMessage: string | null;
   lastCheckedAt: number | null;
-  lastApply: { ok: boolean; reason: string; toVersion: string; at: number } | null;
+  lastApply: {
+    ok: boolean;
+    reason: string;
+    toVersion: string;
+    at: number;
+    detail?: string;
+    restored?: boolean;
+  } | null;
   logPath: string | null;
   canDownload: boolean;
   canApply: boolean;

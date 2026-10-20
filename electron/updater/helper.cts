@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { extractArchive } from './extract.cjs';
+import { archiveInfo, extractArchive } from './extract.cjs';
 import { hashFileHex, verifyDigestSignature } from './signature.cjs';
 import {
   WORKSPACE_FILES,
@@ -11,7 +11,9 @@ import {
   killProcessTree,
   processImageName,
   readJson,
+  removeDirectoryWithRetries,
   sanitizedEnv,
+  staleSiblingTrees,
   waitForProcessExit,
   writeJson,
 } from './install.cjs';
@@ -38,6 +40,8 @@ export interface HelperOptions {
   nonce: string;
   bootTimeoutMs?: number;
   livenessMs?: number;
+  appExitTimeoutMs?: number;
+  swapRetryMs?: number;
   launch: LaunchPort;
   log?: (line: string) => void;
 }
@@ -57,12 +61,26 @@ const APP_EXIT_TIMEOUT_MS = 60_000;
 const DEFAULT_BOOT_TIMEOUT_MS = 300_000;
 const DEFAULT_LIVENESS_MS = 10_000;
 const POLL_INTERVAL_MS = 500;
+const PROGRESS_INTERVAL_MS = 250;
+const SWAP_RETRY_MS = 5_000;
+const SWAP_RETRY_STEP_MS = 200;
 const REQUIRED_TREE = [
   'resources/app.asar',
   'resources/server.cjs',
   'resources/bin/ffmpeg.exe',
   'resources/bin/yt-dlp.exe',
 ];
+const CACHE_DIRECTORIES = new Set([
+  'Cache',
+  'Code Cache',
+  'GPUCache',
+  'DawnCache',
+  'DawnGraphiteCache',
+  'DawnWebGPUCache',
+  'ShaderCache',
+  'GrShaderCache',
+  'Crashpad',
+]);
 
 export const realLaunchPort: LaunchPort = {
   launch(executable, args, cwd) {
@@ -93,6 +111,54 @@ function validateTree(root: string, exeName: string): string | null {
   return null;
 }
 
+function copyDataTree(source: string, destination: string): void {
+  fs.mkdirSync(destination, { recursive: true });
+  for (const entry of fs.readdirSync(source, { withFileTypes: true })) {
+    if (entry.isDirectory() && CACHE_DIRECTORIES.has(entry.name)) continue;
+    const from = path.join(source, entry.name);
+    const to = path.join(destination, entry.name);
+    if (entry.isDirectory()) copyDataTree(from, to);
+    else fs.copyFileSync(from, to);
+  }
+}
+
+async function renameWithRetries(from: string, to: string, timeoutMs: number): Promise<void> {
+  const attempts = Math.max(1, Math.ceil(timeoutMs / SWAP_RETRY_STEP_MS));
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      fs.renameSync(from, to);
+      return;
+    } catch (error) {
+      lastError = error;
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'EPERM' && code !== 'EBUSY' && code !== 'EACCES') throw error;
+      if (attempt < attempts - 1) await delay(SWAP_RETRY_STEP_MS);
+    }
+  }
+  throw lastError;
+}
+
+async function launchWithRetries(
+  port: LaunchPort,
+  executable: string,
+  args: string[],
+  cwd: string
+): Promise<number> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const pid = port.launch(executable, args, cwd);
+      if (pid > 0) return pid;
+      lastError = new Error('launch returned no pid');
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < 2) await delay(500);
+  }
+  throw lastError;
+}
+
 export async function runApply(options: HelperOptions): Promise<ApplyOutcome> {
   const installDir = path.resolve(options.installDir);
   const parentDir = path.dirname(installDir);
@@ -103,14 +169,20 @@ export async function runApply(options: HelperOptions): Promise<ApplyOutcome> {
   const journalPath = path.join(options.workspace, WORKSPACE_FILES.journal);
   const bootOkPath = path.join(options.workspace, WORKSPACE_FILES.bootOk);
   const lockPath = path.join(options.workspace, WORKSPACE_FILES.lock);
+  const cancelPath = path.join(options.workspace, WORKSPACE_FILES.cancel);
   const logPath = path.join(options.workspace, WORKSPACE_FILES.log);
   const bootTimeoutMs = options.bootTimeoutMs ?? DEFAULT_BOOT_TIMEOUT_MS;
   const livenessMs = options.livenessMs ?? DEFAULT_LIVENESS_MS;
+  const appExitTimeoutMs = options.appExitTimeoutMs ?? APP_EXIT_TIMEOUT_MS;
+  const swapRetryMs = options.swapRetryMs ?? SWAP_RETRY_MS;
+  const startedAt = Date.now();
 
   const log = (line: string) => {
     appendLog(logPath, line);
     options.log?.(line);
   };
+  const mark = (label: string) => log(`${label} ${Date.now() - startedAt}ms`);
+  let loggedPhase = '';
   const writePhase = (phase: string, extra: Record<string, unknown> = {}) => {
     writeJson(journalPath, {
       schema: 1,
@@ -125,151 +197,263 @@ export async function runApply(options: HelperOptions): Promise<ApplyOutcome> {
       at: Date.now(),
       ...extra,
     });
+    if (phase !== loggedPhase) {
+      loggedPhase = phase;
+      log(`phase ${phase}`);
+    }
   };
   const finish = <T extends ApplyOutcome>(outcome: T): T => {
     fs.rmSync(lockPath, { force: true });
     return outcome;
   };
-  const relaunchOld = () => {
+  const relaunchOld = async () => {
     const executable = path.join(installDir, options.exeName);
     if (!fs.existsSync(executable)) return;
     try {
-      options.launch.launch(executable, [], installDir);
+      await launchWithRetries(options.launch, executable, [], parentDir);
     } catch (error) {
       log(`relaunch after abort failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   };
-  const abort = (reason: string): ApplyOutcome => {
+  const abort = async (reason: string): Promise<ApplyOutcome> => {
     const outcome = finish({ outcome: 'aborted', reason });
-    if (reason !== 'app-still-running') relaunchOld();
+    if (!isProcessAlive(options.appPid)) await relaunchOld();
     return outcome;
+  };
+  const fail = async (reason: string, detail?: string, restored = true): Promise<ApplyOutcome> => {
+    writePhase('failed', {
+      reason,
+      ...(detail ? { detail } : {}),
+      restored,
+    });
+    if (fs.existsSync(newDir)) await removeDirectoryWithRetries(newDir);
+    return abort(reason);
   };
 
   log(`apply start update=${options.updateId} from=${options.fromVersion} to=${options.toVersion}`);
-  writePhase('start');
+  writePhase('start', { percent: 1 });
+  writeJson(lockPath, { pid: process.pid, updateId: options.updateId, at: Date.now() });
 
-  const appExited = await waitForProcessExit(options.appPid, APP_EXIT_TIMEOUT_MS);
-  if (!appExited) {
+  for (const dir of staleSiblingTrees(installDir, [newDir, oldDir, failedDir])) {
+    if (await removeDirectoryWithRetries(dir)) log(`removed stale tree ${path.basename(dir)}`);
+  }
+
+  writePhase('verifying', { percent: 2 });
+  const archiveDigest = await hashFileHex(options.archivePath);
+  if (archiveDigest !== options.digestHex) {
+    return fail('archive-digest-mismatch');
+  }
+  const signature = verifyDigestSignature(archiveDigest, options.signatureBase64);
+  if (!signature.ok) {
+    return fail(`archive-signature-${signature.reason}`, signature.reason);
+  }
+  const info = await archiveInfo(options.archivePath);
+  if (!info) {
+    return fail('archive-unreadable');
+  }
+  mark('verify');
+
+  if (!(await removeDirectoryWithRetries(newDir))) {
+    return fail('new-tree-cleanup-failed', newDir);
+  }
+  writePhase('extracting', {
+    percent: 2,
+    bytes: 0,
+    totalBytes: info.bytes,
+    entries: 0,
+    totalEntries: info.entries,
+  });
+  let lastProgressAt = 0;
+  const extracted = await extractArchive(options.archivePath, newDir, {
+    totalBytes: info.bytes,
+    totalEntries: info.entries,
+    onProgress: progress => {
+      const now = Date.now();
+      if (now - lastProgressAt < PROGRESS_INTERVAL_MS) return;
+      lastProgressAt = now;
+      const percent =
+        progress.totalBytes > 0
+          ? Math.min(85, 2 + Math.floor((progress.bytes / progress.totalBytes) * 83))
+          : null;
+      writePhase('extracting', {
+        percent,
+        bytes: progress.bytes,
+        totalBytes: progress.totalBytes,
+        entries: progress.entries,
+        totalEntries: progress.totalEntries,
+      });
+    },
+  });
+  if (!extracted.ok) {
+    const reason = `extract-${extracted.reason}`;
+    log(`extract failed: ${reason}${extracted.detail ? ` (${extracted.detail})` : ''}`);
+    return fail(reason, extracted.detail);
+  }
+  mark('extract');
+  writePhase('validating', { percent: 86 });
+  const missing = validateTree(newDir, options.exeName);
+  if (missing) {
+    return fail(`tree-invalid-${missing}`, missing);
+  }
+  mark('validate');
+
+  writePhase('pre-swap', { percent: 90 });
+  const deadline = Date.now() + appExitTimeoutMs;
+  let appState: 'exited' | 'cancelled' | 'timeout' = 'timeout';
+  while (Date.now() < deadline) {
+    if (fs.existsSync(cancelPath)) {
+      appState = 'cancelled';
+      break;
+    }
+    if (!isProcessAlive(options.appPid)) {
+      appState = 'exited';
+      break;
+    }
+    await delay(200);
+  }
+  if (appState === 'cancelled') {
+    if (!(await removeDirectoryWithRetries(newDir))) {
+      log(`cancel cleanup failed: ${newDir}`);
+    }
+    try {
+      fs.rmSync(cancelPath, { force: true });
+    } catch (error) {
+      log(
+        `cancel marker cleanup failed: ${error instanceof Error ? error.message : String(error)}`
+      );
+    }
+    writePhase('cancelled', { reason: 'conversion-active' });
+    return finish({ outcome: 'aborted', reason: 'conversion-active' });
+  }
+  if (appState === 'timeout') {
     const image = await processImageName(options.appPid);
     log(`app pid ${options.appPid} still alive image=${image ?? 'unknown'}`);
     killProcessTree(options.appPid, false);
     if (!(await waitForProcessExit(options.appPid, 30_000))) {
-      writePhase('failed', { reason: 'app-still-running' });
-      return abort('app-still-running');
+      return fail('app-still-running');
     }
   }
+  try {
+    fs.rmSync(cancelPath, { force: true });
+  } catch (error) {
+    log(`cancel marker cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  mark('app exit');
+
   if (options.backendPid > 0 && isProcessAlive(options.backendPid)) {
     killProcessTree(options.backendPid, true);
-    await waitForProcessExit(options.backendPid, 15_000);
+    if (!(await waitForProcessExit(options.backendPid, 15_000))) {
+      return fail('backend-still-running');
+    }
   }
+  mark('backend exit');
 
-  const archiveDigest = await hashFileHex(options.archivePath);
-  if (archiveDigest !== options.digestHex) {
-    writePhase('failed', { reason: 'archive-digest-mismatch' });
-    return abort('archive-digest-mismatch');
-  }
-  const signature = verifyDigestSignature(archiveDigest, options.signatureBase64);
-  if (!signature.ok) {
-    writePhase('failed', { reason: `archive-signature-${signature.reason}` });
-    return abort('archive-signature-invalid');
-  }
-
-  fs.rmSync(newDir, { recursive: true, force: true });
-  const extracted = await extractArchive(options.archivePath, newDir);
-  if (!extracted.ok) {
-    fs.rmSync(newDir, { recursive: true, force: true });
-    const reason = `extract-${extracted.reason}`;
-    log(`extract failed: ${reason}${extracted.detail ? ` (${extracted.detail})` : ''}`);
-    writePhase('failed', {
-      reason,
-      ...(extracted.detail ? { detail: extracted.detail } : {}),
-    });
-    return abort(reason);
-  }
-  log(`extracted ${extracted.entries} entries, ${extracted.bytes} bytes`);
-  const missing = validateTree(newDir, options.exeName);
-  if (missing) {
-    fs.rmSync(newDir, { recursive: true, force: true });
-    const reason = `tree-invalid-${missing}`;
-    writePhase('failed', { reason });
-    return abort(reason);
-  }
-
+  writePhase('copying', { percent: 92 });
   const dataDir = path.join(installDir, 'data');
   if (fs.existsSync(dataDir)) {
-    fs.cpSync(dataDir, path.join(newDir, 'data'), { recursive: true });
-  }
-
-  writePhase('pre-swap');
-  let swapped = false;
-  try {
-    fs.rmSync(oldDir, { recursive: true, force: true });
-    fs.renameSync(installDir, oldDir);
-    fs.renameSync(newDir, installDir);
-    swapped = true;
-  } catch (error) {
-    if (swapped) {
-      try {
-        fs.renameSync(installDir, newDir);
-        fs.renameSync(oldDir, installDir);
-      } catch {}
-    } else if (fs.existsSync(oldDir) && !fs.existsSync(installDir)) {
-      try {
-        fs.renameSync(oldDir, installDir);
-      } catch {}
+    try {
+      copyDataTree(dataDir, path.join(newDir, 'data'));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      log(`data copy failed: ${detail}`);
+      return fail('data-copy-failed', detail);
     }
-    const reason = error instanceof Error ? error.message : String(error);
-    writePhase('failed', { reason: 'swap-failed', detail: reason });
-    return abort('swap-failed');
   }
+  mark('copy');
+
+  writePhase('installing', { percent: 96 });
+  if (!(await removeDirectoryWithRetries(oldDir))) {
+    return fail('old-tree-remove-failed', oldDir, true);
+  }
+  try {
+    await renameWithRetries(installDir, oldDir, swapRetryMs);
+    await renameWithRetries(newDir, installDir, swapRetryMs);
+  } catch (error) {
+    let restored = false;
+    if (fs.existsSync(oldDir) && !fs.existsSync(installDir)) {
+      try {
+        await renameWithRetries(oldDir, installDir, swapRetryMs);
+      } catch (restoreError) {
+        log(
+          `swap restore failed: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}`
+        );
+      }
+    }
+    restored = fs.existsSync(path.join(installDir, options.exeName));
+    const detail = error instanceof Error ? error.message : String(error);
+    log(`swap failed: ${detail} restored=${restored}`);
+    return fail('swap-failed', detail, restored);
+  }
+  mark('swap');
 
   const executable = path.join(installDir, options.exeName);
-  writePhase('launched');
-  fs.rmSync(bootOkPath, { force: true });
-  const pid = options.launch.launch(
-    executable,
-    [
-      `--ytmc-update-id=${options.updateId}`,
-      `--ytmc-update-version=${options.toVersion}`,
-      `--ytmc-update-nonce=${options.nonce}`,
-      `--ytmc-update-report=${bootOkPath}`,
-    ],
-    installDir
-  );
-  log(`launched ${executable} pid=${pid}`);
+  writePhase('launched', { percent: 99 });
+  let pid = 0;
 
-  const rollback = async (reason: string): Promise<ApplyOutcome> => {
+  const rollback = async (reason: string, detail?: string): Promise<ApplyOutcome> => {
     log(`rollback reason=${reason}`);
-    const image = await processImageName(pid);
-    if (isProcessAlive(pid) && (image === null || /music converter|electron/i.test(image))) {
-      killProcessTree(pid, true);
-      await waitForProcessExit(pid, 15_000);
+    if (pid > 0) {
+      const image = await processImageName(pid);
+      if (isProcessAlive(pid) && (image === null || /music converter|electron/i.test(image))) {
+        killProcessTree(pid, true);
+        await waitForProcessExit(pid, 15_000);
+      }
     }
     try {
-      if (fs.existsSync(oldDir)) {
-        if (fs.existsSync(installDir)) {
-          fs.rmSync(failedDir, { recursive: true, force: true });
-          fs.renameSync(installDir, failedDir);
-        }
-        fs.renameSync(oldDir, installDir);
+      if (!fs.existsSync(oldDir)) throw new Error('old tree is missing');
+      if (fs.existsSync(installDir)) {
+        await removeDirectoryWithRetries(failedDir);
+        await renameWithRetries(installDir, failedDir, swapRetryMs);
       }
+      await renameWithRetries(oldDir, installDir, swapRetryMs);
     } catch (error) {
-      log(`rollback rename failed: ${error instanceof Error ? error.message : String(error)}`);
-      writePhase('failed', { reason: 'rollback-failed', detail: reason });
+      const restoreDetail = error instanceof Error ? error.message : String(error);
+      log(`rollback rename failed: ${restoreDetail}`);
+      writePhase('failed', { reason: 'rollback-failed', detail: restoreDetail });
       return finish({ outcome: 'rolled-back', reason: 'rollback-failed' });
     }
-    writePhase('rolled-back', { reason });
+    writePhase('rolled-back', { reason, ...(detail ? { detail } : {}) });
     try {
-      options.launch.launch(path.join(installDir, options.exeName), [], installDir);
+      await launchWithRetries(
+        options.launch,
+        path.join(installDir, options.exeName),
+        [],
+        parentDir
+      );
     } catch (error) {
       log(`relaunch failed: ${error instanceof Error ? error.message : String(error)}`);
     }
     return finish({ outcome: 'rolled-back', reason });
   };
 
-  const deadline = Date.now() + bootTimeoutMs;
+  try {
+    fs.rmSync(bootOkPath, { force: true });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return rollback('boot-report-cleanup-failed', detail);
+  }
+
+  try {
+    pid = await launchWithRetries(
+      options.launch,
+      executable,
+      [
+        `--ytmc-update-id=${options.updateId}`,
+        `--ytmc-update-version=${options.toVersion}`,
+        `--ytmc-update-nonce=${options.nonce}`,
+        `--ytmc-update-report=${bootOkPath}`,
+      ],
+      parentDir
+    );
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return rollback('launch-failed', detail);
+  }
+  log(`launched ${executable} pid=${pid}`);
+
+  const bootDeadline = Date.now() + bootTimeoutMs;
   let sawAlive = false;
-  while (Date.now() < deadline) {
+  while (Date.now() < bootDeadline) {
     const report = readJson<BootReport>(bootOkPath);
     if (report) {
       if (report.updateId !== options.updateId) return rollback('boot-report-mismatch');
@@ -277,7 +461,7 @@ export async function runApply(options: HelperOptions): Promise<ApplyOutcome> {
       if (report.nonce !== options.nonce) return rollback('boot-nonce-mismatch');
       await delay(livenessMs);
       if (!options.launch.isAlive(pid)) return rollback('app-died-after-boot');
-      writePhase('boot-ok');
+      writePhase('boot-ok', { percent: 100 });
       log('apply success');
       return finish({ outcome: 'applied', pid });
     }
@@ -343,6 +527,8 @@ export function parseHelperArgs(argv: string[]): HelperCliOptions | null {
     backendPid: Number(read('backend-pid') ?? '0') || 0,
     bootTimeoutMs: Number(read('boot-timeout') ?? '') || undefined,
     livenessMs: Number(read('liveness') ?? '') || undefined,
+    appExitTimeoutMs: Number(read('app-exit-timeout') ?? '') || undefined,
+    swapRetryMs: Number(read('swap-retry') ?? '') || undefined,
   };
 }
 

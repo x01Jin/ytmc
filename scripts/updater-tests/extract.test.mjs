@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { buildZip } from './zip-fixture.mjs';
 
-const { extractArchive, archiveUncompressedBytes } =
+const { extractArchive, archiveInfo, archiveUncompressedBytes } =
   await import('../../dist-electron/updater/extract.cjs');
 
 function withRoot(run) {
@@ -39,6 +39,34 @@ test('extracts a nested tree and reports bytes', () =>
     assert.equal(fs.readFileSync(path.join(root, 'out', 'dir', 'a.txt'), 'utf8'), 'hello');
     assert.deepEqual(fs.readFileSync(path.join(root, 'out', 'b.bin')), Buffer.from([1, 2, 3, 4]));
     assert.equal(await archiveUncompressedBytes(archive), 9);
+  }));
+
+test('reports archive totals and extraction progress', () =>
+  withRoot(async root => {
+    const archive = path.join(root, 'progress.zip');
+    fs.writeFileSync(
+      archive,
+      buildZip([
+        { name: 'dir/', data: '' },
+        { name: 'dir/a.txt', data: 'hello' },
+        { name: 'b.bin', data: Buffer.from([1, 2, 3, 4]) },
+      ])
+    );
+    assert.deepEqual(await archiveInfo(archive), { entries: 3, bytes: 9 });
+    const updates = [];
+    const outcome = await extractArchive(archive, path.join(root, 'out'), {
+      totalBytes: 9,
+      totalEntries: 3,
+      onProgress: progress => updates.push(progress),
+    });
+    assert.deepEqual(outcome, { ok: true, entries: 3, bytes: 9 });
+    assert.ok(updates.length > 0);
+    assert.deepEqual(updates.at(-1), {
+      entries: 3,
+      totalEntries: 3,
+      bytes: 9,
+      totalBytes: 9,
+    });
   }));
 
 test('rejects traversal, absolute, and backslash entry names', async () => {
