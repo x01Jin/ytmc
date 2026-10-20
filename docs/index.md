@@ -37,3 +37,6 @@ Explore the documentation guides below:
 
 10. **[Library Management](library-management.md)**
     How the on-disk library index, pagination, import, trim, edit, artwork, and reveal flows work.
+
+11. **[Desktop Updates](app-updates.md)**
+    How the portable Windows build checks GitHub releases, verifies signed archives, swaps the install folder, and rolls back on failure.

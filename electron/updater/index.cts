@@ -1,0 +1,774 @@
+import { spawn } from 'node:child_process';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
+import { downloadUpdate } from './download.cjs';
+import { fetchJson, openStream } from './netClient.cjs';
+import { runPreflight, type PreflightOutcome } from './preflight.cjs';
+import { scanForRelease } from './release.cjs';
+import { hashFileHex, verifyDigestSignature } from './signature.cjs';
+import { isNewerVersion } from './version.cjs';
+import {
+  WORKSPACE_FILES,
+  appendLog,
+  delay,
+  directorySize,
+  installIdFor,
+  newUpdateId,
+  readJson,
+  removeDirectoryWithRetries,
+  sanitizedEnv,
+  workspaceRoot,
+  writeJson,
+} from './install.cjs';
+
+export type UpdatePhase =
+  | 'unsupported'
+  | 'blocked'
+  | 'idle'
+  | 'checking'
+  | 'up-to-date'
+  | 'available'
+  | 'downloading'
+  | 'ready'
+  | 'applying'
+  | 'error';
+
+export interface UpdateState {
+  phase: UpdatePhase;
+  currentVersion: string;
+  latestVersion: string | null;
+  notes: string | null;
+  releaseUrl: string | null;
+  archiveBytes: number | null;
+  receivedBytes: number;
+  progressPercent: number | null;
+  errorCode: string | null;
+  errorMessage: string | null;
+  lastCheckedAt: number | null;
+  lastApply: { ok: boolean; reason: string; toVersion: string; at: number } | null;
+  logPath: string | null;
+  canDownload: boolean;
+  canApply: boolean;
+}
+
+export interface UpdaterHost {
+  isPackaged: boolean;
+  installDir: string;
+  userDataDir: string;
+  libraryDir: string | null;
+  localAppDataDir: string | null;
+  helperBundlePath: string;
+  currentVersion: string;
+  backendPort: () => number;
+  getWindow: () => BrowserWindow | null;
+  bootReport: { updateId: string; version: string; nonce: string; reportPath: string } | null;
+}
+
+export interface UpdaterHandle {
+  notifyWindowFailure(reason: string): void;
+  dispose(): void;
+}
+
+interface PersistedRelease {
+  version: string;
+  tag: string;
+  notes: string;
+  publishedAt: string;
+  archiveSize: number;
+  digestHex: string;
+  archiveUrl: string;
+  signatureUrl: string;
+}
+
+interface PersistedApply {
+  ok: boolean;
+  reason: string;
+  toVersion: string;
+  at: number;
+}
+
+interface PersistedState {
+  lastCheckedAt: number | null;
+  latest: PersistedRelease | null;
+  lastApply: PersistedApply | null;
+  failedVersions: string[];
+  pendingCleanup: string[];
+}
+
+interface JournalRecord {
+  updateId?: string;
+  phase?: string;
+  installDir?: string;
+  newDir?: string;
+  oldDir?: string;
+  failedDir?: string;
+  fromVersion?: string;
+  toVersion?: string;
+  reason?: string;
+  at?: number;
+}
+
+interface ApplyLock {
+  pid?: number;
+  updateId?: string;
+}
+
+const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const MANUAL_COOLDOWN_MS = 60_000;
+const STARTUP_CHECK_DELAY_MS = 15_000;
+const CLEANUP_DELAY_MS = 60_000;
+const PROGRESS_PUBLISH_MS = 250;
+const SPACE_HEADROOM_BYTES = 256 * 1024 * 1024;
+const ACTIVE_JOB_STATES = new Set(['queued', 'downloading', 'converting']);
+const RELEASE_PAGE_BASE = 'https://github.com/x01Jin/ytmc/releases/tag/';
+
+function isTrustedFrame(frame: { url?: string } | null | undefined): boolean {
+  const url = frame?.url ?? '';
+  return (
+    url.startsWith('http://127.0.0.1:') ||
+    url.startsWith('http://localhost:') ||
+    url.startsWith('file://')
+  );
+}
+
+function emptyState(currentVersion: string): UpdateState {
+  return {
+    phase: 'idle',
+    currentVersion,
+    latestVersion: null,
+    notes: null,
+    releaseUrl: null,
+    archiveBytes: null,
+    receivedBytes: 0,
+    progressPercent: null,
+    errorCode: null,
+    errorMessage: null,
+    lastCheckedAt: null,
+    lastApply: null,
+    logPath: null,
+    canDownload: false,
+    canApply: false,
+  };
+}
+
+function readPersisted(filePath: string): PersistedState {
+  const raw = readJson<Partial<PersistedState>>(filePath);
+  return {
+    lastCheckedAt: typeof raw?.lastCheckedAt === 'number' ? raw.lastCheckedAt : null,
+    latest: raw?.latest ?? null,
+    lastApply: raw?.lastApply ?? null,
+    failedVersions: Array.isArray(raw?.failedVersions) ? raw.failedVersions : [],
+    pendingCleanup: Array.isArray(raw?.pendingCleanup) ? raw.pendingCleanup : [],
+  };
+}
+
+export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
+  const workspace = workspaceRoot(host.localAppDataDir ?? '', installIdFor(host.installDir));
+  const workspaceReady = Boolean(host.localAppDataDir);
+  if (workspaceReady) fs.mkdirSync(workspace, { recursive: true });
+  const statePath = path.join(workspace, WORKSPACE_FILES.state);
+  const journalPath = path.join(workspace, WORKSPACE_FILES.journal);
+  const lockPath = path.join(workspace, WORKSPACE_FILES.lock);
+  const archivePath = path.join(workspace, WORKSPACE_FILES.archive);
+  const signaturePath = path.join(workspace, `${WORKSPACE_FILES.archive}.sig`);
+  const helperPath = path.join(workspace, WORKSPACE_FILES.helper);
+  const logPath = path.join(workspace, WORKSPACE_FILES.log);
+  const persisted = workspaceReady ? readPersisted(statePath) : readPersisted('');
+  const state = emptyState(host.currentVersion);
+  state.logPath = logPath;
+
+  let preflight: PreflightOutcome = { ok: true };
+  let checkedAt = 0;
+  let checking = false;
+  let downloadAbort: AbortController | null = null;
+  let applying = false;
+  let disposed = false;
+  let bootReportWritten = false;
+  let windowFailure: string | null = null;
+  let lastProgressPublish = 0;
+
+  const info = (line: string) => {
+    appendLog(logPath, line);
+  };
+
+  const publish = () => {
+    if (disposed) return;
+    host.getWindow()?.webContents.send('updates:state', state);
+  };
+
+  const setState = (patch: Partial<UpdateState>) => {
+    Object.assign(state, patch);
+    publish();
+  };
+
+  const savePersisted = () => {
+    if (!workspaceReady) return;
+    if (persisted.lastCheckedAt === null) return;
+    writeJson(statePath, persisted);
+  };
+
+  const settlePhase = () => {
+    if (!host.isPackaged) {
+      setState({ phase: 'unsupported', canDownload: false, canApply: false });
+      return;
+    }
+    if (!preflight.ok) {
+      setState({
+        phase: 'blocked',
+        errorCode: preflight.code,
+        errorMessage: preflight.message,
+        canDownload: false,
+        canApply: false,
+      });
+      return;
+    }
+    if (persisted.latest && isNewerVersion(persisted.latest.version, host.currentVersion)) {
+      applyReleaseToState(persisted.latest);
+      if (fs.existsSync(archivePath)) {
+        setState({ phase: 'ready', canDownload: false, canApply: true });
+      } else {
+        setState({ phase: 'available', canDownload: true, canApply: false });
+      }
+      return;
+    }
+    setState({ phase: 'idle', canDownload: false, canApply: false });
+  };
+
+  const applyReleaseToState = (release: PersistedRelease) => {
+    setState({
+      latestVersion: release.version,
+      notes: release.notes,
+      releaseUrl: `${RELEASE_PAGE_BASE}${release.tag}`,
+      archiveBytes: release.archiveSize,
+      errorCode: null,
+      errorMessage: null,
+      lastCheckedAt: persisted.lastCheckedAt,
+      lastApply: persisted.lastApply,
+    });
+  };
+
+  const refreshPreflight = (): PreflightOutcome => {
+    const installBytes = fs.existsSync(host.installDir)
+      ? 2 * directorySize(host.installDir) + SPACE_HEADROOM_BYTES
+      : SPACE_HEADROOM_BYTES;
+    const workspaceBytes = persisted.latest
+      ? 3 * persisted.latest.archiveSize + SPACE_HEADROOM_BYTES
+      : SPACE_HEADROOM_BYTES;
+    preflight = runPreflight({
+      isPackaged: host.isPackaged,
+      installDir: host.installDir,
+      userDataDir: host.userDataDir,
+      libraryDir: host.libraryDir,
+      localAppDataDir: host.localAppDataDir,
+      helperBundlePath: host.helperBundlePath,
+      currentVersion: host.currentVersion,
+      installBytesRequired: installBytes,
+      workspaceBytesRequired: workspaceBytes,
+    });
+    return preflight;
+  };
+
+  const conversionsActive = async (): Promise<boolean> => {
+    const port = host.backendPort();
+    if (!port) return false;
+    try {
+      const response = await fetchJson(`http://127.0.0.1:${port}/api/jobs`);
+      if (response.status !== 200) return true;
+      const payload = JSON.parse(response.body) as { jobs?: Array<{ status?: string }> };
+      const jobs = Array.isArray(payload.jobs) ? payload.jobs : [];
+      return jobs.some(job => ACTIVE_JOB_STATES.has(String(job.status)));
+    } catch {
+      return true;
+    }
+  };
+
+  const waitForReadiness = async (timeoutMs: number): Promise<boolean> => {
+    const port = host.backendPort();
+    if (!port) return false;
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        const response = await fetchJson(`http://127.0.0.1:${port}/api/health`);
+        if (response.status === 200) {
+          const payload = JSON.parse(response.body) as {
+            readiness?: { ytDlp?: unknown; ffmpeg?: unknown; library?: unknown };
+          };
+          const readiness = payload.readiness;
+          if (
+            readiness &&
+            readiness.ytDlp !== null &&
+            readiness.ytDlp !== undefined &&
+            readiness.ffmpeg !== null &&
+            readiness.ffmpeg !== undefined &&
+            readiness.library === true
+          ) {
+            return true;
+          }
+        }
+      } catch {}
+      await delay(1000);
+    }
+    return false;
+  };
+
+  const writeBootReport = async (): Promise<void> => {
+    const report = host.bootReport;
+    if (!report || bootReportWritten || windowFailure) return;
+    if (app.getVersion() !== report.version) return;
+    if (!(await waitForReadiness(60_000))) return;
+    if (disposed || windowFailure) return;
+    writeJson(report.reportPath, {
+      schema: 1,
+      updateId: report.updateId,
+      version: report.version,
+      nonce: report.nonce,
+      at: Date.now(),
+    });
+    bootReportWritten = true;
+    info(`boot report written for ${report.version}`);
+  };
+
+  const cleanup = (dirs: string[]) => {
+    const targets = dirs.filter(dir => typeof dir === 'string' && dir.length > 0);
+    if (targets.length === 0) return;
+    const remove = async () => {
+      const remaining: string[] = [];
+      for (const dir of targets) {
+        const removed = await removeDirectoryWithRetries(dir);
+        if (!removed) remaining.push(dir);
+      }
+      persisted.pendingCleanup = remaining;
+      savePersisted();
+    };
+    setTimeout(() => {
+      void remove();
+    }, CLEANUP_DELAY_MS);
+  };
+
+  const reconcile = () => {
+    if (!workspaceReady) return;
+    const journal = readJson<JournalRecord>(journalPath);
+    const lock = readJson<ApplyLock>(lockPath);
+    if (lock && typeof lock.pid === 'number' && lock.pid !== process.pid) {
+      try {
+        process.kill(lock.pid, 0);
+      } catch {
+        fs.rmSync(lockPath, { force: true });
+      }
+    }
+    if (journal) {
+      const applied = journal.toVersion === host.currentVersion;
+      const leftovers = [journal.newDir, journal.failedDir].filter(
+        (dir): dir is string => typeof dir === 'string'
+      );
+      if (applied) {
+        persisted.lastApply = {
+          ok: true,
+          reason: 'applied',
+          toVersion: journal.toVersion ?? host.currentVersion,
+          at: Date.now(),
+        };
+        if (journal.phase === 'boot-ok' || journal.phase === 'launched') {
+          info(`update to ${journal.toVersion} confirmed`);
+        }
+        if (typeof journal.oldDir === 'string') leftovers.push(journal.oldDir);
+        setState({ lastApply: persisted.lastApply });
+      } else if (journal.phase === 'rolled-back' || journal.phase === 'failed') {
+        const reason = journal.reason ?? 'unknown';
+        persisted.lastApply = {
+          ok: false,
+          reason,
+          toVersion: journal.toVersion ?? '',
+          at: Date.now(),
+        };
+        if (journal.toVersion) {
+          persisted.failedVersions = Array.from(
+            new Set([...persisted.failedVersions, journal.toVersion])
+          );
+        }
+        setState({ lastApply: persisted.lastApply });
+        info(`previous update attempt failed: ${reason}`);
+      }
+      fs.rmSync(journalPath, { force: true });
+      fs.rmSync(path.join(workspace, WORKSPACE_FILES.bootOk), { force: true });
+      cleanup([...leftovers, ...persisted.pendingCleanup]);
+      persisted.pendingCleanup = [];
+    }
+    if (persisted.pendingCleanup.length > 0) {
+      cleanup([...persisted.pendingCleanup]);
+      persisted.pendingCleanup = [];
+    }
+    if (persisted.lastCheckedAt !== null && persisted.lastCheckedAt > Date.now()) {
+      persisted.lastCheckedAt = null;
+    }
+    savePersisted();
+  };
+
+  const verifyArchive = async (): Promise<boolean> => {
+    if (!fs.existsSync(archivePath) || !fs.existsSync(signaturePath)) return false;
+    try {
+      const digestHex = await hashFileHex(archivePath);
+      const signatureBase64 = fs.readFileSync(signaturePath, 'utf8').trim();
+      const signature = verifyDigestSignature(digestHex, signatureBase64);
+      if (!signature.ok) return false;
+      return persisted.latest !== null && persisted.latest.digestHex === digestHex;
+    } catch {
+      return false;
+    }
+  };
+
+  const runCheck = async (manual: boolean): Promise<void> => {
+    if (!host.isPackaged || checking || applying) return;
+    if (manual && Date.now() - checkedAt < MANUAL_COOLDOWN_MS) return;
+    if (!manual && persisted.lastCheckedAt !== null) {
+      const elapsed = Date.now() - persisted.lastCheckedAt;
+      if (elapsed < CHECK_INTERVAL_MS) {
+        checkedAt = Date.now();
+        return;
+      }
+    }
+    checking = true;
+    checkedAt = Date.now();
+    setState({ phase: 'checking', errorCode: null, errorMessage: null });
+    try {
+      const lookup = await scanForRelease({ fetchJson, currentVersion: host.currentVersion });
+      persisted.lastCheckedAt = Date.now();
+      if (lookup.status === 'available') {
+        const release = lookup.release;
+        persisted.latest = {
+          version: release.version,
+          tag: release.tag,
+          notes: release.notes,
+          publishedAt: release.publishedAt,
+          archiveSize: release.archive.size,
+          digestHex: release.archive.digestHex,
+          archiveUrl: release.archive.downloadUrl,
+          signatureUrl: release.signature.downloadUrl,
+        };
+        persisted.failedVersions = persisted.failedVersions.filter(
+          version => version !== release.version
+        );
+        savePersisted();
+        applyReleaseToState(persisted.latest);
+        const archivePresent = await verifyArchive();
+        setState({
+          phase: archivePresent ? 'ready' : 'available',
+          canDownload: !archivePresent,
+          canApply: archivePresent,
+        });
+      } else if (lookup.status === 'up-to-date') {
+        persisted.latest = null;
+        savePersisted();
+        setState({
+          phase: 'up-to-date',
+          latestVersion: null,
+          notes: null,
+          releaseUrl: null,
+          archiveBytes: null,
+          lastCheckedAt: persisted.lastCheckedAt,
+          canDownload: false,
+          canApply: false,
+        });
+      } else if (lookup.status === 'invalid-release') {
+        persisted.latest = null;
+        savePersisted();
+        info(`release ${lookup.version} rejected: ${lookup.reason}`);
+        setState({
+          phase: 'error',
+          errorCode: lookup.reason,
+          errorMessage: `Release ${lookup.version} is not installable.`,
+          canDownload: false,
+          canApply: false,
+        });
+      } else {
+        info(`release lookup failed: ${lookup.reason}`);
+        setState({
+          phase: 'error',
+          errorCode: lookup.reason,
+          errorMessage: lookup.message,
+          canDownload: false,
+          canApply: false,
+        });
+      }
+    } finally {
+      checking = false;
+    }
+  };
+
+  const startDownload = async (): Promise<void> => {
+    const release = persisted.latest;
+    if (!release || applying || downloadAbort) return;
+    if (!refreshPreflight().ok) {
+      settlePhase();
+      return;
+    }
+    const controller = new AbortController();
+    downloadAbort = controller;
+    setState({
+      phase: 'downloading',
+      receivedBytes: 0,
+      progressPercent: 0,
+      canDownload: false,
+      canApply: false,
+      errorCode: null,
+      errorMessage: null,
+    });
+    try {
+      const signatureResponse = await fetchJson(release.signatureUrl, {
+        headers: { 'User-Agent': 'ytmc-updater', Accept: 'text/plain' },
+      });
+      const signatureBase64 = signatureResponse.body.trim();
+      if (signatureResponse.status !== 200 || signatureBase64.length === 0) {
+        setState({
+          phase: 'error',
+          errorCode: 'signature-unavailable',
+          errorMessage: 'The release signature could not be read.',
+          canDownload: true,
+        });
+        return;
+      }
+      fs.writeFileSync(signaturePath, `${signatureBase64}\n`, 'utf8');
+      const plan = {
+        url: release.archiveUrl,
+        destination: archivePath,
+        expectedSize: release.archiveSize,
+        expectedDigestHex: release.digestHex,
+        signatureBase64,
+      };
+      let outcome = await downloadUpdate({
+        openStream,
+        plan,
+        signal: controller.signal,
+        onProgress: progress => {
+          const now = Date.now();
+          if (now - lastProgressPublish < PROGRESS_PUBLISH_MS) return;
+          lastProgressPublish = now;
+          setState({
+            receivedBytes: progress.received,
+            progressPercent:
+              progress.total > 0 ? Math.floor((progress.received / progress.total) * 100) : null,
+          });
+        },
+      });
+      if (outcome.status === 'stale-url') {
+        info('download url expired, retrying');
+        await delay(2000);
+        outcome = await downloadUpdate({
+          openStream,
+          plan,
+          signal: controller.signal,
+          onProgress: progress => {
+            setState({
+              receivedBytes: progress.received,
+              progressPercent:
+                progress.total > 0 ? Math.floor((progress.received / progress.total) * 100) : null,
+            });
+          },
+        });
+      }
+      if (outcome.status === 'ok') {
+        setState({
+          phase: 'ready',
+          receivedBytes: outcome.bytes,
+          progressPercent: 100,
+          canDownload: false,
+          canApply: true,
+        });
+        info(`download complete ${release.version} ${outcome.bytes} bytes`);
+      } else if (outcome.status === 'aborted') {
+        setState({
+          phase: 'available',
+          receivedBytes: outcome.bytes,
+          progressPercent: null,
+          canDownload: true,
+          canApply: false,
+          errorCode: 'download-cancelled',
+          errorMessage: 'The download was cancelled. It will resume from where it stopped.',
+        });
+      } else {
+        const reason = outcome.status === 'failed' ? outcome.reason : 'download-url-expired';
+        info(`download failed: ${reason}`);
+        setState({
+          phase: 'error',
+          errorCode: reason,
+          errorMessage: 'The update download failed.',
+          canDownload: true,
+          canApply: false,
+        });
+      }
+    } catch (error) {
+      setState({
+        phase: 'error',
+        errorCode: 'download-error',
+        errorMessage: error instanceof Error ? error.message : 'The update download failed.',
+        canDownload: true,
+        canApply: false,
+      });
+    } finally {
+      downloadAbort = null;
+    }
+  };
+
+  const applyUpdate = async (): Promise<void> => {
+    const release = persisted.latest;
+    if (!release || applying) return;
+    if (state.phase !== 'ready') return;
+    applying = true;
+    try {
+      if (!refreshPreflight().ok) {
+        settlePhase();
+        return;
+      }
+      if (await conversionsActive()) {
+        setState({
+          phase: 'ready',
+          errorCode: 'conversion-active',
+          errorMessage: 'Finish the active conversion before restarting to update.',
+          canApply: true,
+        });
+        applying = false;
+        return;
+      }
+      if (!(await verifyArchive())) {
+        setState({
+          phase: 'error',
+          errorCode: 'archive-invalid',
+          errorMessage: 'The downloaded update could not be verified again.',
+          canDownload: true,
+        });
+        applying = false;
+        return;
+      }
+      const signatureBase64 = fs.readFileSync(signaturePath, 'utf8').trim();
+      const digestHex = await hashFileHex(archivePath);
+      const updateId = newUpdateId(release.version);
+      const nonce = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+      fs.writeFileSync(helperPath, fs.readFileSync(host.helperBundlePath));
+      writeJson(lockPath, { pid: process.pid, updateId, at: Date.now() });
+      writeJson(path.join(workspace, WORKSPACE_FILES.pending), {
+        schema: 1,
+        updateId,
+        fromVersion: host.currentVersion,
+        toVersion: release.version,
+        nonce,
+        at: Date.now(),
+      });
+      setState({ phase: 'applying', canApply: false, errorCode: null, errorMessage: null });
+      const executable = process.execPath;
+      const args = [
+        helperPath,
+        '--install',
+        host.installDir,
+        '--workspace',
+        workspace,
+        '--archive',
+        archivePath,
+        '--digest',
+        digestHex,
+        '--signature',
+        signatureBase64,
+        '--update-id',
+        updateId,
+        '--from',
+        host.currentVersion,
+        '--to',
+        release.version,
+        '--exe',
+        path.basename(executable),
+        '--app-pid',
+        String(process.pid),
+        '--nonce',
+        nonce,
+      ];
+      const backendPid = (globalThis as { __ytmcBackendPid?: number }).__ytmcBackendPid;
+      if (typeof backendPid === 'number' && backendPid > 0) {
+        args.push('--backend-pid', String(backendPid));
+      }
+      info(`spawning helper update=${updateId}`);
+      const child = spawn(executable, args, {
+        cwd: workspace,
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+        env: sanitizedEnv({ ELECTRON_RUN_AS_NODE: '1' }),
+      });
+      child.unref();
+      app.quit();
+    } catch (error) {
+      applying = false;
+      setState({
+        phase: 'error',
+        errorCode: 'apply-failed',
+        errorMessage: error instanceof Error ? error.message : 'The update could not be started.',
+        canApply: true,
+      });
+    }
+  };
+
+  const register = (channel: string, handler: () => unknown) => {
+    ipcMain.handle(channel, event => {
+      if (!isTrustedFrame(event.senderFrame)) throw new Error('Untrusted sender.');
+      return handler();
+    });
+  };
+
+  register('updates:get-state', () => state);
+  register('updates:check', () => runCheck(true));
+  register('updates:download', () => startDownload());
+  register('updates:cancel-download', () => {
+    downloadAbort?.abort();
+  });
+  register('updates:apply', () => applyUpdate());
+  register('updates:open-release', () => {
+    if (state.releaseUrl?.startsWith(RELEASE_PAGE_BASE)) void shell.openExternal(state.releaseUrl);
+  });
+  register('updates:reveal-log', () => {
+    if (fs.existsSync(logPath)) shell.showItemInFolder(logPath);
+    else if (workspaceReady) shell.openPath(workspace);
+  });
+  register('updates:renderer-ready', () => {
+    void writeBootReport();
+  });
+
+  if (workspaceReady) {
+    reconcile();
+    refreshPreflight();
+    settlePhase();
+    if (fs.existsSync(archivePath) && persisted.latest) {
+      setTimeout(() => {
+        void verifyArchive().then(ok => {
+          if (!ok) {
+            fs.rmSync(archivePath, { force: true });
+            fs.rmSync(signaturePath, { force: true });
+            settlePhase();
+            return;
+          }
+          if (state.phase === 'available') {
+            setState({ phase: 'ready', canDownload: false, canApply: true });
+          }
+        });
+      }, STARTUP_CHECK_DELAY_MS);
+    }
+    setTimeout(() => {
+      void runCheck(false);
+    }, STARTUP_CHECK_DELAY_MS);
+  } else {
+    setState({
+      phase: 'blocked',
+      errorCode: 'no-localappdata',
+      errorMessage: 'The local app data folder is unavailable.',
+    });
+  }
+
+  return {
+    notifyWindowFailure: reason => {
+      windowFailure = reason;
+      info(`window failure during update boot: ${reason}`);
+    },
+    dispose: () => {
+      disposed = true;
+      downloadAbort?.abort();
+    },
+  };
+}

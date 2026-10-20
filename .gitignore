@@ -17,6 +17,7 @@ yarn-error.log*
 # Env files — never commit real secrets; keep the example only
 .env*
 !.env.example
+*.key
 
 # Runtime data — YouTube session cookies, guest sessions, job state,
 # library index, and app settings. NEVER commit: contains personal

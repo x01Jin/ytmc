@@ -4,11 +4,13 @@ import * as http from 'http';
 import * as net from 'net';
 import * as path from 'path';
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
+import { initializeUpdater } from './updater/index.cjs';
 
 let mainWindow: BrowserWindow | null = null;
 let serverProcess: ChildProcess | null = null;
 let serverPort = 0;
 let isQuitting = false;
+let updater: ReturnType<typeof initializeUpdater> | null = null;
 
 app.setName('YT Music Converter');
 
@@ -185,6 +187,7 @@ async function startBackend(): Promise<number> {
     cwd: path.dirname(entry),
     stdio: ['ignore', 'pipe', 'pipe'],
   });
+  (globalThis as { __ytmcBackendPid?: number }).__ytmcBackendPid = serverProcess.pid;
 
   serverProcess.on('error', err => {
     console.error(`[backend] Failed to launch: ${err.message}`);
@@ -348,6 +351,15 @@ function createWindow(): void {
     mainWindow = null;
   });
 
+  mainWindow.webContents.on('did-fail-load', (_event, errorCode, errorDescription) => {
+    if (errorCode === -3) return;
+    updater?.notifyWindowFailure(`did-fail-load ${errorCode} ${errorDescription}`);
+  });
+
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    updater?.notifyWindowFailure(`render-process-gone ${details.reason}`);
+  });
+
   const splash = splashFile();
   bootLog(splash ? `splash-file ${splash}` : 'splash-file missing');
   if (splash) {
@@ -417,6 +429,37 @@ function registerIpc(): void {
   ipcMain.handle('desktop:get-app-version', () => app.getVersion());
 }
 
+function updateArgValue(prefix: string): string | null {
+  const hit = process.argv.find(arg => arg.startsWith(prefix));
+  return hit ? hit.slice(prefix.length) : null;
+}
+
+function pendingBootReport(): {
+  updateId: string;
+  version: string;
+  nonce: string;
+  reportPath: string;
+} | null {
+  const updateId = updateArgValue('--ytmc-update-id=');
+  const version = updateArgValue('--ytmc-update-version=');
+  const nonce = updateArgValue('--ytmc-update-nonce=');
+  const reportPath = updateArgValue('--ytmc-update-report=');
+  if (!updateId || !version || !nonce || !reportPath) return null;
+  return { updateId, version, nonce, reportPath };
+}
+
+function libraryDirFromSettings(): string | null {
+  try {
+    const raw = fs.readFileSync(path.join(app.getPath('userData'), 'settings.json'), 'utf8');
+    const parsed = JSON.parse(raw) as { downloadsDir?: unknown };
+    if (typeof parsed.downloadsDir !== 'string') return null;
+    const trimmed = parsed.downloadsDir.trim();
+    return trimmed ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
 async function boot(): Promise<void> {
   bootLog('whenReady');
   try {
@@ -435,6 +478,18 @@ async function boot(): Promise<void> {
     sendSplashStatus('Probing engine…');
     const port = await startBackend();
     bootLog('backend ready');
+    updater = initializeUpdater({
+      isPackaged: app.isPackaged,
+      installDir: path.dirname(process.execPath),
+      userDataDir: app.getPath('userData'),
+      libraryDir: libraryDirFromSettings(),
+      localAppDataDir: process.env.LOCALAPPDATA ?? null,
+      helperBundlePath: path.join(app.getAppPath(), 'dist-electron', 'updater-helper.cjs'),
+      currentVersion: app.getVersion(),
+      backendPort: () => serverPort,
+      getWindow: () => mainWindow,
+      bootReport: pendingBootReport(),
+    });
     sendSplashStatus('Loading library…');
     showApp(port);
   } catch (err) {
@@ -443,7 +498,6 @@ async function boot(): Promise<void> {
     app.quit();
   }
 }
-
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -467,6 +521,8 @@ if (!gotLock) {
   });
 
   app.on('before-quit', event => {
+    updater?.dispose();
+    updater = null;
     if (isQuitting || !serverProcess) return;
     isQuitting = true;
     event.preventDefault();

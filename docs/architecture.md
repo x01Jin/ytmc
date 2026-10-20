@@ -93,9 +93,20 @@ The backend codebase adheres strictly to the single-purpose pattern:
 
 - The backend binds `127.0.0.1` only and rejects non-loopback `Host` headers (DNS-rebinding defense).
 - Mutating `/api` calls must echo the per-process `x-loopback-token` published by `/api/health`.
-- Renderer has no Node access (`contextIsolation`, `sandbox`); `preload.cjs` exposes only `window.desktop` (`getDownloadsDefault`, `pickFolder`, `revealInExplorer`, `openFile`, `getBackendPort`, `getAppVersion`) and `window.splash.onStatus` for splash status messages.
+- Renderer has no Node access (`contextIsolation`, `sandbox`); `preload.cjs` exposes only `window.desktop` (`getDownloadsDefault`, `pickFolder`, `revealInExplorer`, `openFile`, `getBackendPort`, `getAppVersion`), `window.updates` (updater state subscription plus check/download/cancel/apply/open-release/reveal-log actions), and `window.splash.onStatus` for splash status messages.
 - Strict Content-Security-Policy set as a response header via `session.defaultSession.webRequest.onHeadersReceived` (`electron/main.cts`), scoped to loopback origins: `script-src 'self'` everywhere (no inline or remote scripts); `style-src` keeps `'unsafe-inline'` because React sets style attributes (progress-bar width); images open to `https:`/`data:` plus self, media to `self` plus `blob:` for same-origin streams, `connect-src` to loopback; `frame-src` allows `youtube-nocookie.com` and `youtube.com` for the YouTube preview modal.
 - Quit kills the whole backend tree via `taskkill /T /F` so no `yt-dlp`/FFmpeg orphans linger.
+
+## Desktop Updates
+
+The portable Windows build updates itself from signed GitHub releases; the full protocol is in [Desktop Updates](app-updates.md).
+
+- **`electron/updater/index.cts`**: main-process state machine (`unsupported`/`blocked`/`idle`/`checking`/`up-to-date`/`available`/`downloading`/`ready`/`applying`/`error`), cached release state in `%LOCALAPPDATA%\YT Music Converter\updater\<installId>\state.json`, boot-report writing, journal reconciliation, and trusted-frame IPC (`updates:*`).
+- **`electron/updater/release.cts`**, **`netClient.cts`**, **`http.cts`**: GitHub release scan and Electron `net`-based JSON/stream requests that honor proxy and system certificate settings.
+- **`electron/updater/download.cts`**, **`extract.cts`**, **`signature.cts`**, **`signing-key.cts`**: resumable download, sha256 digest and pinned Ed25519 verification, and strict zip extraction.
+- **`electron/updater/helper.cts`** and **`preflight.cts`**: detached apply helper (swap, relaunch, boot confirmation, rollback) and the install-layout safety gates; the helper talks to the relaunched app through `--ytmc-update-*` arguments and `boot-ok.json`.
+- **`electron/main.cts`**: initializes the updater after `startBackend`, records the backend PID, forwards window failures, and disposes the updater on quit.
+- **`scripts/generate-signing-key.mts`**, **`sign-release.mts`**, **`verify-release.mts`**: release-side key generation, archive signing, and published-release verification (`release:keygen`, `release:sign`, `release:verify`).
 
 ## Frontend Architecture
 
@@ -109,7 +120,7 @@ Pixel-art dark-only UI (`src/index.css` `@theme` tokens, `Press Start 2P` + `IBM
 - **`routes/Library.tsx`**: searchable on-disk library with a docked bottom preview player, drag-and-drop/file-picker import, reveal-in-Explorer, edit panels, and delete-behind-confirm. Refreshes automatically when a conversion finishes. Per-track media versions cache-bust the player and trim preview after an edit.
 - **`routes/History.tsx`**: finished conversions with frozen original cover art and title, YouTube link copy, one-click re-convert, per-row remove, and clear-all behind confirm.
 - **`routes/Queue.tsx`**: live view of the in-progress conversion only; finished jobs clear out to Library + History.
-- **`routes/Settings.tsx`**: library folder (Browse/Reset), reveal-after-convert, session cookies.
+- **`routes/Settings.tsx`**: library folder (Browse/Reset), reveal-after-convert, session cookies, and the update panel.
 
 The frontend is constructed with focused React components:
 

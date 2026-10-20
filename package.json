@@ -15,8 +15,12 @@
     "lint:fix": "oxlint --fix",
     "format": "oxfmt",
     "format:check": "oxfmt --check",
+    "release:keygen": "tsx scripts/generate-signing-key.mts",
+    "release:sign": "tsx scripts/sign-release.mts",
+    "release:verify": "tsx scripts/verify-release.mts",
+    "test:updater": "tsc -p electron/tsconfig.json && node --test \"scripts/updater-tests/*.test.mjs\"",
     "electron:dev": "concurrently -k -n \"server,electron\" \"npm run dev\" \"wait-on http-get://127.0.0.1:3000/api/health -t 60s -l && cross-env NODE_ENV=development ELECTRON_DEV_URL=http://127.0.0.1:3000 electron .\"",
-    "electron:build": "npm run build && node -e \"const fs=require('fs'); if (!fs.existsSync('dist/server.cjs')) { console.error('Missing dist/server.cjs. Build the backend before packaging.'); process.exit(1); }\" && tsc -p electron/tsconfig.json && electron-builder --win zip"
+    "electron:build": "npm run build && node -e \"const fs=require('fs'); if (!fs.existsSync('dist/server.cjs')) { console.error('Missing dist/server.cjs. Build the backend before packaging.'); process.exit(1); }\" && tsc -p electron/tsconfig.json && esbuild electron/updater/helper.cts --bundle --platform=node --format=cjs --packages=bundle --target=node20 --outfile=dist-electron/updater-helper.cjs && electron-builder --win zip"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
@@ -25,13 +29,15 @@
     "lucide-react": "^0.546.0",
     "music-metadata": "^11.16.1",
     "react": "^19.0.1",
-    "react-dom": "^19.0.1"
+    "react-dom": "^19.0.1",
+    "yauzl": "^3.4.0"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/node": "^22.14.0",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "@types/yauzl": "^3.4.0",
     "@vitejs/plugin-react": "^6.1.1",
     "concurrently": "^10.0.5",
     "cross-env": "^10.1.0",
@@ -81,6 +87,7 @@
       "target": [
         "zip"
       ],
+      "artifactName": "ytmc-${version}-win.zip",
       "icon": "assets/windows/icon.ico"
     }
   }

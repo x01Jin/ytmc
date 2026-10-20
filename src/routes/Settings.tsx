@@ -1,4 +1,5 @@
 import React, { Suspense, lazy, useEffect, useRef, useState } from 'react';
+import { UpdatePanel } from '../components/UpdatePanel';
 import { useSession, useSettings } from '../store/appStore';
 
 const CookieModal = lazy(() =>
@@ -185,6 +186,8 @@ export function SettingsRoute() {
           Manage Session Cookies
         </button>
       </section>
+
+      <UpdatePanel />
 
       {isCookieModalOpen && (
         <Suspense fallback={null}>

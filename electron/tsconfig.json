@@ -11,5 +11,5 @@
     "rootDir": ".",
     "sourceMap": true
   },
-  "include": ["main.cts", "preload.cts"]
+  "include": ["main.cts", "preload.cts", "updater/**/*.cts"]
 }

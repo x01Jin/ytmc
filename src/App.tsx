@@ -8,6 +8,7 @@ import {
   TitleBar,
   useHashRoute,
 } from './components/AppShell';
+import { UpdateNotice } from './components/UpdateNotice';
 import { ConvertRoute } from './routes/Convert';
 
 const YouTubeRoute = lazy(() =>
@@ -75,6 +76,7 @@ function ShellChrome() {
       <ShellMain>
         <SideNav route={route} onNavigate={navigate} queueCount={activeCount} />
         <ShellContent>
+          <UpdateNotice />
           {route === 'convert' && <ConvertRoute />}
           <div className={route === 'youtube' ? 'contents' : 'hidden'}>
             <Suspense fallback={<RouteFallback />}>
