@@ -446,9 +446,6 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
           archiveUrl: release.archive.downloadUrl,
           signatureUrl: release.signature.downloadUrl,
         };
-        persisted.failedVersions = persisted.failedVersions.filter(
-          version => version !== release.version
-        );
         savePersisted();
         applyReleaseToState(persisted.latest);
         const archivePresent = await verifyArchive();

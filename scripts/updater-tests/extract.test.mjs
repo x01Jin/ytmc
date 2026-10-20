@@ -96,3 +96,15 @@ test('reports an unreadable archive', async () => {
     assert.equal(await archiveUncompressedBytes(archive), null);
   });
 });
+
+test('reports the entry and code when a write fails', () =>
+  withRoot(async root => {
+    const archive = path.join(root, 'write.zip');
+    fs.writeFileSync(archive, buildZip([{ name: 'blocked.txt', data: 'hello' }]));
+    const out = path.join(root, 'out');
+    fs.mkdirSync(path.join(out, 'blocked.txt'), { recursive: true });
+    const outcome = await extractArchive(archive, out);
+    assert.equal(outcome.ok, false);
+    assert.equal(outcome.reason, 'entry-write-failed');
+    assert.match(outcome.detail, /^blocked\.txt: /);
+  }));

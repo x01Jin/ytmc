@@ -27,6 +27,10 @@ export function UpdateNotice() {
   };
 
   const ready = state.phase === 'ready';
+  const failure =
+    state.lastApply && !state.lastApply.ok && state.lastApply.toVersion === version
+      ? state.lastApply
+      : null;
 
   return (
     <section
@@ -37,6 +41,11 @@ export function UpdateNotice() {
         Version <span className="px-tabular">{version}</span>{' '}
         {ready ? 'is ready to install.' : 'is available.'}
       </span>
+      {failure && (
+        <span className="text-sm text-px-warn" role="status">
+          The last attempt failed: {failure.reason}.
+        </span>
+      )}
       <button
         type="button"
         className="px-btn px-btn-primary text-sm"

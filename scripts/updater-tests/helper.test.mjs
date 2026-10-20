@@ -185,6 +185,18 @@ test('aborts before touching the install when the archive digest changed', { ski
   })
 );
 
+test('relaunches the old build when the apply aborts', { skip }, () =>
+  withRoot(async root => {
+    const launch = fakeLaunch();
+    const options = await baseOptions(root, { launch, digestHex: 'c'.repeat(64) });
+    const outcome = await runApply(options);
+    assert.deepEqual(outcome, { outcome: 'aborted', reason: 'archive-digest-mismatch' });
+    assert.equal(launch.calls.length, 1);
+    assert.equal(launch.calls[0].executable, path.join(root, 'app', EXE));
+    assert.deepEqual(launch.calls[0].args, []);
+  })
+);
+
 test('aborts when the extracted tree is missing ffmpeg', { skip }, () =>
   withRoot(async root => {
     const options = await baseOptions(root, { includeFfmpeg: false });

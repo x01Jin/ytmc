@@ -4,7 +4,7 @@ import * as yauzl from 'yauzl';
 
 export type ExtractOutcome =
   | { ok: true; entries: number; bytes: number }
-  | { ok: false; reason: string };
+  | { ok: false; reason: string; detail?: string };
 
 const MAX_ENTRIES = 20000;
 const MAX_TOTAL_BYTES = 4 * 1024 * 1024 * 1024;
@@ -69,22 +69,24 @@ export function extractArchive(archivePath: string, destination: string): Promis
         let entries = 0;
         let bytes = 0;
         let settled = false;
-        const fail = (reason: string) => {
+        const fail = (reason: string, detail?: string) => {
           if (settled) return;
           settled = true;
           try {
             zipFile.close();
           } catch {}
-          resolve({ ok: false, reason });
+          resolve(detail === undefined ? { ok: false, reason } : { ok: false, reason, detail });
         };
         zipFile.on('error', (error: Error) => {
-          fail(
+          if (
             /invalid characters in fileName|absolute path|invalid relative path/i.test(
               error.message
             )
-              ? 'unsafe-entry'
-              : 'archive-error'
-          );
+          ) {
+            fail('unsafe-entry');
+          } else {
+            fail('archive-error', error.message);
+          }
         });
         zipFile.on('entry', (entry: yauzl.Entry) => {
           if (settled) return;
@@ -121,7 +123,10 @@ export function extractArchive(archivePath: string, destination: string): Promis
           }
           zipFile.openReadStream(entry, (streamError, readStream) => {
             if (streamError || !readStream) {
-              fail('entry-read-failed');
+              fail(
+                'entry-read-failed',
+                streamError ? `${entry.fileName}: ${streamError.message}` : entry.fileName
+              );
               return;
             }
             fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -132,13 +137,14 @@ export function extractArchive(archivePath: string, destination: string): Promis
               crc = crc32(chunk, crc);
               size += chunk.length;
             });
-            readStream.on('error', () => {
+            readStream.on('error', (error: Error) => {
               output.destroy();
-              fail('entry-read-failed');
+              fail('entry-read-failed', `${entry.fileName}: ${error.message}`);
             });
-            output.on('error', () => {
+            output.on('error', (error: Error) => {
               readStream.destroy();
-              fail('entry-write-failed');
+              const code = (error as NodeJS.ErrnoException).code;
+              fail('entry-write-failed', `${entry.fileName}: ${code ?? error.message}`);
             });
             output.on('close', () => {
               if (settled) return;

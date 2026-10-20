@@ -16,6 +16,8 @@ import {
   writeJson,
 } from './install.cjs';
 
+process.noAsar = true;
+
 export interface LaunchPort {
   launch(executable: string, args: string[], cwd: string): number;
   isAlive(pid: number): boolean;
@@ -128,6 +130,20 @@ export async function runApply(options: HelperOptions): Promise<ApplyOutcome> {
     fs.rmSync(lockPath, { force: true });
     return outcome;
   };
+  const relaunchOld = () => {
+    const executable = path.join(installDir, options.exeName);
+    if (!fs.existsSync(executable)) return;
+    try {
+      options.launch.launch(executable, [], installDir);
+    } catch (error) {
+      log(`relaunch after abort failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  };
+  const abort = (reason: string): ApplyOutcome => {
+    const outcome = finish({ outcome: 'aborted', reason });
+    if (reason !== 'app-still-running') relaunchOld();
+    return outcome;
+  };
 
   log(`apply start update=${options.updateId} from=${options.fromVersion} to=${options.toVersion}`);
   writePhase('start');
@@ -139,7 +155,7 @@ export async function runApply(options: HelperOptions): Promise<ApplyOutcome> {
     killProcessTree(options.appPid, false);
     if (!(await waitForProcessExit(options.appPid, 30_000))) {
       writePhase('failed', { reason: 'app-still-running' });
-      return finish({ outcome: 'aborted', reason: 'app-still-running' });
+      return abort('app-still-running');
     }
   }
   if (options.backendPid > 0 && isProcessAlive(options.backendPid)) {
@@ -150,27 +166,33 @@ export async function runApply(options: HelperOptions): Promise<ApplyOutcome> {
   const archiveDigest = await hashFileHex(options.archivePath);
   if (archiveDigest !== options.digestHex) {
     writePhase('failed', { reason: 'archive-digest-mismatch' });
-    return finish({ outcome: 'aborted', reason: 'archive-digest-mismatch' });
+    return abort('archive-digest-mismatch');
   }
   const signature = verifyDigestSignature(archiveDigest, options.signatureBase64);
   if (!signature.ok) {
     writePhase('failed', { reason: `archive-signature-${signature.reason}` });
-    return finish({ outcome: 'aborted', reason: 'archive-signature-invalid' });
+    return abort('archive-signature-invalid');
   }
 
   fs.rmSync(newDir, { recursive: true, force: true });
   const extracted = await extractArchive(options.archivePath, newDir);
   if (!extracted.ok) {
     fs.rmSync(newDir, { recursive: true, force: true });
-    writePhase('failed', { reason: `extract-${extracted.reason}` });
-    return finish({ outcome: 'aborted', reason: `extract-${extracted.reason}` });
+    const reason = `extract-${extracted.reason}`;
+    log(`extract failed: ${reason}${extracted.detail ? ` (${extracted.detail})` : ''}`);
+    writePhase('failed', {
+      reason,
+      ...(extracted.detail ? { detail: extracted.detail } : {}),
+    });
+    return abort(reason);
   }
   log(`extracted ${extracted.entries} entries, ${extracted.bytes} bytes`);
   const missing = validateTree(newDir, options.exeName);
   if (missing) {
     fs.rmSync(newDir, { recursive: true, force: true });
-    writePhase('failed', { reason: `tree-invalid-${missing}` });
-    return finish({ outcome: 'aborted', reason: `tree-invalid-${missing}` });
+    const reason = `tree-invalid-${missing}`;
+    writePhase('failed', { reason });
+    return abort(reason);
   }
 
   const dataDir = path.join(installDir, 'data');
@@ -198,7 +220,7 @@ export async function runApply(options: HelperOptions): Promise<ApplyOutcome> {
     }
     const reason = error instanceof Error ? error.message : String(error);
     writePhase('failed', { reason: 'swap-failed', detail: reason });
-    return finish({ outcome: 'aborted', reason: 'swap-failed' });
+    return abort('swap-failed');
   }
 
   const executable = path.join(installDir, options.exeName);

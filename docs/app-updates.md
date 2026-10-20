@@ -72,7 +72,7 @@ Applying an update is a rename swap performed by `electron/updater/helper.cts`, 
 
 1. The app refreshes the safety gates, confirms no conversion is active, re-verifies the archive, writes `pending.json` and `apply.lock`, and spawns the helper with the install path, archive path, digest, signature, update id, nonce, app PID, and backend PID.
 2. The helper waits up to 60 seconds for the app to exit, then kills the app process if it is still running (without `/T`) and kills the backend tree with `/T`.
-3. Digest and signature are re-verified. The archive is extracted to `<install>.new-<updateId>` next to the install folder.
+3. Digest and signature are re-verified. The archive is extracted to `<install>.new-<updateId>` next to the install folder. The helper disables Electron's asar layer (`process.noAsar`) so `resources/app.asar` is written and validated as a normal file.
 4. The tree must contain the app executable, `resources/app.asar`, `resources/server.cjs`, `resources/bin/ffmpeg.exe`, and `resources/bin/yt-dlp.exe`, all non-empty.
 5. The live `data` folder is copied into the new tree, so settings, cookies, and the local database survive.
 6. `<install>` is renamed to `<install>.old-<updateId>`, then the new tree is renamed to `<install>`. If either rename fails, the helper restores the previous layout.
@@ -81,6 +81,8 @@ Applying an update is a rename swap performed by `electron/updater/helper.cts`, 
 The relaunched app writes `boot-ok.json` only when all of the following hold: the update id, version, and nonce match; the renderer signaled ready; `/api/health` reported readiness (yt-dlp, FFmpeg, library); and no window load or render-process failure occurred. The helper waits up to 5 minutes for that report, then confirms the new process is still alive after 10 seconds. On success the journal records `boot-ok` and the old tree is deleted after a 60-second delay. Any other result rolls back: the new app is killed, `<install>` becomes `<install>.failed-<updateId>`, the old tree is renamed back, and the previous version is relaunched. Rollback reasons include `app-still-running`, `archive-digest-mismatch`, `archive-signature-invalid`, `extract-*`, `tree-invalid-*`, `swap-failed`, `boot-report-mismatch`, `boot-version-mismatch`, `boot-nonce-mismatch`, `app-exited`, `app-died-after-boot`, `boot-timeout`, and `rollback-failed`.
 
 The install path is missing only during the two renames. If the helper or machine dies in that window, the `journal.json` record plus the `.old-` and `.new-` folder names identify which tree was which, and the string `running-from-stale-copy` blocks updater activity from a renamed folder.
+
+Builds up to 1.2.1 shipped a helper that failed while writing `resources/app.asar`, so they cannot install updates automatically. Those installs need one manual replacement with 1.2.2 or newer; keep the existing `data` folder.
 
 ---
 
