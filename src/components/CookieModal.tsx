@@ -423,22 +423,24 @@ export const CookieModal: React.FC<CookieModalProps> = ({
             Close
           </button>
 
-          <button
-            id="save-cookies-btn"
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving || !cookieText.trim()}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[2px] text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 disabled:bg-zinc-300 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-600 disabled:cursor-not-allowed transition-colors shadow-xs"
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Saving...</span>
-              </>
-            ) : (
-              <span>Save Cookies</span>
-            )}
-          </button>
+          {cookieText.trim() && (
+            <button
+              id="save-cookies-btn"
+              type="button"
+              onClick={handleSave}
+              disabled={isSaving}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-[2px] text-xs font-semibold text-white bg-rose-600 hover:bg-rose-500 disabled:bg-zinc-300 dark:disabled:bg-zinc-800 dark:disabled:text-zinc-600 disabled:cursor-not-allowed transition-colors shadow-xs"
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Saving...</span>
+                </>
+              ) : (
+                <span>Save Cookies</span>
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>
