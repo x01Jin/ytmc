@@ -890,7 +890,6 @@ apiRouter.post(
         spawn('explorer', ['/select,', absolute], {
           detached: true,
           stdio: 'ignore',
-          windowsHide: true,
         }).unref();
       } else if (process.platform === 'darwin') {
         spawn('open', ['-R', absolute], {
