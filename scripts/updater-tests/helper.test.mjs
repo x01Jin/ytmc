@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { buildZip } from './zip-fixture.mjs';
 
-const { runApply, parseHelperArgs } = await import('../../dist-electron/updater/helper.cjs');
+const { runApply, parseHelperArgs, startDetachedPowerShell } =
+  await import('../../dist-electron/updater/helper.cjs');
 const { hashFileHex, signDigest } = await import('../../dist-electron/updater/signature.cjs');
 
 const keyPath = path.join(os.homedir(), '.ytmc-release-signing.key');
@@ -50,7 +51,7 @@ function makeArchive(root, includeFfmpeg = true, includeYtDlp = true) {
   return archive;
 }
 
-function fakeLaunch({ report = true, reportVersion = null } = {}) {
+function fakeLaunch({ report = true, reportVersion = null, visible = true } = {}) {
   const calls = [];
   return {
     calls,
@@ -65,6 +66,7 @@ function fakeLaunch({ report = true, reportVersion = null } = {}) {
             updateId: value('--ytmc-update-id='),
             version: reportVersion ?? value('--ytmc-update-version='),
             nonce: value('--ytmc-update-nonce='),
+            visible,
             at: Date.now(),
           };
           setTimeout(() => {
@@ -122,6 +124,7 @@ async function baseOptions(root, overrides = {}) {
     bootTimeoutMs: 5000,
     livenessMs: 0,
     swapRetryMs: 400,
+    watchdog: false,
     launch: fakeLaunch(),
     ...overrides,
   };
@@ -193,6 +196,33 @@ test('rolls back when the boot report names a different version', { skip }, () =
     const outcome = await runApply(options);
     assert.deepEqual(outcome, { outcome: 'rolled-back', reason: 'boot-version-mismatch' });
     assert.equal(fs.readFileSync(path.join(root, 'app', EXE), 'utf8'), 'old-exe');
+  })
+);
+
+test('rolls back when the boot report has no visible window', { skip }, () =>
+  withRoot(async root => {
+    const launch = fakeLaunch({ report: true, visible: false });
+    const options = await baseOptions(root, { launch });
+    const outcome = await runApply(options);
+    assert.deepEqual(outcome, { outcome: 'rolled-back', reason: 'boot-window-hidden' });
+    assert.equal(fs.readFileSync(path.join(root, 'app', EXE), 'utf8'), 'old-exe');
+  })
+);
+
+test('restores the previous tree when the helper throws', { skip }, () =>
+  withRoot(async root => {
+    const options = await baseOptions(root, {
+      archivePath: path.join(root, 'missing.zip'),
+    });
+    const outcome = await runApply(options);
+    assert.deepEqual(outcome, { outcome: 'aborted', reason: 'helper-crashed' });
+    assert.equal(fs.readFileSync(path.join(root, 'app', EXE), 'utf8'), 'old-exe');
+    const journal = JSON.parse(
+      fs.readFileSync(path.join(options.workspace, 'journal.json'), 'utf8')
+    );
+    assert.equal(journal.reason, 'helper-crashed');
+    assert.equal(journal.restored, true);
+    assert.equal(fs.existsSync(path.join(options.workspace, 'apply.lock')), false);
   })
 );
 
@@ -398,3 +428,32 @@ test('parseHelperArgs reads every required flag', () => {
   assert.equal(parsed.bootTimeoutMs, undefined);
   assert.equal(parseHelperArgs(['--install', 'C:\\app']), null);
 });
+
+test(
+  'starts a detached powershell process through WMI',
+  { skip: process.platform !== 'win32' ? 'windows only' : false },
+  () => {
+    const quote = value => `"${value.replace(/"/g, '""')}"`;
+    const commandLine = [
+      'powershell.exe',
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      'Start-Sleep -Seconds 30',
+    ]
+      .map(quote)
+      .join(' ');
+    const pid = startDetachedPowerShell(commandLine);
+    try {
+      assert.ok(pid > 0);
+      assert.doesNotThrow(() => process.kill(pid, 0));
+    } finally {
+      try {
+        execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], {
+          stdio: 'ignore',
+          windowsHide: true,
+        });
+      } catch {}
+    }
+  }
+);

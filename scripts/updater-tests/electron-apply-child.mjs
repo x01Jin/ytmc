@@ -18,6 +18,7 @@ const result = await runApply({
   nonce: 'nonce-electron',
   bootTimeoutMs: 5000,
   livenessMs: 0,
+  watchdog: false,
   launch: {
     launch(_executable, args) {
       const value = prefix => args.find(arg => arg.startsWith(prefix))?.slice(prefix.length);
@@ -30,6 +31,7 @@ const result = await runApply({
             updateId: value('--ytmc-update-id='),
             version: value('--ytmc-update-version='),
             nonce: value('--ytmc-update-nonce='),
+            visible: true,
             at: Date.now(),
           })
         );

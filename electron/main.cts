@@ -6,6 +6,7 @@ import * as os from 'os';
 import * as path from 'path';
 import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron';
 import { initializeUpdater } from './updater/index.cjs';
+import { isProcessAlive, readJson, updateMarkerPath } from './updater/install.cjs';
 
 process.chdir(os.tmpdir());
 
@@ -76,9 +77,22 @@ function registerCsp(): void {
 }
 
 function defaultLibraryDir(): string {
-  const dir = path.join(app.getPath('downloads'), 'YT Music');
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
+  const candidates: string[] = [];
+  try {
+    candidates.push(path.join(app.getPath('downloads'), 'YT Music'));
+  } catch {}
+  try {
+    candidates.push(path.join(app.getPath('home'), 'Music', 'YT Music'));
+  } catch {}
+  candidates.push(path.join(os.tmpdir(), 'YT Music'));
+  for (const dir of candidates) {
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      fs.accessSync(dir, fs.constants.W_OK);
+      return dir;
+    } catch {}
+  }
+  return os.tmpdir();
 }
 
 function serverEntry(): string {
@@ -343,6 +357,10 @@ function createWindow(): void {
     },
   });
 
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+  });
+
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith('https://')) {
       void shell.openExternal(url);
@@ -387,16 +405,21 @@ function showApp(port: number): void {
   win.webContents.once('did-finish-load', () => {
     bootLog('app painted');
     console.log(`[window] loaded ${target}`);
+    win.show();
+    win.focus();
+    updater?.reportReady();
   });
   win.webContents.once('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
     console.error(`[window] failed to load ${validatedURL}: ${errorDescription} (${errorCode})`);
   });
+  win.show();
   void win.loadURL(target);
 }
 
 function focusWindow(): void {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
   mainWindow.focus();
 }
 
@@ -442,6 +465,24 @@ function libraryDirFromSettings(): string | null {
   }
 }
 
+function updateInProgress(): boolean {
+  if (process.argv.some(arg => arg.startsWith('--ytmc-update-id='))) return false;
+  const installDir = path.dirname(process.execPath);
+  const markerPath = updateMarkerPath(installDir);
+  const marker = readJson<{ pid?: number; installDir?: string; at?: number }>(markerPath);
+  if (!marker) return false;
+  const age = typeof marker.at === 'number' ? Date.now() - marker.at : Number.POSITIVE_INFINITY;
+  const active =
+    age < 60 * 60 * 1000 &&
+    typeof marker.pid === 'number' &&
+    isProcessAlive(marker.pid) &&
+    typeof marker.installDir === 'string' &&
+    path.resolve(marker.installDir).toLowerCase() === installDir.toLowerCase();
+  if (active) return true;
+  fs.rmSync(markerPath, { force: true });
+  return false;
+}
+
 async function boot(): Promise<void> {
   bootLog('whenReady');
   try {
@@ -460,18 +501,23 @@ async function boot(): Promise<void> {
     sendSplashStatus('Probing engine…');
     const port = await startBackend();
     bootLog('backend ready');
-    updater = initializeUpdater({
-      isPackaged: app.isPackaged,
-      installDir: path.dirname(process.execPath),
-      userDataDir: app.getPath('userData'),
-      libraryDir: libraryDirFromSettings(),
-      localAppDataDir: process.env.LOCALAPPDATA ?? null,
-      helperBundlePath: path.join(app.getAppPath(), 'dist-electron', 'updater-helper.cjs'),
-      currentVersion: app.getVersion(),
-      backendPort: () => serverPort,
-      getWindow: () => mainWindow,
-      bootReport: pendingBootReport(),
-    });
+    try {
+      updater = initializeUpdater({
+        isPackaged: app.isPackaged,
+        installDir: path.dirname(process.execPath),
+        userDataDir: app.getPath('userData'),
+        libraryDir: libraryDirFromSettings(),
+        localAppDataDir: process.env.LOCALAPPDATA ?? null,
+        helperBundlePath: path.join(app.getAppPath(), 'dist-electron', 'updater-helper.cjs'),
+        currentVersion: app.getVersion(),
+        backendPort: () => serverPort,
+        getWindow: () => mainWindow,
+        bootReport: pendingBootReport(),
+      });
+    } catch (error) {
+      console.error('Updater initialization failed:', error);
+      bootLog('updater initialization failed');
+    }
     sendSplashStatus('Loading library…');
     showApp(port);
   } catch (err) {
@@ -486,7 +532,17 @@ if (!gotLock) {
 } else {
   app.on('second-instance', focusWindow);
 
-  void app.whenReady().then(() => boot());
+  void app.whenReady().then(() => {
+    if (updateInProgress()) {
+      dialog.showErrorBox(
+        'Update in progress',
+        'YT Music Converter is installing an update. Wait for it to finish, then try again.'
+      );
+      app.quit();
+      return;
+    }
+    void boot();
+  });
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {

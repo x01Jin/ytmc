@@ -22,6 +22,8 @@ const skip = !keyPem
     : false;
 
 const { hashFileHex, signDigest } = await import('../../dist-electron/updater/signature.cjs');
+const { createHelperRuntime, helperDirFor } =
+  await import('../../dist-electron/updater/install.cjs');
 
 const EXE = 'YT Music Converter.exe';
 const UPDATE_ID = '1.2.1-electron';
@@ -80,6 +82,84 @@ test('applies an archive containing resources/app.asar under Electron', { skip }
     const result = JSON.parse(fs.readFileSync(resultPath, 'utf8'));
     assert.deepEqual(result, { outcome: 'applied', pid: 999999 });
     assert.equal(fs.readFileSync(path.join(install, EXE), 'utf8'), 'new-exe');
+    assert.equal(fs.readFileSync(path.join(install, 'resources', 'app.asar'), 'utf8'), 'new-asar');
+    assert.equal(
+      fs.readFileSync(path.join(install, 'data', 'settings.json'), 'utf8'),
+      '{"keep":true}'
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('applies from a helper runtime hardlinked outside the install', { skip }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ytmc-electron-helper-'));
+  try {
+    const install = path.join(root, 'app');
+    const dist = path.dirname(electronBinary);
+    fs.mkdirSync(path.join(install, 'resources', 'bin'), { recursive: true });
+    fs.mkdirSync(path.join(install, 'data'), { recursive: true });
+    fs.mkdirSync(path.join(install, 'locales'), { recursive: true });
+    for (const entry of fs.readdirSync(dist, { withFileTypes: true })) {
+      if (entry.isFile()) fs.linkSync(path.join(dist, entry.name), path.join(install, entry.name));
+    }
+    for (const entry of fs.readdirSync(path.join(dist, 'locales'), { withFileTypes: true })) {
+      if (entry.isFile()) {
+        fs.linkSync(
+          path.join(dist, 'locales', entry.name),
+          path.join(install, 'locales', entry.name)
+        );
+      }
+    }
+    fs.writeFileSync(path.join(install, 'resources', 'app.asar'), 'old-asar');
+    fs.writeFileSync(path.join(install, 'resources', 'server.cjs'), 'old-server');
+    fs.writeFileSync(path.join(install, 'resources', 'bin', 'ffmpeg.exe'), 'old-ffmpeg');
+    fs.writeFileSync(path.join(install, 'resources', 'bin', 'yt-dlp.exe'), 'old-ytdlp');
+    fs.writeFileSync(path.join(install, 'data', 'settings.json'), '{"keep":true}');
+
+    const archive = path.join(root, 'archive.zip');
+    fs.writeFileSync(
+      archive,
+      buildZip([
+        { name: path.basename(electronBinary), data: 'new-exe' },
+        { name: 'resources/app.asar', data: 'new-asar' },
+        { name: 'resources/server.cjs', data: 'new-server' },
+        { name: 'resources/bin/ffmpeg.exe', data: 'new-ffmpeg' },
+        { name: 'resources/bin/yt-dlp.exe', data: 'new-ytdlp' },
+      ])
+    );
+
+    const workspace = path.join(root, 'workspace');
+    fs.mkdirSync(workspace);
+    const updateId = '1.2.2-electron';
+    const helperDir = helperDirFor(install, updateId);
+    await createHelperRuntime(install, helperDir);
+    const resultPath = path.join(root, 'result.json');
+    const digestHex = await hashFileHex(archive);
+    const child = spawnSync(
+      path.join(helperDir, path.basename(electronBinary)),
+      [path.join(import.meta.dirname, 'electron-apply-child.mjs')],
+      {
+        env: {
+          ...process.env,
+          ELECTRON_RUN_AS_NODE: '1',
+          YTMC_WORKSPACE: workspace,
+          YTMC_INSTALL: install,
+          YTMC_ARCHIVE: archive,
+          YTMC_DIGEST: digestHex,
+          YTMC_SIGNATURE: signDigest(digestHex, keyPem),
+          YTMC_UPDATE_ID: updateId,
+          YTMC_EXE: path.basename(electronBinary),
+          YTMC_RESULT: resultPath,
+        },
+        encoding: 'utf8',
+        timeout: 180_000,
+      }
+    );
+
+    assert.equal(child.status, 0, child.stderr || child.stdout);
+    const result = JSON.parse(fs.readFileSync(resultPath, 'utf8'));
+    assert.deepEqual(result, { outcome: 'applied', pid: 999999 });
     assert.equal(fs.readFileSync(path.join(install, 'resources', 'app.asar'), 'utf8'), 'new-asar');
     assert.equal(
       fs.readFileSync(path.join(install, 'data', 'settings.json'), 'utf8'),

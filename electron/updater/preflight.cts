@@ -1,6 +1,8 @@
+import { execFileSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { supportsHardlinks } from './install.cjs';
 import { parseVersion } from './version.cjs';
 
 export type PreflightCode =
@@ -20,7 +22,9 @@ export type PreflightCode =
   | 'helper-missing'
   | 'install-not-writable'
   | 'parent-not-writable'
+  | 'workspace-not-writable'
   | 'cross-volume'
+  | 'unsupported-drive'
   | 'insufficient-space'
   | 'insufficient-workspace-space';
 
@@ -34,12 +38,15 @@ export interface PreflightInput {
   currentVersion: string;
   installBytesRequired: number;
   workspaceBytesRequired: number;
+  workspaceDir?: string;
+  helperBytesRequired?: number;
+  checkDriveType?: boolean;
 }
 
 export type PreflightOutcome = { ok: true } | { ok: false; code: PreflightCode; message: string };
 
 const MAX_INSTALL_PATH = 200;
-const STALE_SUFFIX = /\.(old|new|failed)-\d+\.\d+\.\d+-[0-9a-f]{8}$/;
+const STALE_SUFFIX = /\.(old|new|failed|helper)-\d+\.\d+\.\d+-[0-9a-f]{8}$/;
 const PROBE_BYTES = 256 * 1024;
 
 function lower(value: string): string {
@@ -106,6 +113,34 @@ function availableBytes(target: string): bigint | null {
   } catch {
     return null;
   }
+}
+
+const driveTypeCache = new Map<string, number>();
+
+function driveType(target: string): number {
+  if (process.platform !== 'win32') return 3;
+  const root = path.parse(path.resolve(target)).root.replace(/\\$/, '').toUpperCase();
+  const cached = driveTypeCache.get(root);
+  if (cached !== undefined) return cached;
+  let type = 3;
+  try {
+    const output = execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-Command',
+        `(Get-CimInstance Win32_LogicalDisk -Filter "DeviceID='${root.replace(/'/g, "''")}'").DriveType`,
+      ],
+      { encoding: 'utf8', timeout: 5000, windowsHide: true }
+    ).trim();
+    const parsed = Number(output);
+    if (Number.isInteger(parsed) && parsed > 0) type = parsed;
+  } catch {}
+  driveTypeCache.set(root, type);
+  return type;
 }
 
 function blocked(code: PreflightCode, message: string): PreflightOutcome {
@@ -208,6 +243,13 @@ export function runPreflight(input: PreflightInput): PreflightOutcome {
       'The folder above the app is not writable. Updates need to rename the app folder.'
     );
   }
+  const type = input.checkDriveType === false ? 3 : driveType(installDir);
+  if (type === 2 || type === 4 || type === 5 || type === 6) {
+    return blocked(
+      'unsupported-drive',
+      'Updates need a fixed local drive. Move the app to an internal disk.'
+    );
+  }
   let parentStats: fs.Stats;
   try {
     parentStats = fs.statSync(parentDir);
@@ -217,13 +259,58 @@ export function runPreflight(input: PreflightInput): PreflightOutcome {
   if (parentStats.dev !== installStats.dev) {
     return blocked('cross-volume', 'The app folder and its parent are on different volumes.');
   }
-  const installFree = availableBytes(installDir);
-  if (installFree !== null && installFree < BigInt(Math.ceil(input.installBytesRequired))) {
-    return blocked('insufficient-space', 'Not enough free space to unpack the update.');
+  const workspaceDir = input.workspaceDir ?? input.localAppDataDir;
+  if (!workspaceDir || !probeWrite(workspaceDir, '.ytmc-write-probe')) {
+    return blocked(
+      'workspace-not-writable',
+      'The update workspace is not writable. Free up space or check folder permissions.'
+    );
   }
-  const workspaceFree = availableBytes(input.localAppDataDir);
-  if (workspaceFree !== null && workspaceFree < BigInt(Math.ceil(input.workspaceBytesRequired))) {
-    return blocked('insufficient-workspace-space', 'Not enough free space to download the update.');
+  for (const root of cloudRoots()) {
+    if (isInside(workspaceDir, root)) {
+      return blocked(
+        'cloud-sync-path',
+        'The update workspace is in a cloud-synced folder. Move it to a local folder.'
+      );
+    }
+  }
+  if (input.checkDriveType !== false) {
+    const workspaceType = driveType(workspaceDir);
+    if (workspaceType === 2 || workspaceType === 4 || workspaceType === 5 || workspaceType === 6) {
+      return blocked('unsupported-drive', 'The update workspace must be on a fixed local drive.');
+    }
+  }
+  const helperBytes = supportsHardlinks(installDir) ? 0 : (input.helperBytesRequired ?? 0);
+  const installRequired = input.installBytesRequired + helperBytes;
+  const installFree = availableBytes(installDir);
+  const workspaceFree = availableBytes(workspaceDir);
+  let workspaceStats: fs.Stats;
+  try {
+    workspaceStats = fs.statSync(workspaceDir);
+  } catch {
+    return blocked('workspace-not-writable', 'The update workspace could not be read.');
+  }
+  if (workspaceStats.dev === installStats.dev) {
+    if (
+      installFree !== null &&
+      workspaceFree !== null &&
+      installFree < BigInt(Math.ceil(installRequired + input.workspaceBytesRequired))
+    ) {
+      return blocked(
+        'insufficient-space',
+        'Not enough free space for the update and its workspace.'
+      );
+    }
+  } else {
+    if (installFree !== null && installFree < BigInt(Math.ceil(installRequired))) {
+      return blocked('insufficient-space', 'Not enough free space to unpack the update.');
+    }
+    if (workspaceFree !== null && workspaceFree < BigInt(Math.ceil(input.workspaceBytesRequired))) {
+      return blocked(
+        'insufficient-workspace-space',
+        'Not enough free space to download the update.'
+      );
+    }
   }
   return { ok: true };
 }

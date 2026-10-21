@@ -7,7 +7,6 @@ export const LIBRARY_DIR_NAME = 'YT Music Converter';
 export const WORKSPACE_FILES = {
   helper: 'updater-helper.cjs',
   archive: 'package.zip',
-  pending: 'pending.json',
   journal: 'journal.json',
   state: 'state.json',
   notes: 'release-notes.json',
@@ -27,6 +26,16 @@ export function workspaceRoot(localAppDataDir: string, installId: string): strin
 
 export function newUpdateId(version: string): string {
   return `${version}-${randomUUID().replace(/-/g, '').slice(0, 8)}`;
+}
+
+export function helperDirFor(installDir: string, updateId: string): string {
+  const resolved = path.resolve(installDir);
+  return path.join(path.dirname(resolved), `${path.basename(resolved)}.helper-${updateId}`);
+}
+
+export function updateMarkerPath(installDir: string): string {
+  const resolved = path.resolve(installDir);
+  return path.join(path.dirname(resolved), `.ytmc-updating-${installIdFor(resolved)}.json`);
 }
 
 export function delay(ms: number): Promise<void> {
@@ -57,10 +66,11 @@ export function appendLog(filePath: string, line: string): void {
   } catch {}
 }
 
-export function directorySize(dir: string): number {
+export function directorySize(dir: string, maxEntries = Number.POSITIVE_INFINITY): number {
   let total = 0;
+  let seen = 0;
   const stack: string[] = [dir];
-  while (stack.length > 0) {
+  while (stack.length > 0 && seen < maxEntries) {
     const current = stack.pop() as string;
     let entries: fs.Dirent[];
     try {
@@ -69,17 +79,95 @@ export function directorySize(dir: string): number {
       continue;
     }
     for (const entry of entries) {
+      seen += 1;
+      if (seen >= maxEntries) break;
       const full = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        stack.push(full);
-      } else if (entry.isFile()) {
-        try {
-          total += fs.statSync(full).size;
-        } catch {}
-      }
+      try {
+        const stats = fs.lstatSync(full);
+        if (stats.isSymbolicLink()) continue;
+        if (stats.isDirectory()) stack.push(full);
+        else if (stats.isFile()) total += stats.size;
+      } catch {}
     }
   }
   return total;
+}
+
+const HELPER_RUNTIME_SKIP = new Set(['data', 'resources']);
+
+function runtimeTreeBytes(source: string, root: boolean): number {
+  let total = 0;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(source, { withFileTypes: true });
+  } catch {
+    return 0;
+  }
+  for (const entry of entries) {
+    if (root && HELPER_RUNTIME_SKIP.has(entry.name)) continue;
+    const full = path.join(source, entry.name);
+    try {
+      const stats = fs.lstatSync(full);
+      if (stats.isSymbolicLink()) continue;
+      if (stats.isDirectory()) total += runtimeTreeBytes(full, false);
+      else if (stats.isFile()) total += stats.size;
+    } catch {}
+  }
+  return total;
+}
+
+export function helperRuntimeBytes(installDir: string): number {
+  return runtimeTreeBytes(path.resolve(installDir), true);
+}
+
+export function supportsHardlinks(dir: string): boolean {
+  const token = randomUUID().replace(/-/g, '').slice(0, 8);
+  const source = path.join(dir, `.ytmc-link-${token}`);
+  const target = path.join(dir, `.ytmc-link-${token}.target`);
+  try {
+    fs.writeFileSync(source, 'x');
+    fs.linkSync(source, target);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    try {
+      fs.rmSync(source, { force: true });
+    } catch {}
+    try {
+      fs.rmSync(target, { force: true });
+    } catch {}
+  }
+}
+
+async function linkRuntimeTree(source: string, destination: string, root: boolean): Promise<void> {
+  await fs.promises.mkdir(destination, { recursive: true });
+  const entries = await fs.promises.readdir(source, { withFileTypes: true });
+  for (const entry of entries) {
+    if (root && HELPER_RUNTIME_SKIP.has(entry.name)) continue;
+    const from = path.join(source, entry.name);
+    const to = path.join(destination, entry.name);
+    const stats = await fs.promises.lstat(from);
+    if (stats.isSymbolicLink()) continue;
+    if (stats.isDirectory()) {
+      await linkRuntimeTree(from, to, false);
+      continue;
+    }
+    if (!stats.isFile()) continue;
+    try {
+      await fs.promises.link(from, to);
+    } catch {
+      await fs.promises.copyFile(from, to);
+    }
+  }
+}
+
+export async function createHelperRuntime(installDir: string, helperDir: string): Promise<void> {
+  if (fs.existsSync(helperDir) && !(await removeDirectoryWithRetries(helperDir))) {
+    throw new Error('The previous helper folder is still locked.');
+  }
+  await fs.promises.mkdir(helperDir, { recursive: true });
+  await linkRuntimeTree(path.resolve(installDir), helperDir, true);
 }
 
 export function staleSiblingTrees(installDir: string, keep: string[] = []): string[] {
@@ -96,10 +184,24 @@ export function staleSiblingTrees(installDir: string, keep: string[] = []): stri
         const suffix = path.basename(dir).slice(prefix.length);
         return (
           path.basename(dir).startsWith(prefix) &&
-          /^(new|old|failed)-.+$/.test(suffix) &&
+          /^(new|old|failed|helper)-\d+\.\d+\.\d+-[0-9a-f]{8}$/.test(suffix) &&
           !kept.has(dir)
         );
       });
+  } catch {
+    return [];
+  }
+}
+
+export function staleUpdateMarkers(installDir: string): string[] {
+  const resolved = path.resolve(installDir);
+  const parent = path.dirname(resolved);
+  const marker = path.basename(updateMarkerPath(resolved));
+  try {
+    return fs
+      .readdirSync(parent, { withFileTypes: true })
+      .filter(entry => entry.isFile() && entry.name === marker)
+      .map(entry => path.join(parent, entry.name));
   } catch {
     return [];
   }
@@ -154,6 +256,104 @@ export function processImageName(pid: number): Promise<string | null> {
       resolve(match ? match[1] : null);
     });
   });
+}
+
+export interface InstallProcess {
+  pid: number;
+  name: string;
+  path: string;
+}
+
+function powerShellQuote(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function runPowerShell(script: string): Promise<string | null> {
+  if (process.platform !== 'win32') return Promise.resolve(null);
+  return new Promise(resolve => {
+    let settled = false;
+    const finish = (value: string | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const child = spawn(
+      'powershell.exe',
+      ['-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', script],
+      { stdio: ['ignore', 'pipe', 'ignore'], windowsHide: true }
+    );
+    const timer = setTimeout(() => {
+      child.kill();
+      finish(null);
+    }, 10_000);
+    let output = '';
+    child.stdout?.on('data', (chunk: Buffer) => {
+      output += chunk.toString();
+    });
+    child.on('error', () => finish(null));
+    child.on('exit', code => finish(code === 0 ? output.trim() : null));
+  });
+}
+
+export async function processExecutablePath(pid: number): Promise<string | null> {
+  if (process.platform !== 'win32' || !Number.isInteger(pid) || pid <= 0) return null;
+  const output = await runPowerShell(
+    `$p = Get-CimInstance Win32_Process -Filter "ProcessId = ${pid}"; if ($p) { $p.ExecutablePath } else { '' }`
+  );
+  return output && output.length > 0 ? output : null;
+}
+
+export async function processesUnderInstall(installDir: string): Promise<InstallProcess[] | null> {
+  if (process.platform !== 'win32') return [];
+  const root = `${path.resolve(installDir)}${path.sep}`;
+  const script = [
+    `$root = ${powerShellQuote(root)}`,
+    `Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object ProcessId, Name, ExecutablePath | ConvertTo-Json -Compress`,
+  ].join('; ');
+  const output = await runPowerShell(script);
+  if (output === null) return null;
+  if (output.length === 0) return [];
+  try {
+    const parsed = JSON.parse(output) as
+      | { ProcessId?: unknown; Name?: unknown; ExecutablePath?: unknown }
+      | Array<{ ProcessId?: unknown; Name?: unknown; ExecutablePath?: unknown }>;
+    const rows = Array.isArray(parsed) ? parsed : [parsed];
+    return rows
+      .map(row => ({
+        pid: Number(row.ProcessId),
+        name: typeof row.Name === 'string' ? row.Name : '',
+        path: typeof row.ExecutablePath === 'string' ? row.ExecutablePath : '',
+      }))
+      .filter(row => Number.isInteger(row.pid) && row.pid > 0);
+  } catch {
+    return null;
+  }
+}
+
+export async function sweepProcessesUnderInstall(
+  installDir: string,
+  excludePids: number[],
+  timeoutMs = 15_000,
+  log?: (line: string) => void
+): Promise<boolean | null> {
+  const excluded = new Set(excludePids.filter(pid => Number.isInteger(pid) && pid > 0));
+  excluded.add(process.pid);
+  const deadline = Date.now() + timeoutMs;
+  let known = false;
+  while (Date.now() < deadline) {
+    const processes = await processesUnderInstall(installDir);
+    if (processes === null) return known ? true : null;
+    known = true;
+    const targets = processes.filter(entry => !excluded.has(entry.pid));
+    if (targets.length === 0) return true;
+    for (const target of targets) {
+      log?.(`stopping process ${target.pid} ${target.name}`);
+      killProcessTree(target.pid, true);
+    }
+    await delay(500);
+  }
+  return known ? false : null;
 }
 
 export async function removeDirectoryWithRetries(

@@ -13,15 +13,23 @@ import { isNewerVersion } from './version.cjs';
 import {
   WORKSPACE_FILES,
   appendLog,
+  createHelperRuntime,
   delay,
   directorySize,
+  helperDirFor,
+  helperRuntimeBytes,
   installIdFor,
   isProcessAlive,
+  killProcessTree,
   newUpdateId,
+  processExecutablePath,
   readJson,
   removeDirectoryWithRetries,
   sanitizedEnv,
   staleSiblingTrees,
+  staleUpdateMarkers,
+  supportsHardlinks,
+  updateMarkerPath,
   workspaceRoot,
   writeJson,
 } from './install.cjs';
@@ -86,6 +94,7 @@ export interface UpdaterHost {
 
 export interface UpdaterHandle {
   notifyWindowFailure(reason: string): void;
+  reportReady(): void;
   dispose(): void;
 }
 
@@ -123,6 +132,7 @@ interface JournalRecord {
   newDir?: string;
   oldDir?: string;
   failedDir?: string;
+  helperDir?: string;
   fromVersion?: string;
   toVersion?: string;
   reason?: string;
@@ -139,15 +149,19 @@ interface JournalRecord {
 interface ApplyLock {
   pid?: number;
   updateId?: string;
+  at?: number;
 }
 
 const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const MANUAL_COOLDOWN_MS = 60_000;
 const STARTUP_CHECK_DELAY_MS = 15_000;
 const CLEANUP_DELAY_MS = 60_000;
+const OLD_TREE_RETENTION_MS = 24 * 60 * 60 * 1000;
 const PROGRESS_PUBLISH_MS = 250;
 const APPLY_POLL_MS = 200;
 const HELPER_START_GRACE_MS = 10_000;
+const HELPER_DEATH_GRACE_MS = 5_000;
+const MAX_APPLY_MS = 30 * 60 * 1000;
 const SPACE_HEADROOM_BYTES = 256 * 1024 * 1024;
 const ACTIVE_JOB_STATES = new Set(['queued', 'downloading', 'converting']);
 const RELEASE_PAGE_BASE = 'https://github.com/x01Jin/ytmc/releases/tag/';
@@ -182,19 +196,80 @@ function emptyState(currentVersion: string): UpdateState {
 
 function readPersisted(filePath: string): PersistedState {
   const raw = readJson<Partial<PersistedState>>(filePath);
+  const candidate = raw?.latest;
+  const latest =
+    candidate &&
+    typeof candidate.version === 'string' &&
+    typeof candidate.tag === 'string' &&
+    typeof candidate.publishedAt === 'string' &&
+    typeof candidate.archiveSize === 'number' &&
+    Number.isSafeInteger(candidate.archiveSize) &&
+    candidate.archiveSize > 0 &&
+    typeof candidate.digestHex === 'string' &&
+    /^[0-9a-f]{64}$/i.test(candidate.digestHex) &&
+    typeof candidate.archiveUrl === 'string' &&
+    candidate.archiveUrl.startsWith('https://') &&
+    typeof candidate.signatureUrl === 'string' &&
+    candidate.signatureUrl.startsWith('https://')
+      ? candidate
+      : null;
   return {
     lastCheckedAt: typeof raw?.lastCheckedAt === 'number' ? raw.lastCheckedAt : null,
-    latest: raw?.latest ?? null,
+    latest,
     lastApply: raw?.lastApply ?? null,
-    failedVersions: Array.isArray(raw?.failedVersions) ? raw.failedVersions : [],
-    pendingCleanup: Array.isArray(raw?.pendingCleanup) ? raw.pendingCleanup : [],
+    failedVersions: Array.isArray(raw?.failedVersions)
+      ? raw.failedVersions.filter((version): version is string => typeof version === 'string')
+      : [],
+    pendingCleanup: Array.isArray(raw?.pendingCleanup)
+      ? raw.pendingCleanup.filter((dir): dir is string => typeof dir === 'string')
+      : [],
   };
 }
 
+function selectWorkspace(host: UpdaterHost): string | null {
+  const installId = installIdFor(host.installDir);
+  const candidates: string[] = [];
+  if (host.localAppDataDir) candidates.push(workspaceRoot(host.localAppDataDir, installId));
+  candidates.push(path.join(path.dirname(host.installDir), '.ytmc-updater', installId));
+  for (const candidate of candidates) {
+    try {
+      fs.mkdirSync(candidate, { recursive: true });
+      const probe = path.join(candidate, `.ytmc-write-${process.pid}`);
+      fs.writeFileSync(probe, 'x');
+      fs.rmSync(probe, { force: true });
+      return candidate;
+    } catch {}
+  }
+  return null;
+}
+
+const FAILURE_MESSAGES: Record<string, string> = {
+  'swap-failed':
+    'Windows blocked the app folder rename. Close Explorer windows and antivirus scans pointed at the app folder, then try again.',
+  'app-still-running': 'The app could not be closed for the update. Restart it and try again.',
+  'backend-still-running': 'The background engine did not stop. Restart the app and try again.',
+  'helper-crashed': 'The update helper stopped unexpectedly. The previous version was restored.',
+  'apply-helper-exited':
+    'The update helper stopped unexpectedly. The previous version is still available.',
+  'apply-timeout':
+    'The update took too long and was stopped. The previous version is still available.',
+  'helper-prepare-failed':
+    'The update could not prepare its helper. Check free space and try again.',
+  'update-in-progress': 'Another update is already being installed.',
+  'old-tree-remove-failed':
+    'A previous update folder could not be removed. Restart the app and try again.',
+  'recovery-unavailable':
+    'The update could not start its recovery watchdog. Check antivirus or policy settings and try again.',
+};
+
+function failureMessage(reason: string, detail?: string): string {
+  return FAILURE_MESSAGES[reason] ?? detail ?? 'The update could not be installed.';
+}
+
 export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
-  const workspace = workspaceRoot(host.localAppDataDir ?? '', installIdFor(host.installDir));
-  const workspaceReady = Boolean(host.localAppDataDir);
-  if (workspaceReady) fs.mkdirSync(workspace, { recursive: true });
+  const selectedWorkspace = selectWorkspace(host);
+  const workspace = selectedWorkspace ?? '';
+  const workspaceReady = selectedWorkspace !== null;
   const statePath = path.join(workspace, WORKSPACE_FILES.state);
   const journalPath = path.join(workspace, WORKSPACE_FILES.journal);
   const lockPath = path.join(workspace, WORKSPACE_FILES.lock);
@@ -214,11 +289,17 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
   let applying = false;
   let disposed = false;
   let bootReportWritten = false;
+  let bootReportInFlight = false;
+  let bootReportTimer: NodeJS.Timeout | null = null;
+  const bootReportDeadline = host.bootReport ? Date.now() + 5 * 60 * 1000 : 0;
   let windowFailure: string | null = null;
+  let recoveryBlocked = false;
+  let reconcileAttempts = 0;
+  let reconcileTimer: NodeJS.Timeout | null = null;
   let lastProgressPublish = 0;
 
   const info = (line: string) => {
-    appendLog(logPath, line);
+    if (workspaceReady) appendLog(logPath, line);
   };
 
   const publish = () => {
@@ -239,13 +320,27 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
 
   const savePersisted = () => {
     if (!workspaceReady) return;
-    if (persisted.lastCheckedAt === null && persisted.pendingCleanup.length === 0) return;
-    writeJson(statePath, persisted);
+    try {
+      writeJson(statePath, persisted);
+    } catch (error) {
+      info(`state write failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
   };
 
   const settlePhase = () => {
     if (!host.isPackaged) {
       setState({ phase: 'unsupported', canDownload: false, canApply: false });
+      return;
+    }
+    if (recoveryBlocked) {
+      setState({
+        phase: 'error',
+        canDownload: false,
+        canApply: false,
+        errorCode: 'repair-needed',
+        errorMessage:
+          'The previous update was interrupted. The repair runs automatically; if it does not finish, restart the app.',
+      });
       return;
     }
     if (!preflight.ok) {
@@ -282,17 +377,18 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
     });
   };
 
-  const refreshPreflight = (unpackedBytes?: number | null): PreflightOutcome => {
-    const installSize = fs.existsSync(host.installDir) ? directorySize(host.installDir) : 0;
-    const dataSize = fs.existsSync(path.join(host.installDir, 'data'))
-      ? directorySize(path.join(host.installDir, 'data'))
-      : 0;
+  const refreshPreflight = (unpackedBytes?: number | null, exact = false): PreflightOutcome => {
+    const limit = exact ? Number.POSITIVE_INFINITY : 20_000;
+    const installSize = fs.existsSync(host.installDir) ? directorySize(host.installDir, limit) : 0;
+    const helperBytes = supportsHardlinks(host.installDir)
+      ? 0
+      : helperRuntimeBytes(host.installDir);
     const installBytes =
       installSize > 0
-        ? installSize + (unpackedBytes ?? installSize) + dataSize + SPACE_HEADROOM_BYTES
+        ? installSize + (unpackedBytes ?? installSize) + SPACE_HEADROOM_BYTES
         : SPACE_HEADROOM_BYTES;
     const workspaceBytes = persisted.latest
-      ? 3 * persisted.latest.archiveSize + SPACE_HEADROOM_BYTES
+      ? persisted.latest.archiveSize + SPACE_HEADROOM_BYTES
       : SPACE_HEADROOM_BYTES;
     preflight = runPreflight({
       isPackaged: host.isPackaged,
@@ -304,6 +400,9 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
       currentVersion: host.currentVersion,
       installBytesRequired: installBytes,
       workspaceBytesRequired: workspaceBytes,
+      workspaceDir: workspaceReady ? workspace : undefined,
+      helperBytesRequired: helperBytes,
+      checkDriveType: exact,
     });
     return preflight;
   };
@@ -339,8 +438,7 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
             readiness.ytDlp !== null &&
             readiness.ytDlp !== undefined &&
             readiness.ffmpeg !== null &&
-            readiness.ffmpeg !== undefined &&
-            readiness.library === true
+            readiness.ffmpeg !== undefined
           ) {
             return true;
           }
@@ -351,40 +449,86 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
     return false;
   };
 
-  const writeBootReport = async (): Promise<void> => {
-    const report = host.bootReport;
-    if (!report || bootReportWritten || windowFailure) return;
-    if (app.getVersion() !== report.version) return;
-    if (!(await waitForReadiness(60_000))) return;
-    if (disposed || windowFailure) return;
-    writeJson(report.reportPath, {
-      schema: 1,
-      updateId: report.updateId,
-      version: report.version,
-      nonce: report.nonce,
-      at: Date.now(),
-    });
-    bootReportWritten = true;
-    info(`boot report written for ${report.version}`);
+  const scheduleBootReport = () => {
+    if (bootReportTimer || disposed || bootReportWritten || windowFailure) return;
+    if (!host.bootReport || Date.now() > bootReportDeadline) return;
+    bootReportTimer = setTimeout(() => {
+      bootReportTimer = null;
+      void writeBootReport();
+    }, 5_000);
   };
 
-  const cleanup = (dirs: string[]) => {
+  const writeBootReport = async (): Promise<void> => {
+    const report = host.bootReport;
+    if (!report || bootReportWritten || bootReportInFlight || windowFailure) return;
+    if (app.getVersion() !== report.version) {
+      info(`boot report skipped: running ${app.getVersion()} expected ${report.version}`);
+      return;
+    }
+    const window = host.getWindow();
+    if (!window || window.isDestroyed()) {
+      scheduleBootReport();
+      return;
+    }
+    const shown = window.isVisible() || window.isMinimized();
+    if (!shown) {
+      scheduleBootReport();
+      return;
+    }
+    bootReportInFlight = true;
+    try {
+      if (!(await waitForReadiness(20_000))) {
+        bootReportInFlight = false;
+        scheduleBootReport();
+        return;
+      }
+      if (
+        disposed ||
+        windowFailure ||
+        window.isDestroyed() ||
+        (!window.isVisible() && !window.isMinimized())
+      ) {
+        bootReportInFlight = false;
+        scheduleBootReport();
+        return;
+      }
+      writeJson(report.reportPath, {
+        schema: 1,
+        updateId: report.updateId,
+        version: report.version,
+        nonce: report.nonce,
+        visible: true,
+        at: Date.now(),
+      });
+      bootReportWritten = true;
+      info(`boot report written for ${report.version}`);
+    } catch (error) {
+      info(`boot report write failed: ${error instanceof Error ? error.message : String(error)}`);
+      scheduleBootReport();
+    } finally {
+      bootReportInFlight = false;
+    }
+  };
+
+  const cleanup = (dirs: string[], delayMs = CLEANUP_DELAY_MS) => {
     const targets = dirs.filter(dir => typeof dir === 'string' && dir.length > 0);
     if (targets.length === 0) return;
-    persisted.pendingCleanup = Array.from(new Set([...persisted.pendingCleanup, ...targets]));
-    savePersisted();
-    const remove = async () => {
-      const remaining: string[] = [];
-      for (const dir of targets) {
-        const removed = await removeDirectoryWithRetries(dir);
-        if (!removed) remaining.push(dir);
-      }
-      persisted.pendingCleanup = remaining;
-      savePersisted();
-    };
     setTimeout(() => {
+      persisted.pendingCleanup = Array.from(new Set([...persisted.pendingCleanup, ...targets]));
+      savePersisted();
+      const remove = async () => {
+        const remaining: string[] = [];
+        for (const dir of targets) {
+          const removed = await removeDirectoryWithRetries(dir);
+          if (!removed) remaining.push(dir);
+        }
+        persisted.pendingCleanup = persisted.pendingCleanup.filter(
+          dir => !targets.includes(dir) || remaining.includes(dir)
+        );
+        savePersisted();
+      };
       void remove();
-    }, CLEANUP_DELAY_MS);
+    }, delayMs);
   };
 
   const reconcile = () => {
@@ -392,17 +536,65 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
     const journal = readJson<JournalRecord>(journalPath);
     const lock = readJson<ApplyLock>(lockPath);
     if (lock && typeof lock.pid === 'number' && lock.pid !== process.pid) {
-      if (isProcessAlive(lock.pid)) {
+      const age = typeof lock.at === 'number' ? Date.now() - lock.at : Number.POSITIVE_INFINITY;
+      if (age < 60 * 60 * 1000 && isProcessAlive(lock.pid)) {
         info(`update helper is still running pid=${lock.pid}`);
+        if (!reconcileTimer && reconcileAttempts < 12) {
+          reconcileAttempts += 1;
+          reconcileTimer = setTimeout(() => {
+            reconcileTimer = null;
+            if (!disposed) reconcile();
+          }, 5_000);
+        }
         return;
       }
       fs.rmSync(lockPath, { force: true });
     }
+    const installExe = path.join(host.installDir, path.basename(process.execPath));
+    const installIntact = fs.existsSync(installExe);
+    const needsRepair = Boolean(journal && !installIntact);
+    if (!needsRepair) {
+      for (const markerPath of staleUpdateMarkers(host.installDir)) {
+        const marker = readJson<{ pid?: number; installDir?: string }>(markerPath);
+        const matches =
+          typeof marker?.installDir === 'string' &&
+          path.resolve(marker.installDir) === path.resolve(host.installDir);
+        if (matches && typeof marker?.pid === 'number' && isProcessAlive(marker.pid)) continue;
+        fs.rmSync(markerPath, { force: true });
+      }
+    }
     if (journal) {
+      if (needsRepair) {
+        recoveryBlocked = true;
+        const reason = journal.reason ?? (installIntact ? 'rollback-failed' : 'swap-failed');
+        const detail = journal.detail;
+        persisted.lastApply = {
+          ok: false,
+          reason,
+          toVersion: journal.toVersion ?? '',
+          at: Date.now(),
+          ...(detail ? { detail } : {}),
+          restored: false,
+        };
+        savePersisted();
+        setState({
+          phase: 'error',
+          canApply: false,
+          canDownload: false,
+          errorCode: 'repair-needed',
+          errorMessage:
+            'The previous update was interrupted. The repair runs automatically; if it does not finish, restart the app.',
+          lastApply: persisted.lastApply,
+        });
+        info(`recovery pending: ${reason}${detail ? ` (${detail})` : ''}`);
+        return;
+      }
       const applied =
         journal.toVersion === host.currentVersion &&
-        (journal.phase === 'boot-ok' || journal.phase === 'launched');
-      const leftovers = [journal.newDir, journal.failedDir].filter(
+        (journal.phase === 'boot-ok' ||
+          journal.phase === 'launched' ||
+          (journal.phase === 'failed' && installIntact));
+      const quickCleanup = [journal.newDir, journal.failedDir, journal.helperDir].filter(
         (dir): dir is string => typeof dir === 'string'
       );
       if (applied) {
@@ -412,10 +604,7 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
           toVersion: journal.toVersion ?? host.currentVersion,
           at: Date.now(),
         };
-        if (journal.phase === 'boot-ok' || journal.phase === 'launched') {
-          info(`update to ${journal.toVersion} confirmed`);
-        }
-        if (typeof journal.oldDir === 'string') leftovers.push(journal.oldDir);
+        info(`update to ${journal.toVersion} confirmed`);
         setState({ lastApply: persisted.lastApply });
       } else if (journal.phase === 'cancelled') {
         info(`update to ${journal.toVersion ?? ''} cancelled`);
@@ -425,6 +614,7 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
         const restored =
           journal.phase === 'rolled-back' ||
           journal.restored === true ||
+          installIntact ||
           (reason !== 'swap-failed' && reason !== 'rollback-failed');
         persisted.lastApply = {
           ok: false,
@@ -456,12 +646,28 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
       fs.rmSync(journalPath, { force: true });
       fs.rmSync(path.join(workspace, WORKSPACE_FILES.bootOk), { force: true });
       fs.rmSync(path.join(workspace, WORKSPACE_FILES.cancel), { force: true });
-      cleanup([...leftovers, ...persisted.pendingCleanup]);
-    } else if (persisted.pendingCleanup.length > 0) {
+      cleanup(quickCleanup, 0);
+      if (typeof journal.oldDir === 'string') cleanup([journal.oldDir], OLD_TREE_RETENTION_MS);
+    }
+    if (persisted.pendingCleanup.length > 0) {
       cleanup([...persisted.pendingCleanup]);
     }
     if (host.isPackaged) {
-      cleanup(staleSiblingTrees(host.installDir));
+      const expired: string[] = [];
+      const now = Date.now();
+      const prefixLength = path.basename(path.resolve(host.installDir)).length + 1;
+      for (const dir of staleSiblingTrees(host.installDir)) {
+        const suffix = path.basename(dir).slice(prefixLength);
+        if (suffix.startsWith('old-')) {
+          try {
+            if (now - fs.statSync(dir).mtimeMs < OLD_TREE_RETENTION_MS) continue;
+          } catch {
+            continue;
+          }
+        }
+        expired.push(dir);
+      }
+      cleanup(expired);
     }
     if (persisted.lastCheckedAt !== null && persisted.lastCheckedAt > Date.now()) {
       persisted.lastCheckedAt = null;
@@ -493,21 +699,27 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
     totalEntries: typeof journal.totalEntries === 'number' ? journal.totalEntries : null,
   });
 
-  const clearApplyFiles = (journal: JournalRecord | null) => {
-    const dirs = [journal?.newDir, journal?.failedDir].filter(
+  const clearApplyFiles = (journal: JournalRecord | null, preserveRecovery = false) => {
+    if (preserveRecovery) return;
+    const dirs = [journal?.newDir, journal?.failedDir, journal?.helperDir].filter(
       (dir): dir is string => typeof dir === 'string' && dir.length > 0
     );
     cleanup(dirs);
     fs.rmSync(journalPath, { force: true });
     fs.rmSync(path.join(workspace, WORKSPACE_FILES.bootOk), { force: true });
     fs.rmSync(cancelPath, { force: true });
+    fs.rmSync(updateMarkerPath(host.installDir), { force: true });
   };
+
+  const installExecutable = () => path.join(host.installDir, path.basename(process.execPath));
 
   const applyFailure = (journal: JournalRecord, fallbackVersion: string) => {
     const reason = journal.reason ?? 'apply-failed';
     const detail = journal.detail;
+    const intact = fs.existsSync(installExecutable());
     const restored =
-      journal.restored === true || (reason !== 'swap-failed' && reason !== 'rollback-failed');
+      intact &&
+      (journal.restored === true || (reason !== 'swap-failed' && reason !== 'rollback-failed'));
     applying = false;
     persisted.lastApply = {
       ok: false,
@@ -520,16 +732,18 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
     savePersisted();
     setTaskbarProgress(null);
     setState({
-      phase: 'ready',
-      canApply: true,
+      phase: intact ? 'ready' : 'error',
+      canApply: intact,
       canDownload: false,
       applyProgress: null,
       errorCode: reason,
-      errorMessage: detail ?? 'The update could not be installed.',
+      errorMessage: intact
+        ? failureMessage(reason, detail)
+        : 'The app folder could not be restored yet. Restart the app to run the repair.',
       lastApply: persisted.lastApply,
     });
     info(`apply failed: ${reason}${detail ? ` (${detail})` : ''}`);
-    clearApplyFiles(journal);
+    clearApplyFiles(journal, !intact);
   };
 
   const applyCancelled = (journal: JournalRecord) => {
@@ -547,18 +761,46 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
     clearApplyFiles(journal);
   };
 
+  const applyStopped = (
+    reason: string,
+    detail?: string,
+    journal: JournalRecord | null = null,
+    helperDir?: string
+  ) => {
+    const intact = fs.existsSync(installExecutable());
+    if (helperDir && helperDir !== journal?.helperDir) cleanup([helperDir]);
+    applying = false;
+    setTaskbarProgress(null);
+    setState({
+      phase: intact ? 'ready' : 'error',
+      canApply: intact,
+      canDownload: false,
+      applyProgress: null,
+      errorCode: reason,
+      errorMessage: intact
+        ? failureMessage(reason, detail)
+        : 'The app folder could not be restored yet. Restart the app to run the repair.',
+    });
+    info(`apply stopped: ${reason}${detail ? ` (${detail})` : ''}`);
+    clearApplyFiles(journal, !intact);
+  };
+
   const pollApply = async (
     updateId: string,
     helperPid: number,
+    helperExecutable: string,
     release: PersistedRelease
   ): Promise<void> => {
     const startedAt = Date.now();
     let lastPublish = 0;
     let preSwapHandled = false;
+    let helperDeadAt = 0;
+    let helperIdentityCheckedAt = 0;
     try {
       while (applying && !disposed) {
         const journal = readJson<JournalRecord>(journalPath);
-        if (journal && journal.updateId === updateId) {
+        const matching = Boolean(journal && journal.updateId === updateId);
+        if (matching && journal) {
           const progress = readApplyProgress(journal);
           const now = Date.now();
           if (journal.phase !== 'extracting' || now - lastPublish >= PROGRESS_PUBLISH_MS) {
@@ -569,7 +811,13 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
           if (journal.phase === 'pre-swap' && !preSwapHandled) {
             preSwapHandled = true;
             if (await conversionsActive()) {
-              writeJson(cancelPath, { reason: 'conversion-active', at: Date.now() });
+              try {
+                writeJson(cancelPath, { reason: 'conversion-active', at: Date.now() });
+              } catch (error) {
+                info(
+                  `cancel marker write failed: ${error instanceof Error ? error.message : String(error)}`
+                );
+              }
               info('apply cancelled at pre-swap: conversion active');
               setState({ applyProgress: { ...progress, phase: 'cancelling' } });
               await delay(APPLY_POLL_MS);
@@ -602,48 +850,72 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
                 journal.detail ??
                 'The update could not be completed. The previous version was restored.',
             });
+            clearApplyFiles(journal);
             return;
           }
           if (journal.phase === 'boot-ok') {
             applying = false;
             setTaskbarProgress(null);
             setState({ applyProgress: null });
+            clearApplyFiles(journal);
+            if (typeof journal.oldDir === 'string') {
+              cleanup([journal.oldDir], OLD_TREE_RETENTION_MS);
+            }
             return;
           }
-        } else if (
-          (!journal || journal.updateId !== updateId) &&
-          helperPid > 0 &&
-          !isProcessAlive(helperPid) &&
-          Date.now() - startedAt > HELPER_START_GRACE_MS
-        ) {
-          applying = false;
-          setTaskbarProgress(null);
-          setState({
-            phase: 'ready',
-            errorCode: 'apply-helper-exited',
-            errorMessage: 'The update helper stopped before it could start.',
-            applyProgress: null,
-            canApply: true,
-          });
+        }
+        let helperAlive = helperPid > 0 && isProcessAlive(helperPid);
+        if (helperAlive && Date.now() - helperIdentityCheckedAt > 5_000) {
+          helperIdentityCheckedAt = Date.now();
+          const helperImage = await processExecutablePath(helperPid);
+          if (helperImage && helperImage.toLowerCase() !== helperExecutable.toLowerCase()) {
+            helperAlive = false;
+          }
+        }
+        if (!helperAlive) {
+          if (helperDeadAt === 0) helperDeadAt = Date.now();
+          if (Date.now() - helperDeadAt > HELPER_DEATH_GRACE_MS) {
+            if (matching && journal && journal.phase === 'pre-swap') {
+              applyStopped(
+                'apply-helper-exited',
+                undefined,
+                journal,
+                path.dirname(helperExecutable)
+              );
+              return;
+            }
+            if (Date.now() - startedAt > HELPER_START_GRACE_MS) {
+              applyStopped(
+                'apply-helper-exited',
+                undefined,
+                journal ?? null,
+                path.dirname(helperExecutable)
+              );
+              return;
+            }
+          }
+        } else {
+          helperDeadAt = 0;
+        }
+        if (Date.now() - startedAt > MAX_APPLY_MS) {
+          if (helperPid > 0) killProcessTree(helperPid, true);
+          applyStopped('apply-timeout', undefined, journal ?? null, path.dirname(helperExecutable));
           return;
         }
         await delay(APPLY_POLL_MS);
       }
     } catch (error) {
-      applying = false;
-      setTaskbarProgress(null);
-      setState({
-        phase: 'ready',
-        errorCode: 'apply-failed',
-        errorMessage: error instanceof Error ? error.message : 'The update could not be installed.',
-        applyProgress: null,
-        canApply: true,
-      });
+      applyStopped(
+        'apply-failed',
+        error instanceof Error ? error.message : String(error),
+        readJson<JournalRecord>(journalPath),
+        path.dirname(helperExecutable)
+      );
     }
   };
 
   const runCheck = async (manual: boolean): Promise<void> => {
-    if (!host.isPackaged || checking || applying) return;
+    if (!workspaceReady || !host.isPackaged || recoveryBlocked || checking || applying) return;
     if (manual && Date.now() - checkedAt < MANUAL_COOLDOWN_MS) return;
     if (!manual && persisted.lastCheckedAt !== null) {
       const elapsed = Date.now() - persisted.lastCheckedAt;
@@ -711,6 +983,15 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
           canApply: false,
         });
       }
+    } catch (error) {
+      info(`release check failed: ${error instanceof Error ? error.message : String(error)}`);
+      setState({
+        phase: 'error',
+        errorCode: 'check-failed',
+        errorMessage: error instanceof Error ? error.message : 'The release check failed.',
+        canDownload: false,
+        canApply: false,
+      });
     } finally {
       checking = false;
     }
@@ -718,7 +999,7 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
 
   const startDownload = async (): Promise<void> => {
     const release = persisted.latest;
-    if (!release || applying || downloadAbort) return;
+    if (!workspaceReady || !release || applying || downloadAbort) return;
     if (!refreshPreflight().ok) {
       settlePhase();
       return;
@@ -832,10 +1113,32 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
 
   const applyUpdate = async (): Promise<void> => {
     const release = persisted.latest;
-    if (!release || applying) return;
+    if (!workspaceReady || recoveryBlocked || !release || applying) return;
     if (state.phase !== 'ready') return;
     applying = true;
+    let helperDir: string | null = null;
     try {
+      const existingLock = readJson<ApplyLock>(lockPath);
+      const existingLockAge =
+        typeof existingLock?.at === 'number'
+          ? Date.now() - existingLock.at
+          : Number.POSITIVE_INFINITY;
+      if (
+        existingLock &&
+        typeof existingLock.pid === 'number' &&
+        existingLock.pid !== process.pid &&
+        existingLockAge < 60 * 60 * 1000 &&
+        isProcessAlive(existingLock.pid)
+      ) {
+        applying = false;
+        setState({
+          phase: 'ready',
+          errorCode: 'update-in-progress',
+          errorMessage: failureMessage('update-in-progress'),
+          canApply: true,
+        });
+        return;
+      }
       if (await conversionsActive()) {
         applying = false;
         setState({
@@ -874,7 +1177,7 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
         });
         return;
       }
-      if (!refreshPreflight(archive.bytes).ok) {
+      if (!refreshPreflight(archive.bytes, true).ok) {
         applying = false;
         settlePhase();
         return;
@@ -882,17 +1185,16 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
       const signatureBase64 = fs.readFileSync(signaturePath, 'utf8').trim();
       const updateId = newUpdateId(release.version);
       const nonce = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`;
+      helperDir = helperDirFor(host.installDir, updateId);
+      await createHelperRuntime(host.installDir, helperDir);
+      const appExecutable = process.execPath;
+      const helperExecutable = path.join(helperDir, path.basename(appExecutable));
+      if (!fs.existsSync(helperExecutable)) {
+        throw new Error('The update helper executable could not be prepared.');
+      }
       fs.writeFileSync(helperPath, fs.readFileSync(host.helperBundlePath));
       fs.rmSync(cancelPath, { force: true });
       writeJson(lockPath, { pid: process.pid, updateId, at: Date.now() });
-      writeJson(path.join(workspace, WORKSPACE_FILES.pending), {
-        schema: 1,
-        updateId,
-        fromVersion: host.currentVersion,
-        toVersion: release.version,
-        nonce,
-        at: Date.now(),
-      });
       setState({
         phase: 'applying',
         canApply: false,
@@ -908,13 +1210,14 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
         },
       });
       setTaskbarProgress(0);
-      const executable = process.execPath;
       const args = [
         helperPath,
         '--install',
         host.installDir,
         '--workspace',
         workspace,
+        '--helper-dir',
+        helperDir,
         '--archive',
         archivePath,
         '--digest',
@@ -928,7 +1231,7 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
         '--to',
         release.version,
         '--exe',
-        path.basename(executable),
+        path.basename(appExecutable),
         '--app-pid',
         String(process.pid),
         '--nonce',
@@ -938,8 +1241,8 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
       if (typeof backendPid === 'number' && backendPid > 0) {
         args.push('--backend-pid', String(backendPid));
       }
-      info(`spawning helper update=${updateId}`);
-      const child = spawn(executable, args, {
+      info(`spawning helper update=${updateId} from=${path.basename(helperDir)}`);
+      const child = spawn(helperExecutable, args, {
         cwd: workspace,
         detached: true,
         stdio: 'ignore',
@@ -947,16 +1250,20 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
         env: sanitizedEnv({ ELECTRON_RUN_AS_NODE: '1' }),
       });
       child.unref();
-      void pollApply(updateId, child.pid ?? 0, release);
+      if (!child.pid) throw new Error('The update helper did not start.');
+      void pollApply(updateId, child.pid, helperExecutable, release);
     } catch (error) {
       applying = false;
       setTaskbarProgress(null);
       fs.rmSync(lockPath, { force: true });
-      fs.rmSync(path.join(workspace, WORKSPACE_FILES.pending), { force: true });
+      if (helperDir) await removeDirectoryWithRetries(helperDir);
       setState({
         phase: 'ready',
-        errorCode: 'apply-failed',
-        errorMessage: error instanceof Error ? error.message : 'The update could not be started.',
+        errorCode: 'helper-prepare-failed',
+        errorMessage: failureMessage(
+          'helper-prepare-failed',
+          error instanceof Error ? error.message : undefined
+        ),
         applyProgress: null,
         canApply: true,
       });
@@ -1002,8 +1309,16 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
   });
 
   if (workspaceReady) {
-    reconcile();
-    refreshPreflight();
+    try {
+      reconcile();
+    } catch (error) {
+      info(`reconcile failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    try {
+      refreshPreflight();
+    } catch (error) {
+      info(`preflight failed: ${error instanceof Error ? error.message : String(error)}`);
+    }
     settlePhase();
     if (fs.existsSync(archivePath) && persisted.latest) {
       setTimeout(() => {
@@ -1036,8 +1351,15 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
       windowFailure = reason;
       info(`window failure during update boot: ${reason}`);
     },
+    reportReady: () => {
+      void writeBootReport();
+    },
     dispose: () => {
       disposed = true;
+      if (bootReportTimer) clearTimeout(bootReportTimer);
+      if (reconcileTimer) clearTimeout(reconcileTimer);
+      bootReportTimer = null;
+      reconcileTimer = null;
       downloadAbort?.abort();
     },
   };

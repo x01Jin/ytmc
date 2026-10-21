@@ -48,9 +48,11 @@ test('blocks a missing install folder', () =>
 
 test('blocks a stale sibling copy', () =>
   withRoot(root => {
-    const stale = path.join(root, 'app.old-1.2.0-abcdef12');
-    fs.mkdirSync(stale);
-    assert.equal(runPreflight(input(stale)).code, 'running-from-stale-copy');
+    for (const suffix of ['old', 'helper']) {
+      const stale = path.join(root, `app.${suffix}-1.2.0-abcdef12`);
+      fs.mkdirSync(stale);
+      assert.equal(runPreflight(input(stale)).code, 'running-from-stale-copy');
+    }
   }));
 
 test('blocks a drive root install', () => {
