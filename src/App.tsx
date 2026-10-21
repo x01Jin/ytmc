@@ -92,11 +92,10 @@ function ShellChrome() {
 
   return (
     <AppShell>
-      <TitleBar />
+      <TitleBar>{route !== 'settings' && <UpdateNotice />}</TitleBar>
       <ShellMain>
         <SideNav route={route} onNavigate={navigate} />
         <ShellContent>
-          <UpdateNotice />
           {route === 'convert' && <ConvertRoute />}
           {youtubeMounted && (
             <div className={route === 'youtube' ? 'contents' : 'hidden'}>

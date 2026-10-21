@@ -56,7 +56,7 @@ export function useHashRoute(): {
   return { route, navigate };
 }
 
-export function TitleBar() {
+export function TitleBar({ children }: { children?: ReactNode }) {
   return (
     <header className="px-panel flex shrink-0 items-center gap-2 px-3 py-2">
       <img
@@ -71,6 +71,7 @@ export function TitleBar() {
       </h1>
       <span className="text-[11px] text-px-dim">Converter</span>
       <span className="flex-1" />
+      {children}
       <a
         href="https://github.com/x01Jin/ytmc"
         target="_blank"

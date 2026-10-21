@@ -13,7 +13,7 @@ Versions 1.2.4 and 1.3.0 ship the same broken helper: it runs from the install e
 Updates surface in two places:
 
 - **Settings > Updates panel** (`src/components/UpdatePanel.tsx`): installed version, a "Release Notes" button that opens a Markdown preview of the installed release's notes, check button, download progress with cancel, "Restart and Update", and "View Release". During an install it shows the current phase and progress; after a failure it shows the error detail and whether the previous version was restored.
-- **Notice banner** (`src/components/UpdateNotice.tsx`): appears on any route when a version is available or ready, with Download / Restart and Update, a Details link to Settings, and Dismiss (remembered per version in `localStorage`). While an update is applying, a global progress banner replaces it and cannot be dismissed.
+- **Header update button** (`src/components/UpdateNotice.tsx`): a compact button in the title bar, left of the GitHub link, shown on every route except Settings when a version is available or ready, and while an update is installing. It opens Settings, where the full panel handles downloading and restarting.
 
 The main process drives a single state machine (`electron/updater/index.cts`):
 
@@ -51,7 +51,7 @@ The workspace lives under `%LOCALAPPDATA%\YT Music Converter\updater\<installId>
 | `recover-update.ps1` | Watchdog script used to restore an interrupted swap.                                                                                                                                   |
 | `updater.log`        | Append-only log of checks, downloads, applies, and rollbacks. Kept for diagnostics.                                                                                                    |
 
-The journal also carries extraction totals and byte progress, which the app polls every 200 milliseconds and mirrors to the banner and the Windows taskbar.
+The journal also carries extraction totals and byte progress, which the app polls every 200 milliseconds and mirrors to the Settings panel and the Windows taskbar.
 
 After a successful boot the app removes the archive, signature, helper bundle, watchdog script, journal, boot confirmation, cancel marker, and update marker. It also removes workspaces whose recorded install path no longer exists. Legacy workspaces without a recorded install path have only their cache files removed, and only after 24 hours. A workspace with a live apply lock is never removed.
 
