@@ -3,8 +3,9 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { sha256Hex } from './crypto-helper.mjs';
 
-const { sha256Hex, signDigest, verifyDigestSignature } =
+const { signDigest, verifyDigestSignature } =
   await import('../../dist-electron/updater/signature.cjs');
 
 const keyPath = path.join(os.homedir(), '.ytmc-release-signing.key');

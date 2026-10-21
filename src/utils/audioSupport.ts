@@ -1,6 +1,6 @@
 const PREVIEW_FORMATS = new Set(['opus', 'm4a']);
 
-export function needsPreviewPlayback(format?: string | null): boolean {
+function needsPreviewPlayback(format?: string | null): boolean {
   if (!format) return false;
   return PREVIEW_FORMATS.has(format.replace(/^\./, '').toLowerCase());
 }

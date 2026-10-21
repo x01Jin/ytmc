@@ -5,8 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { buildZip } from './zip-fixture.mjs';
 
-const { extractArchive, archiveInfo, archiveUncompressedBytes } =
-  await import('../../dist-electron/updater/extract.cjs');
+const { extractArchive, archiveInfo } = await import('../../dist-electron/updater/extract.cjs');
 
 function withRoot(run) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ytmc-extract-'));
@@ -38,7 +37,6 @@ test('extracts a nested tree and reports bytes', () =>
     assert.deepEqual(outcome, { ok: true, entries: 3, bytes: 9 });
     assert.equal(fs.readFileSync(path.join(root, 'out', 'dir', 'a.txt'), 'utf8'), 'hello');
     assert.deepEqual(fs.readFileSync(path.join(root, 'out', 'b.bin')), Buffer.from([1, 2, 3, 4]));
-    assert.equal(await archiveUncompressedBytes(archive), 9);
   }));
 
 test('reports archive totals and extraction progress', () =>
@@ -121,7 +119,7 @@ test('reports an unreadable archive', async () => {
       ok: false,
       reason: 'open-failed',
     });
-    assert.equal(await archiveUncompressedBytes(archive), null);
+    assert.equal(await archiveInfo(archive), null);
   });
 });
 

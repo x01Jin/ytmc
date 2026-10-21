@@ -139,7 +139,7 @@ export async function startServer(): Promise<StartedServer> {
 
   app.use('/api', apiRouter);
 
-  app.get('/api/health', (req, res) => {
+  app.get('/api/health', (_req, res) => {
     res.json({
       status: 'ok',
       time: new Date().toISOString(),

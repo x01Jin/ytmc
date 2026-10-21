@@ -1,5 +1,5 @@
 import { Loader2, Settings2 } from 'lucide-react';
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ApiClient } from '../../services/apiClient';
 import type { AudioBitrate } from '../../types';
 import { useEditPanel } from './LibraryEditPanel';

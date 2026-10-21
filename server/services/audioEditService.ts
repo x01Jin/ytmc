@@ -8,7 +8,6 @@ import { AudioTagService, embedOpusPicture } from './audioTagService.js';
 import { readAudioMetadata } from './audioMetadata.js';
 
 export const EDITABLE_FORMATS = ['mp3', 'm4a', 'opus', 'flac', 'wav'] as const;
-export type EditableFormat = (typeof EDITABLE_FORMATS)[number];
 
 export interface LibraryEditPatch {
   format?: string;

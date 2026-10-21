@@ -1,5 +1,5 @@
 import { Check, FileAudio, Link2, RotateCcw, Trash2 } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiClient } from '../services/apiClient';
 import { useConvertDraft, useHistory } from '../store/appStore';
 

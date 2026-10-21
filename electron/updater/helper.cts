@@ -12,7 +12,7 @@ import {
   processExecutablePath,
   processImageName,
   readJson,
-  removeDirectoryWithRetries,
+  removePathWithRetries,
   sanitizedEnv,
   staleSiblingTrees,
   sweepProcessesUnderInstall,
@@ -71,8 +71,6 @@ const PROGRESS_INTERVAL_MS = 250;
 const SWAP_RETRY_MS = 60_000;
 const SWAP_RETRY_STEP_MS = 250;
 const SWAP_LOG_INTERVAL_MS = 5_000;
-const OLD_TREE_RETENTION_MS = 24 * 60 * 60 * 1000;
-const WATCHDOG_SCRIPT = 'recover-update.ps1';
 const REQUIRED_TREE = [
   'resources/app.asar',
   'resources/server.cjs',
@@ -557,7 +555,7 @@ async function runApplyInner(options: HelperOptions): Promise<ApplyOutcome> {
   const swapRetryMs = options.swapRetryMs ?? SWAP_RETRY_MS;
   const watchdogEnabled = options.watchdog ?? process.platform === 'win32';
   const markerPath = updateMarkerPath(installDir);
-  const watchdogPath = path.join(options.workspace, WATCHDOG_SCRIPT);
+  const watchdogPath = path.join(options.workspace, WORKSPACE_FILES.watchdog);
   const startedAt = Date.now();
   let watchdogStarted = false;
   let preserveRecovery = false;
@@ -618,7 +616,7 @@ async function runApplyInner(options: HelperOptions): Promise<ApplyOutcome> {
       restored,
     });
     if (!restored) preserveRecovery = true;
-    if (restored && fs.existsSync(newDir)) await removeDirectoryWithRetries(newDir);
+    if (restored && fs.existsSync(newDir)) await removePathWithRetries(newDir);
     return abort(reason);
   };
 
@@ -632,17 +630,8 @@ async function runApplyInner(options: HelperOptions): Promise<ApplyOutcome> {
   });
 
   const keptTrees = [newDir, oldDir, failedDir, options.helperDir ?? ''];
-  const prefixLength = installName.length + 1;
   for (const dir of staleSiblingTrees(installDir, keptTrees)) {
-    const suffix = path.basename(dir).slice(prefixLength);
-    if (suffix.startsWith('old-')) {
-      try {
-        if (Date.now() - fs.statSync(dir).mtimeMs < OLD_TREE_RETENTION_MS) continue;
-      } catch {
-        continue;
-      }
-    }
-    if (await removeDirectoryWithRetries(dir)) log(`removed stale tree ${path.basename(dir)}`);
+    if (await removePathWithRetries(dir)) log(`removed stale tree ${path.basename(dir)}`);
   }
 
   writePhase('verifying', { percent: 2 });
@@ -660,7 +649,7 @@ async function runApplyInner(options: HelperOptions): Promise<ApplyOutcome> {
   }
   mark('verify');
 
-  if (!(await removeDirectoryWithRetries(newDir))) {
+  if (!(await removePathWithRetries(newDir))) {
     return fail('new-tree-cleanup-failed', newDir);
   }
   writePhase('extracting', {
@@ -750,7 +739,7 @@ async function runApplyInner(options: HelperOptions): Promise<ApplyOutcome> {
     await delay(200);
   }
   if (appState === 'cancelled') {
-    if (!(await removeDirectoryWithRetries(newDir))) {
+    if (!(await removePathWithRetries(newDir))) {
       log(`cancel cleanup failed: ${newDir}`);
     }
     try {
@@ -825,7 +814,7 @@ async function runApplyInner(options: HelperOptions): Promise<ApplyOutcome> {
   if (lateSweep === null) log('late process sweep unavailable');
 
   writePhase('installing', { percent: 96 });
-  if (!(await removeDirectoryWithRetries(oldDir))) {
+  if (!(await removePathWithRetries(oldDir))) {
     return fail('old-tree-remove-failed', oldDir, true);
   }
   if (fs.existsSync(oldDir)) {
@@ -874,7 +863,7 @@ async function runApplyInner(options: HelperOptions): Promise<ApplyOutcome> {
     try {
       if (!fs.existsSync(oldDir)) throw new Error('old tree is missing');
       if (fs.existsSync(installDir)) {
-        await removeDirectoryWithRetries(failedDir);
+        await removePathWithRetries(failedDir);
         await renameWithRetries(installDir, failedDir, swapRetryMs, log);
       }
       await renameWithRetries(oldDir, installDir, swapRetryMs, log);
@@ -981,7 +970,7 @@ export async function runApply(options: HelperOptions): Promise<ApplyOutcome> {
       let restored = false;
       try {
         if (fs.existsSync(installDir)) {
-          await removeDirectoryWithRetries(failedDir);
+          await removePathWithRetries(failedDir);
           await renameWithRetries(installDir, failedDir, 10_000);
         }
         await renameWithRetries(oldDir, installDir, 10_000);
@@ -1022,7 +1011,7 @@ export async function runApply(options: HelperOptions): Promise<ApplyOutcome> {
     if (!restored && fs.existsSync(oldDir)) {
       try {
         if (fs.existsSync(installDir)) {
-          await removeDirectoryWithRetries(failedDir);
+          await removePathWithRetries(failedDir);
           await renameWithRetries(installDir, failedDir, 10_000);
         }
         await renameWithRetries(oldDir, installDir, 10_000);
@@ -1052,7 +1041,7 @@ export async function runApply(options: HelperOptions): Promise<ApplyOutcome> {
         at: Date.now(),
       });
     } catch {}
-    if (restored && fs.existsSync(newDir)) await removeDirectoryWithRetries(newDir);
+    if (restored && fs.existsSync(newDir)) await removePathWithRetries(newDir);
     if (restored) {
       fs.rmSync(path.join(options.workspace, WORKSPACE_FILES.lock), { force: true });
       fs.rmSync(updateMarkerPath(installDir), { force: true });

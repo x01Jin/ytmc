@@ -1,5 +1,5 @@
 import { AlertCircle, CheckCircle2 } from 'lucide-react';
-import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState } from 'react';
 import { ConversionOptionsPanel } from '../components/ConversionOptionsPanel';
 import { ConversionProgress } from '../components/ConversionProgress';
 import { UrlInput } from '../components/UrlInput';

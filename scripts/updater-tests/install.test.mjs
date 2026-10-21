@@ -10,9 +10,11 @@ const {
   createHelperRuntime,
   helperDirFor,
   helperRuntimeBytes,
+  removePathWithRetries,
   staleSiblingTrees,
   supportsHardlinks,
   updateMarkerPath,
+  workspaceDirectories,
 } = await import('../../dist-electron/updater/install.cjs');
 
 const require = createRequire(import.meta.url);
@@ -135,13 +137,14 @@ test('an Electron helper hardlinked outside the install does not lock it', async
   });
 });
 
-test('stale siblings include helper directories', () =>
+test('stale siblings include helper directories and ignore user folders', () =>
   withRoot(root => {
     const install = path.join(root, 'app');
     fs.mkdirSync(install);
     fs.mkdirSync(path.join(root, 'app.helper-2.0.0-abcdef12'));
     fs.mkdirSync(path.join(root, 'app.new-2.0.0-abcdef12'));
     fs.mkdirSync(path.join(root, 'app.old-2.0.0-abcdef12'));
+    fs.mkdirSync(path.join(root, 'app.old-photos'));
     const names = staleSiblingTrees(install)
       .map(dir => path.basename(dir))
       .sort();
@@ -151,4 +154,23 @@ test('stale siblings include helper directories', () =>
       'app.old-2.0.0-abcdef12',
     ]);
     assert.equal(path.dirname(updateMarkerPath(install)), root);
+  }));
+
+test('lists every updater workspace and removes files with retries', () =>
+  withRoot(async root => {
+    const localAppData = path.join(root, 'local');
+    const updaterRoot = path.join(localAppData, 'YT Music Converter', 'updater');
+    fs.mkdirSync(path.join(updaterRoot, 'one'), { recursive: true });
+    fs.mkdirSync(path.join(updaterRoot, 'two'), { recursive: true });
+    fs.writeFileSync(path.join(updaterRoot, 'loose.txt'), 'x');
+    assert.deepEqual(
+      workspaceDirectories(localAppData)
+        .map(dir => path.basename(dir))
+        .sort(),
+      ['one', 'two']
+    );
+    const archive = path.join(updaterRoot, 'one', 'package.zip');
+    fs.writeFileSync(archive, 'x');
+    assert.equal(await removePathWithRetries(archive), true);
+    assert.equal(fs.existsSync(archive), false);
   }));

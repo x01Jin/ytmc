@@ -30,10 +30,6 @@ export function signDigest(digestHex: string, privateKeyPem: string): string {
   return sign(null, Buffer.from(digestHex, 'hex'), privateKeyPem).toString('base64');
 }
 
-export function sha256Hex(data: Buffer): string {
-  return createHash('sha256').update(data).digest('hex');
-}
-
 export function hashFileHex(filePath: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const hash = createHash('sha256');

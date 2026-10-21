@@ -16,10 +16,6 @@ export function parseVersion(input: string): ParsedVersion | null {
   };
 }
 
-export function formatVersion(version: ParsedVersion): string {
-  return `${version.major}.${version.minor}.${version.patch}`;
-}
-
 export function compareVersions(a: ParsedVersion, b: ParsedVersion): number {
   if (a.major !== b.major) return a.major - b.major;
   if (a.minor !== b.minor) return a.minor - b.minor;

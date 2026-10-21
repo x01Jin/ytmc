@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
-export const LIBRARY_DIR_NAME = 'YT Music Converter';
+const LIBRARY_DIR_NAME = 'YT Music Converter';
 export const WORKSPACE_FILES = {
   helper: 'updater-helper.cjs',
   archive: 'package.zip',
@@ -14,6 +14,7 @@ export const WORKSPACE_FILES = {
   cancel: 'apply.cancel',
   bootOk: 'boot-ok.json',
   log: 'updater.log',
+  watchdog: 'recover-update.ps1',
 } as const;
 
 export function installIdFor(installDir: string): string {
@@ -22,6 +23,18 @@ export function installIdFor(installDir: string): string {
 
 export function workspaceRoot(localAppDataDir: string, installId: string): string {
   return path.join(localAppDataDir, LIBRARY_DIR_NAME, 'updater', installId);
+}
+
+export function workspaceDirectories(localAppDataDir: string): string[] {
+  const root = path.join(localAppDataDir, LIBRARY_DIR_NAME, 'updater');
+  try {
+    return fs
+      .readdirSync(root, { withFileTypes: true })
+      .filter(entry => entry.isDirectory())
+      .map(entry => path.join(root, entry.name));
+  } catch {
+    return [];
+  }
 }
 
 export function newUpdateId(version: string): string {
@@ -163,7 +176,7 @@ async function linkRuntimeTree(source: string, destination: string, root: boolea
 }
 
 export async function createHelperRuntime(installDir: string, helperDir: string): Promise<void> {
-  if (fs.existsSync(helperDir) && !(await removeDirectoryWithRetries(helperDir))) {
+  if (fs.existsSync(helperDir) && !(await removePathWithRetries(helperDir))) {
     throw new Error('The previous helper folder is still locked.');
   }
   await fs.promises.mkdir(helperDir, { recursive: true });
@@ -258,7 +271,7 @@ export function processImageName(pid: number): Promise<string | null> {
   });
 }
 
-export interface InstallProcess {
+interface InstallProcess {
   pid: number;
   name: string;
   path: string;
@@ -304,7 +317,7 @@ export async function processExecutablePath(pid: number): Promise<string | null>
   return output && output.length > 0 ? output : null;
 }
 
-export async function processesUnderInstall(installDir: string): Promise<InstallProcess[] | null> {
+async function processesUnderInstall(installDir: string): Promise<InstallProcess[] | null> {
   if (process.platform !== 'win32') return [];
   const root = `${path.resolve(installDir)}${path.sep}`;
   const script = [
@@ -356,14 +369,14 @@ export async function sweepProcessesUnderInstall(
   return known ? false : null;
 }
 
-export async function removeDirectoryWithRetries(
-  dir: string,
+export async function removePathWithRetries(
+  target: string,
   attempts = 10,
   delayMs = 500
 ): Promise<boolean> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
-      fs.rmSync(dir, { recursive: true, force: true });
+      fs.rmSync(target, { recursive: true, force: true });
       return true;
     } catch {
       await delay(delayMs);

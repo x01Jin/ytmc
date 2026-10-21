@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { ApiClient } from '../../services/apiClient';
 import type { TagPatch } from '../../types';
 import { TagEditor } from '../TagEditor';

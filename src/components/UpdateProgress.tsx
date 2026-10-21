@@ -15,7 +15,7 @@ const PHASE_LABELS: Record<string, string> = {
   cancelling: 'Cancelling',
 };
 
-export function applyPhaseLabel(phase: string | undefined): string {
+function applyPhaseLabel(phase: string | undefined): string {
   return phase ? (PHASE_LABELS[phase] ?? 'Installing') : 'Installing';
 }
 

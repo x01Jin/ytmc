@@ -231,8 +231,3 @@ export function archiveInfo(archivePath: string): Promise<ArchiveInfo | null> {
     });
   });
 }
-
-export async function archiveUncompressedBytes(archivePath: string): Promise<number | null> {
-  const info = await archiveInfo(archivePath);
-  return info ? info.bytes : null;
-}

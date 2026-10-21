@@ -24,12 +24,13 @@ import {
   newUpdateId,
   processExecutablePath,
   readJson,
-  removeDirectoryWithRetries,
+  removePathWithRetries,
   sanitizedEnv,
   staleSiblingTrees,
   staleUpdateMarkers,
   supportsHardlinks,
   updateMarkerPath,
+  workspaceDirectories,
   workspaceRoot,
   writeJson,
 } from './install.cjs';
@@ -118,6 +119,7 @@ interface PersistedApply {
 }
 
 interface PersistedState {
+  installDir?: string;
   lastCheckedAt: number | null;
   latest: PersistedRelease | null;
   lastApply: PersistedApply | null;
@@ -156,7 +158,7 @@ const CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
 const MANUAL_COOLDOWN_MS = 60_000;
 const STARTUP_CHECK_DELAY_MS = 15_000;
 const CLEANUP_DELAY_MS = 60_000;
-const OLD_TREE_RETENTION_MS = 24 * 60 * 60 * 1000;
+const LEGACY_CACHE_AGE_MS = 24 * 60 * 60 * 1000;
 const PROGRESS_PUBLISH_MS = 250;
 const APPLY_POLL_MS = 200;
 const HELPER_START_GRACE_MS = 10_000;
@@ -214,6 +216,7 @@ function readPersisted(filePath: string): PersistedState {
       ? candidate
       : null;
   return {
+    installDir: typeof raw?.installDir === 'string' ? raw.installDir : undefined,
     lastCheckedAt: typeof raw?.lastCheckedAt === 'number' ? raw.lastCheckedAt : null,
     latest,
     lastApply: raw?.lastApply ?? null,
@@ -280,6 +283,7 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
   const logPath = path.join(workspace, WORKSPACE_FILES.log);
   const notesPath = path.join(workspace, WORKSPACE_FILES.notes);
   const persisted = workspaceReady ? readPersisted(statePath) : readPersisted('');
+  persisted.installDir = host.installDir;
   const state = emptyState(host.currentVersion);
 
   let preflight: PreflightOutcome = { ok: true };
@@ -296,6 +300,7 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
   let recoveryBlocked = false;
   let reconcileAttempts = 0;
   let reconcileTimer: NodeJS.Timeout | null = null;
+  const cleanupTimers = new Set<NodeJS.Timeout>();
   let lastProgressPublish = 0;
 
   const info = (line: string) => {
@@ -510,25 +515,80 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
     }
   };
 
-  const cleanup = (dirs: string[], delayMs = CLEANUP_DELAY_MS) => {
-    const targets = dirs.filter(dir => typeof dir === 'string' && dir.length > 0);
+  const cleanup = (paths: string[], delayMs = CLEANUP_DELAY_MS) => {
+    const targets = Array.from(
+      new Set(paths.filter(target => typeof target === 'string' && target.length > 0))
+    );
     if (targets.length === 0) return;
-    setTimeout(() => {
-      persisted.pendingCleanup = Array.from(new Set([...persisted.pendingCleanup, ...targets]));
+    const remove = async () => {
+      const failed: string[] = [];
+      for (const target of targets) {
+        if (!(await removePathWithRetries(target))) failed.push(target);
+      }
+      persisted.pendingCleanup = persisted.pendingCleanup.filter(
+        target => !targets.includes(target) || failed.includes(target)
+      );
+      for (const target of failed) {
+        if (!persisted.pendingCleanup.includes(target)) persisted.pendingCleanup.push(target);
+      }
       savePersisted();
-      const remove = async () => {
-        const remaining: string[] = [];
-        for (const dir of targets) {
-          const removed = await removeDirectoryWithRetries(dir);
-          if (!removed) remaining.push(dir);
-        }
-        persisted.pendingCleanup = persisted.pendingCleanup.filter(
-          dir => !targets.includes(dir) || remaining.includes(dir)
-        );
-        savePersisted();
-      };
+    };
+    if (delayMs <= 0) {
+      void remove();
+      return;
+    }
+    const timer = setTimeout(() => {
+      cleanupTimers.delete(timer);
       void remove();
     }, delayMs);
+    cleanupTimers.add(timer);
+  };
+
+  const applyCachePaths = () => [
+    archivePath,
+    signaturePath,
+    helperPath,
+    path.join(workspace, WORKSPACE_FILES.watchdog),
+  ];
+
+  const cleanupObsoleteWorkspaces = () => {
+    if (!host.localAppDataDir || !workspaceReady) return;
+    const currentWorkspace = path.resolve(workspace).toLowerCase();
+    for (const dir of workspaceDirectories(host.localAppDataDir)) {
+      if (path.resolve(dir).toLowerCase() === currentWorkspace) continue;
+      const lock = readJson<ApplyLock>(path.join(dir, WORKSPACE_FILES.lock));
+      const lockAge =
+        typeof lock?.at === 'number' ? Date.now() - lock.at : Number.POSITIVE_INFINITY;
+      if (
+        lock &&
+        typeof lock.pid === 'number' &&
+        lock.pid !== process.pid &&
+        lockAge < 60 * 60 * 1000 &&
+        isProcessAlive(lock.pid)
+      ) {
+        continue;
+      }
+      const other = readJson<Partial<PersistedState>>(path.join(dir, WORKSPACE_FILES.state));
+      const installDir = typeof other?.installDir === 'string' ? other.installDir : null;
+      if (installDir) {
+        if (!fs.existsSync(installDir)) cleanup([dir]);
+        continue;
+      }
+      for (const name of [
+        WORKSPACE_FILES.archive,
+        `${WORKSPACE_FILES.archive}.sig`,
+        WORKSPACE_FILES.helper,
+        WORKSPACE_FILES.watchdog,
+        WORKSPACE_FILES.journal,
+        WORKSPACE_FILES.bootOk,
+        WORKSPACE_FILES.cancel,
+      ]) {
+        const target = path.join(dir, name);
+        try {
+          if (Date.now() - fs.statSync(target).mtimeMs >= LEGACY_CACHE_AGE_MS) cleanup([target]);
+        } catch {}
+      }
+    }
   };
 
   const reconcile = () => {
@@ -594,9 +654,12 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
         (journal.phase === 'boot-ok' ||
           journal.phase === 'launched' ||
           (journal.phase === 'failed' && installIntact));
-      const quickCleanup = [journal.newDir, journal.failedDir, journal.helperDir].filter(
-        (dir): dir is string => typeof dir === 'string'
-      );
+      const quickCleanup = [
+        journal.newDir,
+        journal.failedDir,
+        journal.helperDir,
+        journal.oldDir,
+      ].filter((dir): dir is string => typeof dir === 'string');
       if (applied) {
         persisted.lastApply = {
           ok: true,
@@ -647,28 +710,18 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
       fs.rmSync(path.join(workspace, WORKSPACE_FILES.bootOk), { force: true });
       fs.rmSync(path.join(workspace, WORKSPACE_FILES.cancel), { force: true });
       cleanup(quickCleanup, 0);
-      if (typeof journal.oldDir === 'string') cleanup([journal.oldDir], OLD_TREE_RETENTION_MS);
     }
     if (persisted.pendingCleanup.length > 0) {
       cleanup([...persisted.pendingCleanup]);
     }
     if (host.isPackaged) {
-      const expired: string[] = [];
-      const now = Date.now();
-      const prefixLength = path.basename(path.resolve(host.installDir)).length + 1;
-      for (const dir of staleSiblingTrees(host.installDir)) {
-        const suffix = path.basename(dir).slice(prefixLength);
-        if (suffix.startsWith('old-')) {
-          try {
-            if (now - fs.statSync(dir).mtimeMs < OLD_TREE_RETENTION_MS) continue;
-          } catch {
-            continue;
-          }
-        }
-        expired.push(dir);
-      }
-      cleanup(expired);
+      cleanup(staleSiblingTrees(host.installDir));
+      cleanupObsoleteWorkspaces();
     }
+    const cacheInUse = Boolean(
+      persisted.latest && isNewerVersion(persisted.latest.version, host.currentVersion)
+    );
+    if (!cacheInUse) cleanup(applyCachePaths(), 0);
     if (persisted.lastCheckedAt !== null && persisted.lastCheckedAt > Date.now()) {
       persisted.lastCheckedAt = null;
     }
@@ -699,12 +752,17 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
     totalEntries: typeof journal.totalEntries === 'number' ? journal.totalEntries : null,
   });
 
-  const clearApplyFiles = (journal: JournalRecord | null, preserveRecovery = false) => {
+  const clearApplyFiles = (
+    journal: JournalRecord | null,
+    preserveRecovery = false,
+    success = false
+  ) => {
     if (preserveRecovery) return;
     const dirs = [journal?.newDir, journal?.failedDir, journal?.helperDir].filter(
       (dir): dir is string => typeof dir === 'string' && dir.length > 0
     );
     cleanup(dirs);
+    if (success) cleanup(applyCachePaths());
     fs.rmSync(journalPath, { force: true });
     fs.rmSync(path.join(workspace, WORKSPACE_FILES.bootOk), { force: true });
     fs.rmSync(cancelPath, { force: true });
@@ -857,10 +915,8 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
             applying = false;
             setTaskbarProgress(null);
             setState({ applyProgress: null });
-            clearApplyFiles(journal);
-            if (typeof journal.oldDir === 'string') {
-              cleanup([journal.oldDir], OLD_TREE_RETENTION_MS);
-            }
+            clearApplyFiles(journal, false, true);
+            if (typeof journal.oldDir === 'string') cleanup([journal.oldDir]);
             return;
           }
         }
@@ -1256,7 +1312,7 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
       applying = false;
       setTaskbarProgress(null);
       fs.rmSync(lockPath, { force: true });
-      if (helperDir) await removeDirectoryWithRetries(helperDir);
+      if (helperDir) await removePathWithRetries(helperDir);
       setState({
         phase: 'ready',
         errorCode: 'helper-prepare-failed',
@@ -1358,6 +1414,8 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
       disposed = true;
       if (bootReportTimer) clearTimeout(bootReportTimer);
       if (reconcileTimer) clearTimeout(reconcileTimer);
+      for (const timer of cleanupTimers) clearTimeout(timer);
+      cleanupTimers.clear();
       bootReportTimer = null;
       reconcileTimer = null;
       downloadAbort?.abort();

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-const { parseVersion, formatVersion, compareVersions, isNewerVersion } =
+const { parseVersion, compareVersions, isNewerVersion } =
   await import('../../dist-electron/updater/version.cjs');
 
 test('parseVersion accepts canonical and prefixed versions', () => {
@@ -23,10 +23,6 @@ test('parseVersion rejects malformed versions', () => {
   ]) {
     assert.equal(parseVersion(value), null, value);
   }
-});
-
-test('formatVersion renders the parsed triple', () => {
-  assert.equal(formatVersion({ major: 1, minor: 2, patch: 3 }), '1.2.3');
 });
 
 test('compareVersions orders numerically, not lexically', () => {

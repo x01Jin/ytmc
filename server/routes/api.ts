@@ -251,7 +251,7 @@ apiRouter.get('/status/:id', (req: Request, res: Response) => {
   res.json({ success: true, job });
 });
 
-apiRouter.get('/jobs', (req: Request, res: Response) => {
+apiRouter.get('/jobs', (_req: Request, res: Response) => {
   const jobs = JobManager.listRecentJobs();
   res.json({ success: true, jobs });
 });
@@ -280,7 +280,7 @@ apiRouter.post('/cancel/:id', (req: Request, res: Response) => {
   res.json({ success: true, job: current });
 });
 
-apiRouter.get('/history', (req: Request, res: Response) => {
+apiRouter.get('/history', (_req: Request, res: Response) => {
   res.json({ success: true, data: HistoryStore.list() });
 });
 
@@ -297,7 +297,7 @@ apiRouter.delete('/history/:id', (req: Request, res: Response) => {
   res.json({ success: true, message: 'History entry removed.' });
 });
 
-apiRouter.delete('/history', (req: Request, res: Response) => {
+apiRouter.delete('/history', (_req: Request, res: Response) => {
   HistoryStore.clear();
   res.json({ success: true, message: 'History cleared.' });
 });
@@ -417,14 +417,14 @@ apiRouter.get('/download/:id', (req: Request, res: Response) => {
   });
 });
 
-apiRouter.get('/cookies', (req: Request, res: Response) => {
+apiRouter.get('/cookies', (_req: Request, res: Response) => {
   const status = CookieService.getStatus();
   res.json({ success: true, data: status });
 });
 
 apiRouter.post(
   '/cookies/auto-fetch',
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (_req: Request, res: Response) => {
     try {
       const result = await CookieService.autoFetchGuestSession();
       const status = CookieService.getStatus();
@@ -441,7 +441,7 @@ apiRouter.post(
 
 apiRouter.post(
   '/cookies/test',
-  asyncHandler(async (req: Request, res: Response) => {
+  asyncHandler(async (_req: Request, res: Response) => {
     try {
       const result = await CookieService.testSession();
       res.json({ success: true, data: result });
@@ -472,12 +472,12 @@ apiRouter.post('/cookies', (req: Request, res: Response) => {
   }
 });
 
-apiRouter.delete('/cookies', (req: Request, res: Response) => {
+apiRouter.delete('/cookies', (_req: Request, res: Response) => {
   const result = CookieService.clearCookies();
   res.json(result);
 });
 
-apiRouter.get('/settings', (req: Request, res: Response) => {
+apiRouter.get('/settings', (_req: Request, res: Response) => {
   const settings = SettingsService.getSettings();
   res.json({ success: true, data: settingsPayload(settings) });
 });
@@ -492,7 +492,7 @@ apiRouter.patch('/settings', (req: Request, res: Response) => {
   }
 });
 
-apiRouter.post('/settings/reset', (req: Request, res: Response) => {
+apiRouter.post('/settings/reset', (_req: Request, res: Response) => {
   const settings = SettingsService.resetSettings();
   res.json({ success: true, data: settingsPayload(settings) });
 });

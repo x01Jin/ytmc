@@ -130,10 +130,13 @@ async function baseOptions(root, overrides = {}) {
   };
 }
 
-test('applies the update, copies data, and keeps the old tree', { skip }, () =>
+test('applies the update, removes older trees, and keeps the current old tree', { skip }, () =>
   withRoot(async root => {
     const launch = fakeLaunch();
     const options = await baseOptions(root, { launch });
+    const staleTree = path.join(root, 'app.old-1.1.0-deadbeef');
+    fs.mkdirSync(staleTree);
+    fs.writeFileSync(path.join(staleTree, EXE), 'stale-exe');
     const outcome = await runApply(options);
     assert.deepEqual(outcome, { outcome: 'applied', pid: FAKE_PID });
     assert.equal(fs.readFileSync(path.join(root, 'app', EXE), 'utf8'), 'new-exe');
@@ -150,6 +153,7 @@ test('applies the update, copies data, and keeps the old tree', { skip }, () =>
       '{"keep":true}'
     );
     assert.equal(fs.readFileSync(path.join(root, `app.old-${UPDATE_ID}`, EXE), 'utf8'), 'old-exe');
+    assert.equal(fs.existsSync(staleTree), false);
     const journal = JSON.parse(
       fs.readFileSync(path.join(options.workspace, 'journal.json'), 'utf8')
     );

@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import type { YouTubeSearchResult } from '../types';
 

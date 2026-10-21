@@ -1,5 +1,5 @@
 import { FolderSearch, Import, Pencil, Play, Square, Trash2 } from 'lucide-react';
-import React, { Suspense, lazy, useMemo, useRef, useState } from 'react';
+import { Suspense, lazy, useMemo, useRef, useState } from 'react';
 import { AudioPlayer } from '../components/AudioPlayer';
 import { CoverArtPreview } from '../components/CoverArtPreview';
 import { TrackArtwork } from '../components/TrackArtwork';

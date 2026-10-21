@@ -1,5 +1,5 @@
 import { Loader2, Play, Scissors } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ApiClient } from '../../services/apiClient';
 import { formatSeconds, parseTimeToSeconds } from '../../utils/time';
 import { previewStreamUrl } from '../../utils/audioSupport';

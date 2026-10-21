@@ -216,7 +216,7 @@ function textTagArgs(tags: MusicTags, cleared: Set<TextField>): string[] {
   return args;
 }
 
-function attachedArgs(ext: string, withCover: boolean, removeCover: boolean): string[] {
+function attachedArgs(withCover: boolean, removeCover: boolean): string[] {
   if (withCover) return ['-map', '0:a', '-map', '1:0', '-map_metadata', '0', '-c', 'copy'];
   if (removeCover) return ['-map', '0:a:0', '-map_metadata', '0', '-c', 'copy'];
   return ['-map', '0:a:0', '-map', '0:v?', '-map_metadata', '0', '-c', 'copy'];
@@ -254,7 +254,7 @@ async function writeAttached(
   }
   const args: string[] = ['-y', '-i', filePath];
   if (replacing) args.push('-i', ctx.tempCoverFile as string);
-  args.push(...attachedArgs(ext, replacing, removing));
+  args.push(...attachedArgs(replacing, removing));
   if (replacing) args.push(...coverStreamArgs(ext));
   args.push(...textTagArgs(tags, cleared));
   args.push(ctx.tempOutputFile);
@@ -266,7 +266,7 @@ async function writeAttached(
   } catch {
     if (replacing) {
       const fallback: string[] = ['-y', '-i', filePath];
-      fallback.push(...attachedArgs(ext, false, false));
+      fallback.push(...attachedArgs(false, false));
       fallback.push(...textTagArgs(tags, cleared));
       fallback.push(ctx.tempOutputFile);
       await runFfmpeg(fallback);

@@ -1,5 +1,5 @@
 import { Image as ImageIcon } from 'lucide-react';
-import React, { useState } from 'react';
+import { useState } from 'react';
 
 interface TrackArtworkProps {
   src: string;

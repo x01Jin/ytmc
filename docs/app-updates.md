@@ -4,7 +4,7 @@ How the portable Windows build checks for, verifies, installs, and recovers upda
 
 The updater targets the `x01Jin/ytmc` GitHub repository. Releases carry `ytmc-<version>-win.zip` and a detached `ytmc-<version>-win.zip.sig` signature. The app installs only from that zip; there is no installer, no checksum-only path, and no Authenticode fallback.
 
-Versions 1.2.4 and 1.3.0 ship the same broken helper: it runs from the install executable, which holds the install folder open, and it relaunches the app hidden. Both cannot install an update automatically. Install 1.3.1 manually once. From 1.3.1 onward the helper runs from a hardlinked runtime outside the install folder and relaunches the app visibly, so 1.3.1 installs 1.3.2 and later automatically.
+Versions 1.2.4 and 1.3.0 ship the same broken helper: it runs from the install executable, which holds the install folder open, and it relaunches the app hidden. Both cannot install an update automatically. Install 1.3.3 manually once. From 1.3.1 onward the helper runs from a hardlinked runtime outside the install folder and relaunches the app visibly, so 1.3.1, 1.3.2, and later install newer releases automatically.
 
 ---
 
@@ -40,18 +40,20 @@ The workspace lives under `%LOCALAPPDATA%\YT Music Converter\updater\<installId>
 
 | File                 | Purpose                                                                                                                                                                                |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `state.json`         | Last check time, latest release, last apply result, cleanup list.                                                                                                                      |
+| `state.json`         | Last check time, latest release, install path, last apply result, cleanup list.                                                                                                        |
 | `journal.json`       | Helper-written phase and progress: `start`, `verifying`, `extracting`, `validating`, `pre-swap`, `copying`, `installing`, `launched`, `boot-ok`, `cancelled`, `rolled-back`, `failed`. |
 | `apply.lock`         | Helper PID, update id, and write time; removed by the helper when it finishes.                                                                                                         |
 | `apply.cancel`       | Written by the app when a conversion becomes active at pre-swap.                                                                                                                       |
 | `boot-ok.json`       | Boot confirmation written by the relaunched app.                                                                                                                                       |
-| `package.zip`        | Verified archive, kept until the update is installed or fails.                                                                                                                         |
+| `package.zip`        | Verified archive. Removed after a successful install; kept after a failure so a retry does not download it again.                                                                      |
 | `package.zip.sig`    | Release signature (base64) fetched alongside the archive.                                                                                                                              |
 | `updater-helper.cjs` | Bundled copy of the helper, refreshed before each apply.                                                                                                                               |
 | `recover-update.ps1` | Watchdog script used to restore an interrupted swap.                                                                                                                                   |
 | `updater.log`        | Append-only log of checks, downloads, applies, and rollbacks. Kept for diagnostics.                                                                                                    |
 
 The journal also carries extraction totals and byte progress, which the app polls every 200 milliseconds and mirrors to the banner and the Windows taskbar.
+
+After a successful boot the app removes the archive, signature, helper bundle, watchdog script, journal, boot confirmation, cancel marker, and update marker. It also removes workspaces whose recorded install path no longer exists. Legacy workspaces without a recorded install path have only their cache files removed, and only after 24 hours. A workspace with a live apply lock is never removed.
 
 The helper also writes `<install parent>\.ytmc-updating-<installId>.json` before the swap. A manual app launch while that marker is live is refused with an "Update in progress" dialog, so the user cannot start a second process that locks the install folder. Stale markers are removed at startup.
 
@@ -91,13 +93,13 @@ Applying an update is a rename swap performed by `electron/updater/helper.cts`, 
 10. `<install>` is renamed to `<install>.old-<updateId>`, then the new tree is renamed to `<install>`. Both renames retry `EPERM`, `EBUSY`, and `EACCES` for 60 seconds and log each retry. If either fails, the helper restores the previous layout, records `restored` and the error detail, removes the new tree, and relaunches the old build if the app is no longer running.
 11. The new executable is launched visibly from the install parent folder with `--ytmc-update-id`, `--ytmc-update-version`, `--ytmc-update-nonce`, and `--ytmc-update-report` arguments. `ELECTRON_RUN_AS_NODE` is stripped from the child environment.
 
-The relaunched app writes `boot-ok.json` only when all of the following hold: the update id, version, and nonce match; the window exists and is visible; `/api/health` reports yt-dlp and FFmpeg readiness; and no window load or render-process failure occurred. Library readiness is not required, so an offline library cannot roll back a healthy update. The app retries the boot report for up to 5 minutes. The helper waits for that report, then confirms the new process is still alive after 10 seconds. On success the journal records `boot-ok`, the marker and Run entry are removed, and the old tree is kept for 24 hours before cleanup.
+The relaunched app writes `boot-ok.json` only when all of the following hold: the update id, version, and nonce match; the window exists and is visible; `/api/health` reports yt-dlp and FFmpeg readiness; and no window load or render-process failure occurred. Library readiness is not required, so an offline library cannot roll back a healthy update. The app retries the boot report for up to 5 minutes. The helper waits for that report, then confirms the new process is still alive after 10 seconds. On success the journal records `boot-ok`, the marker and Run entry are removed, and the old tree is deleted 60 seconds later. If the app exits before that timer fires, the next startup removes the old tree.
 
 Any post-swap failure rolls back: the new app is killed, `<install>` becomes `<install>.failed-<updateId>`, the old tree is renamed back, and the previous version is relaunched visibly. If the rollback itself fails, the marker and Run entry stay in place so the watchdog or the next logon can finish the repair. The watchdog also waits up to five minutes for a matching `boot-ok.json` when the journal says the new build was launched; if confirmation never arrives, it restores the old tree even though the install folder is present.
 
 Failures before the swap keep the app open and write `failed` with a reason. These include `archive-digest-mismatch`, `archive-signature-*`, `archive-unreadable`, `extract-*`, `tree-invalid-*`, `new-tree-cleanup-failed`, `app-still-running`, `backend-still-running`, `data-copy-failed`, `old-tree-remove-failed`, and `swap-failed`. Post-swap rollback reasons include `launch-failed`, `boot-report-mismatch`, `boot-version-mismatch`, `boot-nonce-mismatch`, `boot-window-hidden`, `app-exited`, `app-died-after-boot`, `boot-timeout`, `boot-report-cleanup-failed`, and `rollback-failed`. The last failure reason, detail, and restore result are kept in `state.json` and shown in Settings.
 
-The install path is missing only during the two renames. The journal, the `.old-`/`.new-` folder names, and the update marker identify which tree is which. If the app is started from a renamed folder, `running-from-stale-copy` blocks updater activity. At startup the app removes stale sibling trees and stale markers from older attempts; old trees younger than 24 hours are kept for manual recovery.
+The install path is missing only during the two renames. The journal, the `.old-`/`.new-` folder names, and the update marker identify which tree is which. If the app is started from a renamed folder, `running-from-stale-copy` blocks updater activity. At startup the app removes every validated stale sibling tree and stale marker from older attempts when the install executable is intact. It keeps the trees only when the install executable is missing and repair is still required.
 
 ---
 

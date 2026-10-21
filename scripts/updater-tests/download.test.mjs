@@ -4,9 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { sha256Hex } from './crypto-helper.mjs';
 
 const { downloadUpdate } = await import('../../dist-electron/updater/download.cjs');
-const { sha256Hex, signDigest } = await import('../../dist-electron/updater/signature.cjs');
+const { signDigest } = await import('../../dist-electron/updater/signature.cjs');
 
 const keyPath = path.join(os.homedir(), '.ytmc-release-signing.key');
 const keyPem = fs.existsSync(keyPath) ? fs.readFileSync(keyPath, 'utf8') : null;
