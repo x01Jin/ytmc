@@ -40,7 +40,7 @@ export function ReleaseNotesModal({ version, onClose }: ReleaseNotesModalProps) 
     return () => {
       cancelled = true;
     };
-  }, [attempt]);
+  }, [version, attempt]);
 
   return createPortal(
     <div

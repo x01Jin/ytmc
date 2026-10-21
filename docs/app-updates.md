@@ -12,7 +12,7 @@ Versions 1.2.4 and 1.3.0 ship the same broken helper: it runs from the install e
 
 Updates surface in two places:
 
-- **Settings > Updates panel** (`src/components/UpdatePanel.tsx`): installed version, a "Release Notes" button that opens a Markdown preview of the installed release's notes, check button, download progress with cancel, "Restart and Update", and "View Release". During an install it shows the current phase and progress; after a failure it shows the error detail and whether the previous version was restored.
+- **Settings > Updates panel** (`src/components/UpdatePanel.tsx`): installed version, a "Release Notes" button that opens a Markdown preview of the offered update's notes or, when no update is available, the installed release's notes, check button, download progress with cancel, "Restart and Update", and "View Release". During an install it shows the current phase and progress; after a failure it shows the error detail and whether the previous version was restored.
 - **Header update button** (`src/components/UpdateNotice.tsx`): a compact button in the title bar, left of the GitHub link, shown on every route except Settings when a version is available or ready, and while an update is installing. It opens Settings, where the full panel handles downloading and restarting.
 
 The main process drives a single state machine (`electron/updater/index.cts`):
@@ -63,7 +63,7 @@ The helper also writes `<install parent>\.ytmc-updating-<installId>.json` before
 
 `electron/updater/release.cts` pages `GET /repos/x01Jin/ytmc/releases?per_page=100` up to 3 pages, keeps only published (non-draft, non-prerelease) releases with numeric tags, and sorts by semver. It considers only the highest version and fails closed if that release is not installable: the zip asset must exist exactly once with `state: uploaded`, a safe integer size, a `sha256:` digest from the GitHub API, and an `https://` URL; the `.sig` asset must exist exactly once the same way. There is no walk-down to older releases.
 
-Release notes are not part of the scan. The installed version's notes are fetched on demand from `GET /repos/x01Jin/ytmc/releases/tags/v<version>`, falling back to the unprefixed tag on a 404, and rendered in the Settings preview. A successful fetch is cached in `release-notes.json` in the updater workspace, keyed by installed version; later opens use the cache without a network request. A new installed version replaces the cached entry on its first successful fetch. Only a published release whose tag matches the installed version is shown, and notes are capped at 20,000 characters for display.
+Release notes are not part of the scan. The notes are fetched on demand from `GET /repos/x01Jin/ytmc/releases/tags/v<version>`, falling back to the unprefixed tag on a 404, and rendered in the Settings preview. The preview targets the version the updater is offering when a newer release is known, and the installed version otherwise. A successful fetch is cached in `release-notes.json` in the updater workspace, keyed by the target version; later opens use the cache without a network request. A different target version replaces the cached entry on its first successful fetch. Only a published release whose tag matches the target version is shown, and notes are capped at 20,000 characters for display.
 
 The archive is trusted only after all three checks pass:
 

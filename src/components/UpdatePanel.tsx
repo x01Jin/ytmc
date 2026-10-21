@@ -17,6 +17,7 @@ export function UpdatePanel() {
   const converting = jobs.state.isConverting;
   const percent = state.progressPercent ?? 0;
   const busy = state.phase === 'checking' || state.phase === 'applying';
+  const notesVersion = state.latestVersion ?? state.currentVersion;
 
   return (
     <section className="px-panel space-y-2 p-2" aria-label="Updates">
@@ -210,7 +211,7 @@ export function UpdatePanel() {
 
       {notesOpen && (
         <Suspense fallback={null}>
-          <ReleaseNotesModal version={state.currentVersion} onClose={() => setNotesOpen(false)} />
+          <ReleaseNotesModal version={notesVersion} onClose={() => setNotesOpen(false)} />
         </Suspense>
       )}
     </section>

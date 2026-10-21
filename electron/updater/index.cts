@@ -1344,11 +1344,15 @@ export function initializeUpdater(host: UpdaterHost): UpdaterHandle {
     if (state.releaseUrl?.startsWith(RELEASE_PAGE_BASE)) void shell.openExternal(state.releaseUrl);
   });
   register('updates:release-notes', async () => {
+    const targetVersion =
+      persisted.latest && isNewerVersion(persisted.latest.version, host.currentVersion)
+        ? persisted.latest.version
+        : host.currentVersion;
     if (workspaceReady) {
-      const cached = readCachedReleaseNotes(notesPath, host.currentVersion);
-      if (cached !== null) return { status: 'ok', version: host.currentVersion, notes: cached };
+      const cached = readCachedReleaseNotes(notesPath, targetVersion);
+      if (cached !== null) return { status: 'ok', version: targetVersion, notes: cached };
     }
-    const result = await fetchReleaseNotes({ fetchJson, currentVersion: host.currentVersion });
+    const result = await fetchReleaseNotes({ fetchJson, currentVersion: targetVersion });
     if (result.status === 'ok' && workspaceReady) {
       try {
         writeCachedReleaseNotes(notesPath, result.version, result.notes);
